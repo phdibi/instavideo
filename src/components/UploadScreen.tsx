@@ -1,0 +1,153 @@
+"use client";
+
+import { useCallback, useState } from "react";
+import { Upload, Film, Sparkles, Zap, Type, Wand2 } from "lucide-react";
+import { useProjectStore } from "@/store/useProjectStore";
+import { motion } from "framer-motion";
+
+export default function UploadScreen() {
+  const { setVideoFile, setVideoUrl, setStatus } = useProjectStore();
+  const [dragOver, setDragOver] = useState(false);
+
+  const handleFile = useCallback(
+    (file: File) => {
+      if (!file.type.startsWith("video/")) {
+        alert("Por favor, selecione um arquivo de vídeo.");
+        return;
+      }
+      const url = URL.createObjectURL(file);
+      setVideoFile(file);
+      setVideoUrl(url);
+      setStatus("uploading");
+    },
+    [setVideoFile, setVideoUrl, setStatus]
+  );
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      const file = e.dataTransfer.files[0];
+      if (file) handleFile(file);
+    },
+    [handleFile]
+  );
+
+  const handleInput = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) handleFile(file);
+    },
+    [handleFile]
+  );
+
+  const features = [
+    {
+      icon: <Type className="w-5 h-5" />,
+      title: "Legendas com IA",
+      desc: "Transcrição automática com animações",
+    },
+    {
+      icon: <Zap className="w-5 h-5" />,
+      title: "Edição Cinematográfica",
+      desc: "Zooms, cortes e efeitos automáticos",
+    },
+    {
+      icon: <Film className="w-5 h-5" />,
+      title: "B-Roll com IA",
+      desc: "Imagens geradas por Imagen 3",
+    },
+    {
+      icon: <Wand2 className="w-5 h-5" />,
+      title: "Tudo Editável",
+      desc: "Ajuste cada efeito e legenda",
+    },
+  ];
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen p-8">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6 }}
+        className="text-center mb-12"
+      >
+        <div className="flex items-center justify-center gap-3 mb-4">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[var(--accent)] to-purple-500 flex items-center justify-center">
+            <Sparkles className="w-6 h-6 text-white" />
+          </div>
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-[var(--accent-light)] to-purple-400 bg-clip-text text-transparent">
+            CineAI
+          </h1>
+        </div>
+        <p className="text-[var(--text-secondary)] text-lg max-w-md mx-auto">
+          Transforme seus vídeos em conteúdo cinematográfico para redes sociais
+          com inteligência artificial
+        </p>
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.5, delay: 0.2 }}
+        className={`relative w-full max-w-xl border-2 border-dashed rounded-2xl p-16 text-center cursor-pointer transition-all duration-300 ${
+          dragOver
+            ? "border-[var(--accent)] bg-[var(--accent)]/10 scale-[1.02]"
+            : "border-[var(--border)] bg-[var(--surface)] hover:border-[var(--accent)]/50 hover:bg-[var(--surface-hover)]"
+        }`}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        onClick={() => document.getElementById("video-input")?.click()}
+      >
+        <input
+          id="video-input"
+          type="file"
+          accept="video/*"
+          className="hidden"
+          onChange={handleInput}
+        />
+        <div
+          className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-6 transition-colors ${
+            dragOver ? "bg-[var(--accent)]/20" : "bg-[var(--surface-hover)]"
+          }`}
+        >
+          <Upload
+            className={`w-8 h-8 transition-colors ${
+              dragOver ? "text-[var(--accent)]" : "text-[var(--text-secondary)]"
+            }`}
+          />
+        </div>
+        <p className="text-lg font-medium mb-2">
+          {dragOver ? "Solte o vídeo aqui" : "Arraste seu vídeo ou clique para selecionar"}
+        </p>
+        <p className="text-sm text-[var(--text-secondary)]">
+          MP4, MOV, WebM — Máx. 500MB
+        </p>
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.4 }}
+        className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-12 max-w-3xl w-full"
+      >
+        {features.map((f, i) => (
+          <div
+            key={i}
+            className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 text-center hover:border-[var(--accent)]/30 transition-colors"
+          >
+            <div className="w-10 h-10 mx-auto rounded-lg bg-[var(--accent)]/10 flex items-center justify-center text-[var(--accent-light)] mb-3">
+              {f.icon}
+            </div>
+            <p className="font-medium text-sm mb-1">{f.title}</p>
+            <p className="text-xs text-[var(--text-secondary)]">{f.desc}</p>
+          </div>
+        ))}
+      </motion.div>
+    </div>
+  );
+}

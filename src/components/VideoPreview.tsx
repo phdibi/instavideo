@@ -1,0 +1,355 @@
+"use client";
+
+import { useRef, useEffect, useCallback, useMemo } from "react";
+import { Play, Pause, RotateCcw, Volume2, VolumeX } from "lucide-react";
+import { useProjectStore } from "@/store/useProjectStore";
+import { formatTime } from "@/lib/formatTime";
+import CaptionOverlay from "./CaptionOverlay";
+import { useState } from "react";
+
+export default function VideoPreview() {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const animFrameRef = useRef<number>(0);
+  const [muted, setMuted] = useState(false);
+
+  const {
+    videoUrl,
+    videoDuration,
+    currentTime,
+    isPlaying,
+    effects,
+    bRollImages,
+    setCurrentTime,
+    setIsPlaying,
+    setVideoDuration,
+  } = useProjectStore();
+
+  // Find active effects at current time
+  const activeEffects = useMemo(
+    () =>
+      effects.filter(
+        (e) => currentTime >= e.startTime && currentTime <= e.endTime
+      ),
+    [effects, currentTime]
+  );
+
+  // Find active B-roll at current time
+  const activeBRoll = useMemo(
+    () =>
+      bRollImages.find(
+        (b) => b.url && currentTime >= b.startTime && currentTime <= b.endTime
+      ),
+    [bRollImages, currentTime]
+  );
+
+  // Compute transform style based on active effects
+  const videoStyle = useMemo(() => {
+    let scale = 1;
+    let translateX = 0;
+    let translateY = 0;
+    let filter = "";
+    let clipPath = "";
+
+    for (const effect of activeEffects) {
+      const progress =
+        (currentTime - effect.startTime) / (effect.endTime - effect.startTime);
+      const params = effect.params as Record<string, number | string>;
+
+      switch (effect.type) {
+        case "zoom-in": {
+          const targetScale = (params.scale as number) || 1.3;
+          scale *= 1 + (targetScale - 1) * easeOut(progress);
+          const focusX = ((params.focusX as number) || 0.5) - 0.5;
+          const focusY = ((params.focusY as number) || 0.4) - 0.5;
+          translateX -= focusX * (scale - 1) * 100;
+          translateY -= focusY * (scale - 1) * 100;
+          break;
+        }
+        case "zoom-out": {
+          const targetScale = (params.scale as number) || 1.3;
+          scale *= targetScale - (targetScale - 1) * easeOut(progress);
+          break;
+        }
+        case "zoom-pulse": {
+          const targetScale = (params.scale as number) || 1.2;
+          const pulse = Math.sin(progress * Math.PI);
+          scale *= 1 + (targetScale - 1) * pulse;
+          break;
+        }
+        case "pan-left":
+          translateX -= ((params.distance as number) || 30) * easeInOut(progress);
+          break;
+        case "pan-right":
+          translateX += ((params.distance as number) || 30) * easeInOut(progress);
+          break;
+        case "pan-up":
+          translateY -= ((params.distance as number) || 20) * easeInOut(progress);
+          break;
+        case "pan-down":
+          translateY += ((params.distance as number) || 20) * easeInOut(progress);
+          break;
+        case "shake": {
+          const intensity = (params.intensity as number) || 3;
+          const freq = (params.frequency as number) || 15;
+          translateX += Math.sin(progress * freq * Math.PI * 2) * intensity;
+          translateY +=
+            Math.cos(progress * freq * Math.PI * 2 + 1) * intensity;
+          break;
+        }
+        case "vignette":
+          // CSS vignette simulation
+          break;
+        case "letterbox":
+          clipPath = `inset(${((params.amount as number) || 0.1) * 100}% 0)`;
+          break;
+        case "blur-background":
+          // Applied as a separate filter layer
+          break;
+        case "color-grade": {
+          const preset = params.preset as string;
+          if (preset === "cinematic-warm")
+            filter += " sepia(0.15) saturate(1.2) contrast(1.1)";
+          else if (preset === "cold-thriller")
+            filter += " saturate(0.8) hue-rotate(200deg) contrast(1.15)";
+          else if (preset === "vintage")
+            filter += " sepia(0.3) saturate(0.9) contrast(1.05)";
+          else if (preset === "high-contrast")
+            filter += " contrast(1.4) saturate(1.1)";
+          break;
+        }
+        case "flash": {
+          const flashProgress = 1 - progress;
+          if (flashProgress > 0.5) filter += ` brightness(${1 + flashProgress * 2})`;
+          break;
+        }
+        case "slow-motion":
+        case "speed-ramp":
+          break;
+      }
+    }
+
+    return {
+      transform: `scale(${scale}) translate(${translateX}px, ${translateY}px)`,
+      filter: filter || undefined,
+      clipPath: clipPath || undefined,
+      transition: "transform 0.05s linear, filter 0.1s linear",
+    };
+  }, [activeEffects, currentTime]);
+
+  // Vignette effect
+  const vignetteEffect = useMemo(() => {
+    const vignette = activeEffects.find((e) => e.type === "vignette");
+    if (!vignette) return null;
+    const intensity = (vignette.params.intensity as number) || 0.3;
+    return {
+      background: `radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,${intensity}) 100%)`,
+    };
+  }, [activeEffects]);
+
+  // Transition effects
+  const transitionOverlay = useMemo(() => {
+    const transition = activeEffects.find((e) =>
+      e.type.startsWith("transition-")
+    );
+    if (!transition) return null;
+    const progress =
+      (currentTime - transition.startTime) /
+      (transition.endTime - transition.startTime);
+
+    switch (transition.type) {
+      case "transition-fade":
+        return {
+          backgroundColor: `rgba(0,0,0,${Math.sin(progress * Math.PI) * 0.8})`,
+        };
+      case "transition-glitch":
+        return {
+          backgroundColor: `rgba(${Math.random() * 255},0,${
+            Math.random() * 255
+          },${Math.sin(progress * Math.PI) * 0.3})`,
+          mixBlendMode: "screen" as const,
+        };
+      case "transition-zoom":
+        return {
+          backgroundColor: `rgba(255,255,255,${
+            Math.sin(progress * Math.PI) * 0.5
+          })`,
+        };
+      default:
+        return null;
+    }
+  }, [activeEffects, currentTime]);
+
+  const updateTime = useCallback(() => {
+    if (videoRef.current) {
+      setCurrentTime(videoRef.current.currentTime);
+    }
+    if (isPlaying) {
+      animFrameRef.current = requestAnimationFrame(updateTime);
+    }
+  }, [isPlaying, setCurrentTime]);
+
+  useEffect(() => {
+    if (isPlaying) {
+      animFrameRef.current = requestAnimationFrame(updateTime);
+    }
+    return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    };
+  }, [isPlaying, updateTime]);
+
+  const togglePlay = useCallback(() => {
+    const vid = videoRef.current;
+    if (!vid) return;
+    if (vid.paused) {
+      vid.play();
+      setIsPlaying(true);
+    } else {
+      vid.pause();
+      setIsPlaying(false);
+    }
+  }, [setIsPlaying]);
+
+  const restart = useCallback(() => {
+    const vid = videoRef.current;
+    if (!vid) return;
+    vid.currentTime = 0;
+    setCurrentTime(0);
+  }, [setCurrentTime]);
+
+  const seekTo = useCallback(
+    (time: number) => {
+      const vid = videoRef.current;
+      if (!vid) return;
+      vid.currentTime = time;
+      setCurrentTime(time);
+    },
+    [setCurrentTime]
+  );
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Video Container */}
+      <div
+        ref={containerRef}
+        className="relative flex-1 bg-black rounded-xl overflow-hidden mx-4 mt-4"
+      >
+        <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
+          <video
+            ref={videoRef}
+            src={videoUrl}
+            className="w-full h-full object-contain"
+            style={videoStyle}
+            onLoadedMetadata={(e) => {
+              const vid = e.target as HTMLVideoElement;
+              setVideoDuration(vid.duration);
+            }}
+            onEnded={() => setIsPlaying(false)}
+            muted={muted}
+            playsInline
+          />
+
+          {/* B-Roll overlay */}
+          {activeBRoll && (
+            <div
+              className="absolute inset-0 z-10 transition-opacity duration-500"
+              style={{
+                opacity: activeBRoll.opacity,
+                backgroundImage: `url(${activeBRoll.url})`,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+              }}
+            />
+          )}
+
+          {/* Vignette overlay */}
+          {vignetteEffect && (
+            <div className="absolute inset-0 z-20 pointer-events-none" style={vignetteEffect} />
+          )}
+
+          {/* Transition overlay */}
+          {transitionOverlay && (
+            <div
+              className="absolute inset-0 z-30 pointer-events-none"
+              style={transitionOverlay}
+            />
+          )}
+
+          {/* Letterbox bars */}
+          {activeEffects.some((e) => e.type === "letterbox") && (
+            <>
+              <div className="absolute top-0 left-0 right-0 h-[10%] bg-black z-20" />
+              <div className="absolute bottom-0 left-0 right-0 h-[10%] bg-black z-20" />
+            </>
+          )}
+
+          {/* Caption overlay */}
+          <CaptionOverlay currentTime={currentTime} />
+        </div>
+
+        {/* Click to play/pause */}
+        <div
+          className="absolute inset-0 z-40 cursor-pointer"
+          onClick={togglePlay}
+        />
+      </div>
+
+      {/* Controls */}
+      <div className="px-4 py-3 space-y-2">
+        {/* Seek bar */}
+        <input
+          type="range"
+          min={0}
+          max={videoDuration || 100}
+          step={0.01}
+          value={currentTime}
+          onChange={(e) => seekTo(parseFloat(e.target.value))}
+          className="w-full"
+        />
+
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={togglePlay}
+              className="w-9 h-9 rounded-lg bg-[var(--accent)] flex items-center justify-center hover:bg-[var(--accent-hover)] transition-colors"
+            >
+              {isPlaying ? (
+                <Pause className="w-4 h-4 text-white" />
+              ) : (
+                <Play className="w-4 h-4 text-white ml-0.5" />
+              )}
+            </button>
+            <button
+              onClick={restart}
+              className="w-9 h-9 rounded-lg bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center hover:bg-[var(--surface-hover)] transition-colors"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setMuted(!muted)}
+              className="w-9 h-9 rounded-lg bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center hover:bg-[var(--surface-hover)] transition-colors"
+            >
+              {muted ? (
+                <VolumeX className="w-4 h-4" />
+              ) : (
+                <Volume2 className="w-4 h-4" />
+              )}
+            </button>
+          </div>
+
+          <span className="text-sm text-[var(--text-secondary)] font-mono">
+            {formatTime(currentTime)} / {formatTime(videoDuration)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function easeOut(t: number): number {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+function easeInOut(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}

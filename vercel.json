@@ -1,0 +1,28 @@
+{
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Cross-Origin-Opener-Policy",
+          "value": "same-origin"
+        },
+        {
+          "key": "Cross-Origin-Embedder-Policy",
+          "value": "require-corp"
+        }
+      ]
+    }
+  ],
+  "functions": {
+    "src/app/api/transcribe/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/analyze/route.ts": {
+      "maxDuration": 300
+    },
+    "src/app/api/generate-broll/route.ts": {
+      "maxDuration": 120
+    }
+  }
+}

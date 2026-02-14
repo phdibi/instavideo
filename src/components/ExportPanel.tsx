@@ -234,120 +234,119 @@ export default function ExportPanel() {
           ctx.fillRect(0, height - barH, width, barH);
         }
 
-        // Draw captions
-        const activeCaptions = captions.filter(
-          (c) => time >= c.startTime && time <= c.endTime
-        );
+        // Draw captions - only ONE at a time (pick first active, sorted by startTime)
+        const activeCaptions = captions
+          .filter((c) => time >= c.startTime && time < c.endTime)
+          .sort((a, b) => a.startTime - b.startTime);
 
-        for (const caption of activeCaptions) {
-          const captionProgress =
-            (time - caption.startTime) /
-            (caption.endTime - caption.startTime);
+        const caption = activeCaptions.length > 0 ? activeCaptions[0] : null;
+
+        if (caption) {
+          const captionDuration = caption.endTime - caption.startTime;
+          const captionProgress = Math.min(
+            Math.max((time - caption.startTime) / captionDuration, 0),
+            1
+          );
 
           ctx.save();
-          ctx.textAlign = caption.style.textAlign as CanvasTextAlign;
           ctx.font = `${caption.style.fontWeight} ${caption.style.fontSize}px ${caption.style.fontFamily}, sans-serif`;
 
-          const x =
-            caption.style.textAlign === "left"
-              ? width * 0.1
-              : caption.style.textAlign === "right"
-              ? width * 0.9
-              : width / 2;
           const y =
             caption.style.position === "top"
-              ? height * 0.15
+              ? height * 0.12
               : caption.style.position === "center"
               ? height / 2
-              : height * 0.85;
+              : height * 0.88;
 
-          let displayText = caption.text;
-          if (caption.animation === "typewriter") {
-            displayText = caption.text.slice(
-              0,
-              Math.floor(caption.text.length * Math.min(captionProgress * 1.5, 1))
-            );
-          }
+          const words = caption.text.split(" ");
+          const totalWords = words.length;
+          const currentWordIndex = Math.min(
+            Math.floor(captionProgress * totalWords),
+            totalWords - 1
+          );
 
-          // Background
+          // Calculate total text width for centering
+          const spaceWidth = ctx.measureText(" ").width;
+          const wordWidths = words.map((w) => ctx.measureText(w).width);
+          const totalTextWidth =
+            wordWidths.reduce((a, b) => a + b, 0) +
+            spaceWidth * (words.length - 1);
+
+          // Draw background
           if (caption.style.backgroundOpacity > 0) {
-            const metrics = ctx.measureText(displayText);
-            const bgPad = 12;
-            const textWidth = metrics.width;
+            const bgPad = 16;
             const textHeight = caption.style.fontSize;
-
             ctx.fillStyle =
               caption.style.backgroundColor +
               Math.round(caption.style.backgroundOpacity * 255)
                 .toString(16)
                 .padStart(2, "0");
             ctx.beginPath();
-            const bx =
-              caption.style.textAlign === "center"
-                ? x - textWidth / 2 - bgPad
-                : caption.style.textAlign === "left"
-                ? x - bgPad
-                : x - textWidth - bgPad;
             ctx.roundRect(
-              bx,
+              width / 2 - totalTextWidth / 2 - bgPad,
               y - textHeight * 0.7 - bgPad / 2,
-              textWidth + bgPad * 2,
+              totalTextWidth + bgPad * 2,
               textHeight + bgPad,
-              8
+              12
             );
             ctx.fill();
           }
 
-          // Shadow
-          if (caption.style.shadowBlur > 0) {
-            ctx.shadowColor = caption.style.shadowColor;
-            ctx.shadowBlur = caption.style.shadowBlur;
-            ctx.shadowOffsetY = 2;
-          }
+          // Draw words with word-by-word highlighting
+          let currentX = width / 2 - totalTextWidth / 2;
+          ctx.textAlign = "left";
+          ctx.lineJoin = "round";
+          ctx.miterLimit = 2;
 
-          // Stroke
-          if (caption.style.strokeWidth > 0) {
-            ctx.strokeStyle = caption.style.strokeColor;
-            ctx.lineWidth = caption.style.strokeWidth * 2;
-            ctx.lineJoin = "round";
-            ctx.miterLimit = 2;
+          for (let wi = 0; wi < words.length; wi++) {
+            const word = words[wi];
+            const isActive = wi === currentWordIndex;
+            const isPast = wi < currentWordIndex;
+            const isEmphasis = caption.emphasis.some((e) =>
+              word.toLowerCase().replace(/[.,!?;:]/g, "").includes(e.toLowerCase())
+            );
 
-            // Draw words with emphasis
-            const words = displayText.split(" ");
-            let currentX = x;
-            if (caption.style.textAlign === "center") {
-              const totalWidth = ctx.measureText(displayText).width;
-              currentX = x - totalWidth / 2;
-              ctx.textAlign = "left";
+            // Determine color
+            let wordColor = caption.style.color;
+            if (isActive) {
+              wordColor = "#FFD700"; // Gold highlight for current word
+            } else if (isEmphasis) {
+              wordColor = "#FFD700";
+            } else if (!isPast) {
+              // Future words: slightly dimmed
+              wordColor = caption.style.color + "99";
             }
 
-            for (const word of words) {
-              const isEmphasis = caption.emphasis.some(
-                (e) => word.toLowerCase().includes(e.toLowerCase())
-              );
+            // Shadow for active word
+            if (isActive) {
+              ctx.shadowColor = "#FFD70080";
+              ctx.shadowBlur = 20;
+              ctx.shadowOffsetY = 0;
+            } else if (caption.style.shadowBlur > 0) {
+              ctx.shadowColor = caption.style.shadowColor;
+              ctx.shadowBlur = caption.style.shadowBlur;
+              ctx.shadowOffsetY = 2;
+            } else {
+              ctx.shadowColor = "transparent";
+              ctx.shadowBlur = 0;
+            }
+
+            // Set font weight
+            const fontWeight = isActive || isEmphasis ? 900 : caption.style.fontWeight;
+            ctx.font = `${fontWeight} ${caption.style.fontSize}px ${caption.style.fontFamily}, sans-serif`;
+
+            // Stroke
+            if (caption.style.strokeWidth > 0) {
               ctx.strokeStyle = caption.style.strokeColor;
+              ctx.lineWidth = caption.style.strokeWidth * 2;
               ctx.strokeText(word, currentX, y);
-              ctx.fillStyle = isEmphasis ? "#FFD700" : caption.style.color;
-              ctx.fillText(word, currentX, y);
-              currentX += ctx.measureText(word + " ").width;
-            }
-          } else {
-            const words = displayText.split(" ");
-            let currentX = x;
-            if (caption.style.textAlign === "center") {
-              const totalWidth = ctx.measureText(displayText).width;
-              currentX = x - totalWidth / 2;
-              ctx.textAlign = "left";
             }
 
-            for (const word of words) {
-              const isEmphasis = caption.emphasis.some(
-                (e) => word.toLowerCase().includes(e.toLowerCase())
-              );
-              ctx.fillStyle = isEmphasis ? "#FFD700" : caption.style.color;
-              ctx.fillText(word, currentX, y);
-              currentX += ctx.measureText(word + " ").width;
-            }
+            // Fill
+            ctx.fillStyle = wordColor;
+            ctx.fillText(word, currentX, y);
+
+            currentX += wordWidths[wi] + spaceWidth;
           }
 
           ctx.restore();

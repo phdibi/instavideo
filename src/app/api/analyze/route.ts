@@ -18,9 +18,23 @@ export async function POST(request: NextRequest) {
     const ai = new GoogleGenAI({ apiKey });
 
     // Build a simplified segment list for the prompt to ensure exact timestamp usage
-    const segmentList = (transcription.segments || []).map((s: { start: number; end: number; text: string }, i: number) =>
+    const segments = transcription.segments || [];
+    const segmentList = segments.map((s: { start: number; end: number; text: string }, i: number) =>
       `Segment ${i + 1}: [${s.start.toFixed(2)}s - ${s.end.toFixed(2)}s] "${s.text}"`
     ).join("\n");
+
+    // Pre-build the caption instructions based on segments to be very explicit
+    const captionInstructions = segments.map((s: { start: number; end: number; text: string }, i: number) => {
+      const words = s.text.split(" ");
+      // If segment is long (>8 words), suggest splitting
+      if (words.length > 8) {
+        const mid = Math.ceil(words.length / 2);
+        const midTime = s.start + (s.end - s.start) * (mid / words.length);
+        return `  cap_${i * 2 + 1}: startTime=${s.start.toFixed(2)}, endTime=${midTime.toFixed(2)}, text="${words.slice(0, mid).join(" ")}"
+  cap_${i * 2 + 2}: startTime=${midTime.toFixed(2)}, endTime=${s.end.toFixed(2)}, text="${words.slice(mid).join(" ")}"`;
+      }
+      return `  cap_${i + 1}: startTime=${s.start.toFixed(2)}, endTime=${s.end.toFixed(2)}, text="${s.text}"`;
+    }).join("\n");
 
     const response = await ai.models.generateContent({
       model: "gemini-2.0-flash",
@@ -29,144 +43,102 @@ export async function POST(request: NextRequest) {
           role: "user",
           parts: [
             {
-              text: `You are a world-class cinematic video editor AI. Analyze this transcription from a video and create a complete editing plan.
+              text: `You are a world-class cinematic video editor AI. Create an editing plan for this video.
 
 VIDEO DURATION: ${videoDuration} seconds
 
-TRANSCRIPTION SEGMENTS (with EXACT timestamps you MUST use for captions):
+TRANSCRIPTION SEGMENTS:
 ${segmentList}
-
-FULL TRANSCRIPTION DATA:
-${JSON.stringify(transcription, null, 2)}
-
-Your job is to create a CINEMATIC, SUSPENSEFUL, ENGAGING edit plan that transforms a raw talking-head video into viral social media content.
 
 CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations.
 
-Return this exact JSON structure:
+=== CAPTION PLAN (YOU MUST FOLLOW THIS EXACTLY) ===
+Create these EXACT captions with these EXACT timestamps. Do NOT change the timing or text:
+${captionInstructions}
+
+Each caption object must have this structure:
 {
-  "effects": [
-    {
-      "id": "effect_1",
-      "type": "zoom-in",
-      "startTime": 0.0,
-      "endTime": 2.0,
-      "params": {
-        "scale": 1.3,
-        "focusX": 0.5,
-        "focusY": 0.4,
-        "easing": "ease-out"
-      }
-    }
-  ],
-  "bRollSuggestions": [
-    {
-      "id": "broll_1",
-      "timestamp": 5.0,
-      "duration": 2.0,
-      "prompt": "description for image generation",
-      "reason": "why this b-roll fits here"
-    }
-  ],
-  "captions": [
-    {
-      "id": "cap_1",
-      "startTime": 0.0,
-      "endTime": 2.5,
-      "text": "caption text",
-      "style": {
-        "fontFamily": "Inter",
-        "fontSize": 48,
-        "fontWeight": 800,
-        "color": "#FFFFFF",
-        "backgroundColor": "#000000",
-        "backgroundOpacity": 0.6,
-        "position": "bottom",
-        "textAlign": "center",
-        "strokeColor": "#000000",
-        "strokeWidth": 2,
-        "shadowColor": "rgba(0,0,0,0.5)",
-        "shadowBlur": 4
-      },
-      "animation": "pop",
-      "emphasis": ["key", "words"]
-    }
-  ],
-  "overallMood": "intense",
-  "pacing": "dynamic",
-  "colorGrade": "cinematic-warm"
+  "id": "cap_1",
+  "startTime": <exact start from above>,
+  "endTime": <exact end from above>,
+  "text": "<exact text from above>",
+  "style": {
+    "fontFamily": "Inter",
+    "fontSize": 48,
+    "fontWeight": 800,
+    "color": "#FFFFFF",
+    "backgroundColor": "#000000",
+    "backgroundOpacity": 0.5,
+    "position": "bottom",
+    "textAlign": "center",
+    "strokeColor": "#000000",
+    "strokeWidth": 2,
+    "shadowColor": "rgba(0,0,0,0.8)",
+    "shadowBlur": 6
+  },
+  "animation": "karaoke",
+  "emphasis": ["important", "words"]
 }
 
-EDITING RULES - Follow these like a professional video editor:
+CAPTION RULES:
+- Captions MUST NEVER overlap. Each caption endTime must be <= next caption startTime.
+- Keep max 6-8 words per caption. Split longer segments.
+- "animation" should be "karaoke" for most captions (word-by-word highlight)
+- Use "pop" for shocking/important statements, "bounce" for light moments
+- "emphasis" should contain 1-2 of the most impactful words in that caption
+- EVERY segment must have a caption. Do not skip any.
 
-***ABSOLUTE RULE FOR CAPTIONS - THIS IS THE MOST IMPORTANT RULE:***
-- You MUST create one caption per transcription segment
-- You MUST use the EXACT startTime and endTime from each transcription segment
-- DO NOT invent, approximate, or shift timestamps - copy them exactly from the segments above
-- The caption text MUST match the segment text exactly (you may split long segments into 2 captions if > 8 words, splitting the time proportionally)
-- Captions MUST NOT overlap each other
-- Every segment must have a corresponding caption - do not skip any
+=== EFFECTS PLAN ===
+Create effects that are synchronized with the speech segments. Each effect must use startTime/endTime from a specific segment.
 
-1. ZOOM EFFECTS:
-   - Use "zoom-in" on key emotional moments, important statements, dramatic reveals
-   - Use "zoom-out" for transitions between topics or to create breathing room
-   - Use "zoom-pulse" (quick zoom in then out) for emphasis on surprising words
-   - Scale range: 1.1 (subtle) to 1.5 (dramatic)
-   - Focus on the face area (focusY: 0.3-0.5)
-   - Add zooms every 3-8 seconds for dynamic feel
-   - Effects MUST align with transcription segment timestamps
+Effect types and when to use them:
+- "zoom-in": Start of important statements. params: { "scale": 1.2-1.4, "focusX": 0.5, "focusY": 0.35 }
+- "zoom-out": End of topics/transition moments. params: { "scale": 1.2 }
+- "zoom-pulse": Surprising/emphatic single words (0.3-0.8s duration). params: { "scale": 1.15 }
+- "pan-left"/"pan-right": Topic transitions (1-2s). params: { "distance": 20 }
+- "shake": Dramatic emphasis (0.3-0.5s max). params: { "intensity": 3, "frequency": 15 }
+- "transition-fade": Between major topic changes (0.3-0.5s). params: { "duration": 0.4 }
+- "transition-glitch": Shocking moments (0.2-0.4s). params: { "intensity": 5 }
+- "vignette": Emotional/intimate moments. params: { "intensity": 0.3 }
+- "letterbox": Cinematic moments. params: { "amount": 0.08 }
+- "flash": Quick emphasis (0.1-0.2s). params: { "color": "#FFFFFF", "duration": 0.15 }
+- "color-grade": Set mood for video sections. params: { "preset": "cinematic-warm" }
 
-2. PAN/MOVEMENT EFFECTS:
-   - Use "pan-left", "pan-right" during topic transitions
-   - Use "shake" for dramatic emphasis (short duration, 0.3-0.5s)
-   - Pan params: { "distance": 30, "easing": "ease-in-out" }
-   - Shake params: { "intensity": 3, "frequency": 15 }
+EFFECT RULES:
+- Effects of the SAME TYPE must NOT overlap each other
+- Different types CAN overlap (e.g., zoom-in + vignette simultaneously is OK)
+- Add a zoom effect roughly every 3-6 seconds
+- Effects should start/end at segment boundaries when possible
+- Use 8-15 effects total for a dynamic feel
+- Start with a zoom-in on the first segment
+- Add transitions between major topic shifts
 
-3. TRANSITIONS:
-   - Use "transition-fade" between major topic changes
-   - Use "transition-glitch" for surprising/shocking moments
-   - Use "transition-zoom" for building intensity
-   - Transition params: { "duration": 0.5 }
+=== B-ROLL PLAN ===
+Suggest 3-5 b-roll images at key moments.
 
-4. VISUAL EFFECTS:
-   - Use "letterbox" during cinematic/serious moments: { "amount": 0.1 }
-   - Use "vignette" for intimate/emotional moments: { "intensity": 0.3 }
-   - Use "flash" for emphasis: { "color": "#FFFFFF", "duration": 0.15 }
-   - Use "blur-background" for focus: { "amount": 5 }
-   - Use "color-grade" for mood: { "preset": "cinematic-warm" | "cold-thriller" | "vintage" | "high-contrast" }
+{
+  "id": "broll_1",
+  "timestamp": <when to show it, must be within a segment>,
+  "duration": 2.0,
+  "prompt": "<detailed cinematic image description for AI generation>",
+  "reason": "why this visual fits here"
+}
 
-5. SPEED EFFECTS:
-   - Use "slow-motion" for dramatic pauses: { "speed": 0.5 }
-   - Use "speed-ramp" for dynamic pacing: { "startSpeed": 1.0, "endSpeed": 1.5 }
+B-ROLL RULES:
+- Space evenly throughout the video
+- timestamp must align with a speech moment that mentions the subject
+- Duration: 1.5-2.5 seconds each
+- Prompt must be vivid: include style (cinematic, editorial, close-up), lighting, mood
 
-6. B-ROLL:
-   - Suggest 3-5 b-roll images at key moments where visual support enhances the message
-   - Each prompt should be a DETAILED, vivid image description suitable for AI image generation (include style, lighting, composition details)
-   - B-roll should appear when the speaker mentions specific things, concepts, or during transition moments
-   - Duration: 2-3 seconds each
-   - B-roll timestamp MUST fall within the video duration and align with relevant speech segments
-   - Space b-roll suggestions throughout the video, not just at the beginning
-
-7. CAPTIONS:
-   - Create captions from the transcription segments using EXACT timestamps
-   - Use different animation styles based on content:
-     * "pop" for emphasis/important points
-     * "typewriter" for storytelling/narrative moments
-     * "karaoke" for energetic/fast sections
-     * "highlight-word" for key terms
-     * "bounce" for fun/casual moments
-     * "fade" for serious/emotional moments
-   - Mark emphasis words (the most important 1-3 words per caption)
-   - Style should match the mood of the content
-
-8. PACING:
-   - Analyze speech speed and energy to determine pacing
-   - Fast speech = more cuts, more zooms, "fast" or "dynamic" pacing
-   - Slow/deliberate speech = fewer effects, more breathing room, "slow" pacing
-   - Mixed = "dynamic" pacing with variety
-
-Make the edit feel like a PROFESSIONAL social media video with HIGH RETENTION editing.
-The goal is CINEMATIC SUSPENSE and ENGAGEMENT.`,
+=== FULL JSON STRUCTURE ===
+{
+  "effects": [...],
+  "bRollSuggestions": [...],
+  "captions": [...],
+  "overallMood": "intense" | "casual" | "dramatic" | "educational",
+  "pacing": "slow" | "medium" | "fast" | "dynamic",
+  "colorGrade": "cinematic-warm" | "cold-thriller" | "vintage" | "high-contrast"
+}`,
             },
           ],
         },

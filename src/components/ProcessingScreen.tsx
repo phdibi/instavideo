@@ -118,24 +118,51 @@ export default function ProcessingScreen() {
         })
       );
 
-      // Fallback: if captions are empty or don't match transcription well,
-      // create captions directly from transcription segments
+      // Fallback: if captions are empty, create from transcription segments
       const segments = transcription.segments || [];
       if (captions.length === 0 && segments.length > 0) {
-        captions = segments.map(
-          (seg: { start: number; end: number; text: string }, i: number) => ({
-            id: `cap_fallback_${i}`,
-            startTime: seg.start,
-            endTime: seg.end,
-            text: seg.text,
-            style: { ...defaultCaptionStyle },
-            animation: "pop" as const,
-            emphasis: [],
-          })
+        captions = segments.flatMap(
+          (seg: { start: number; end: number; text: string }, i: number) => {
+            const words = seg.text.split(" ");
+            // Split long segments into smaller captions (max 6-8 words)
+            if (words.length > 8) {
+              const mid = Math.ceil(words.length / 2);
+              const midTime = seg.start + (seg.end - seg.start) * (mid / words.length);
+              return [
+                {
+                  id: `cap_fb_${i}_a`,
+                  startTime: seg.start,
+                  endTime: midTime,
+                  text: words.slice(0, mid).join(" "),
+                  style: { ...defaultCaptionStyle },
+                  animation: "karaoke" as const,
+                  emphasis: [],
+                },
+                {
+                  id: `cap_fb_${i}_b`,
+                  startTime: midTime,
+                  endTime: seg.end,
+                  text: words.slice(mid).join(" "),
+                  style: { ...defaultCaptionStyle },
+                  animation: "karaoke" as const,
+                  emphasis: [],
+                },
+              ];
+            }
+            return [{
+              id: `cap_fb_${i}`,
+              startTime: seg.start,
+              endTime: seg.end,
+              text: seg.text,
+              style: { ...defaultCaptionStyle },
+              animation: "karaoke" as const,
+              emphasis: [],
+            }];
+          }
         );
       }
 
-      // Validate and fix caption timing: clamp to video duration and ensure no overlaps
+      // Validate and fix caption timing: clamp to video duration
       captions = captions
         .filter((c) => c.text && c.text.trim().length > 0)
         .map((c) => ({
@@ -144,6 +171,19 @@ export default function ProcessingScreen() {
           endTime: Math.max(c.startTime + 0.1, Math.min(c.endTime, videoDuration)),
         }))
         .sort((a, b) => a.startTime - b.startTime);
+
+      // CRITICAL: Remove overlaps - ensure no two captions overlap in time
+      for (let i = 1; i < captions.length; i++) {
+        if (captions[i].startTime < captions[i - 1].endTime) {
+          // Shrink previous caption's end to match current's start
+          captions[i - 1] = {
+            ...captions[i - 1],
+            endTime: captions[i].startTime,
+          };
+        }
+      }
+      // Remove any captions that became zero-duration after fixing overlaps
+      captions = captions.filter((c) => c.endTime - c.startTime > 0.05);
 
       // Process effects
       const effects: EditEffect[] = (editPlan.effects || []).map(

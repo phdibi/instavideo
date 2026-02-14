@@ -33,6 +33,7 @@ const steps = [
   { key: "transcribing", label: "Transcrevendo fala com IA..." },
   { key: "analyzing", label: "Analisando conteúdo e planejando edição..." },
   { key: "generating-plan", label: "Gerando efeitos cinematográficos..." },
+  { key: "generating-broll", label: "Gerando imagens de B-roll com IA..." },
   { key: "ready", label: "Pronto!" },
 ];
 
@@ -45,6 +46,7 @@ export default function ProcessingScreen() {
     setCaptions,
     setEffects,
     setBRollImages,
+    updateBRollImage,
     setEditPlan,
   } = useProjectStore();
   const processingRef = useRef(false);
@@ -104,7 +106,7 @@ export default function ProcessingScreen() {
       const editPlan = await analyzeRes.json();
 
       // Process captions from the edit plan
-      const captions: Caption[] = (editPlan.captions || []).map(
+      let captions: Caption[] = (editPlan.captions || []).map(
         (c: Partial<Caption>) => ({
           id: c.id || uuid(),
           startTime: c.startTime || 0,
@@ -115,6 +117,33 @@ export default function ProcessingScreen() {
           emphasis: c.emphasis || [],
         })
       );
+
+      // Fallback: if captions are empty or don't match transcription well,
+      // create captions directly from transcription segments
+      const segments = transcription.segments || [];
+      if (captions.length === 0 && segments.length > 0) {
+        captions = segments.map(
+          (seg: { start: number; end: number; text: string }, i: number) => ({
+            id: `cap_fallback_${i}`,
+            startTime: seg.start,
+            endTime: seg.end,
+            text: seg.text,
+            style: { ...defaultCaptionStyle },
+            animation: "pop" as const,
+            emphasis: [],
+          })
+        );
+      }
+
+      // Validate and fix caption timing: clamp to video duration and ensure no overlaps
+      captions = captions
+        .filter((c) => c.text && c.text.trim().length > 0)
+        .map((c) => ({
+          ...c,
+          startTime: Math.max(0, Math.min(c.startTime, videoDuration)),
+          endTime: Math.max(c.startTime + 0.1, Math.min(c.endTime, videoDuration)),
+        }))
+        .sort((a, b) => a.startTime - b.startTime);
 
       // Process effects
       const effects: EditEffect[] = (editPlan.effects || []).map(
@@ -133,19 +162,43 @@ export default function ProcessingScreen() {
 
       setCaptions(captions);
       setEffects(effects);
-      setBRollImages(
-        bRollSuggestions.map((s: BRollSuggestion) => ({
-          id: s.id || uuid(),
-          url: "",
-          prompt: s.prompt,
-          startTime: s.timestamp,
-          endTime: s.timestamp + s.duration,
-          animation: "fade" as const,
-          opacity: 0.9,
-          position: "fullscreen" as const,
-        }))
-      );
+
+      const bRollItems = bRollSuggestions.map((s: BRollSuggestion) => ({
+        id: s.id || uuid(),
+        url: "",
+        prompt: s.prompt,
+        startTime: s.timestamp,
+        endTime: s.timestamp + s.duration,
+        animation: "fade" as const,
+        opacity: 0.9,
+        position: "fullscreen" as const,
+      }));
+      setBRollImages(bRollItems);
       setEditPlan(editPlan);
+
+      // Step 5: Auto-generate all B-roll images
+      if (bRollItems.length > 0) {
+        setStatus("generating-broll");
+        for (const item of bRollItems) {
+          try {
+            const brollRes = await fetch("/api/generate-broll", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ prompt: item.prompt }),
+            });
+            if (brollRes.ok) {
+              const data = await brollRes.json();
+              if (data.imageUrl) {
+                updateBRollImage(item.id, { url: data.imageUrl });
+              }
+            }
+          } catch (err) {
+            console.warn("B-roll generation failed for:", item.prompt, err);
+            // Continue with next b-roll, don't block the pipeline
+          }
+        }
+      }
+
       setStatus("ready");
     } catch (error) {
       console.error("Processing error:", error);
@@ -161,6 +214,7 @@ export default function ProcessingScreen() {
     setCaptions,
     setEffects,
     setBRollImages,
+    updateBRollImage,
     setEditPlan,
   ]);
 

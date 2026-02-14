@@ -17,6 +17,11 @@ export async function POST(request: NextRequest) {
 
     const ai = new GoogleGenAI({ apiKey });
 
+    // Build a simplified segment list for the prompt to ensure exact timestamp usage
+    const segmentList = (transcription.segments || []).map((s: { start: number; end: number; text: string }, i: number) =>
+      `Segment ${i + 1}: [${s.start.toFixed(2)}s - ${s.end.toFixed(2)}s] "${s.text}"`
+    ).join("\n");
+
     const response = await ai.models.generateContent({
       model: "gemini-2.0-flash",
       contents: [
@@ -27,7 +32,11 @@ export async function POST(request: NextRequest) {
               text: `You are a world-class cinematic video editor AI. Analyze this transcription from a video and create a complete editing plan.
 
 VIDEO DURATION: ${videoDuration} seconds
-TRANSCRIPTION:
+
+TRANSCRIPTION SEGMENTS (with EXACT timestamps you MUST use for captions):
+${segmentList}
+
+FULL TRANSCRIPTION DATA:
 ${JSON.stringify(transcription, null, 2)}
 
 Your job is to create a CINEMATIC, SUSPENSEFUL, ENGAGING edit plan that transforms a raw talking-head video into viral social media content.
@@ -90,6 +99,14 @@ Return this exact JSON structure:
 
 EDITING RULES - Follow these like a professional video editor:
 
+***ABSOLUTE RULE FOR CAPTIONS - THIS IS THE MOST IMPORTANT RULE:***
+- You MUST create one caption per transcription segment
+- You MUST use the EXACT startTime and endTime from each transcription segment
+- DO NOT invent, approximate, or shift timestamps - copy them exactly from the segments above
+- The caption text MUST match the segment text exactly (you may split long segments into 2 captions if > 8 words, splitting the time proportionally)
+- Captions MUST NOT overlap each other
+- Every segment must have a corresponding caption - do not skip any
+
 1. ZOOM EFFECTS:
    - Use "zoom-in" on key emotional moments, important statements, dramatic reveals
    - Use "zoom-out" for transitions between topics or to create breathing room
@@ -97,6 +114,7 @@ EDITING RULES - Follow these like a professional video editor:
    - Scale range: 1.1 (subtle) to 1.5 (dramatic)
    - Focus on the face area (focusY: 0.3-0.5)
    - Add zooms every 3-8 seconds for dynamic feel
+   - Effects MUST align with transcription segment timestamps
 
 2. PAN/MOVEMENT EFFECTS:
    - Use "pan-left", "pan-right" during topic transitions
@@ -122,13 +140,15 @@ EDITING RULES - Follow these like a professional video editor:
    - Use "speed-ramp" for dynamic pacing: { "startSpeed": 1.0, "endSpeed": 1.5 }
 
 6. B-ROLL:
-   - Suggest 2-5 b-roll images at key moments where visual support enhances the message
-   - Each prompt should be a detailed image description suitable for Imagen 3
+   - Suggest 3-5 b-roll images at key moments where visual support enhances the message
+   - Each prompt should be a DETAILED, vivid image description suitable for AI image generation (include style, lighting, composition details)
    - B-roll should appear when the speaker mentions specific things, concepts, or during transition moments
-   - Duration: 1.5-3 seconds each
+   - Duration: 2-3 seconds each
+   - B-roll timestamp MUST fall within the video duration and align with relevant speech segments
+   - Space b-roll suggestions throughout the video, not just at the beginning
 
 7. CAPTIONS:
-   - Create captions from the transcription segments
+   - Create captions from the transcription segments using EXACT timestamps
    - Use different animation styles based on content:
      * "pop" for emphasis/important points
      * "typewriter" for storytelling/narrative moments

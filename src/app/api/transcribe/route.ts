@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
               },
             },
             {
-              text: `You are a professional transcription engine. Transcribe the audio with precise timestamps.
+              text: `You are a professional transcription engine with millisecond-precision timing. Transcribe the audio with extremely precise timestamps.
 
 CRITICAL: Return ONLY valid JSON, no markdown, no code blocks, no explanations.
 
@@ -63,13 +63,19 @@ Return this exact JSON structure:
   "language": "pt-BR"
 }
 
-Rules:
-- Segment audio into natural sentence/phrase boundaries (2-6 seconds each)
-- Include word-level timestamps when possible
+CRITICAL RULES FOR TIMESTAMPS:
+- Listen carefully to WHEN each word and phrase is spoken
+- Segment audio into natural sentence/phrase boundaries (2-5 seconds each, shorter is better)
+- The start time of each segment MUST be exactly when the first word begins being spoken
+- The end time of each segment MUST be exactly when the last word finishes being spoken
+- Do NOT add padding or gaps between segments - if speech is continuous, segments should be nearly continuous
+- Segments must NEVER overlap
+- Include word-level timestamps for EVERY word - this is required, not optional
+- Be extremely precise - timestamps should be accurate to within 0.1 seconds of actual speech
 - Detect language automatically
-- Be precise with timestamps - every segment must have start/end times
 - Keep text natural, include punctuation
-- If the audio is in Portuguese, transcribe in Portuguese`,
+- If the audio is in Portuguese, transcribe in Portuguese
+- If there are pauses/silence longer than 0.5s, that should be a segment boundary`,
             },
           ],
         },

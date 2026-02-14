@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     const ai = new GoogleGenAI({ apiKey });
 
     const response = await ai.models.generateImages({
-      model: "imagen-3.0-generate-002",
+      model: "imagen-4.0-generate-001",
       prompt: `Cinematic, high quality, 16:9 aspect ratio, professional photography style: ${prompt}`,
       config: {
         numberOfImages: 1,

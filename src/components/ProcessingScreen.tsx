@@ -11,6 +11,7 @@ import type {
   EditEffect,
   BRollSuggestion,
   TranscriptionResult,
+  EffectType,
 } from "@/types";
 
 const defaultCaptionStyle: CaptionStyle = {
@@ -19,13 +20,13 @@ const defaultCaptionStyle: CaptionStyle = {
   fontWeight: 800,
   color: "#FFFFFF",
   backgroundColor: "#000000",
-  backgroundOpacity: 0.6,
+  backgroundOpacity: 0.5,
   position: "bottom",
   textAlign: "center",
   strokeColor: "#000000",
   strokeWidth: 2,
-  shadowColor: "rgba(0,0,0,0.5)",
-  shadowBlur: 4,
+  shadowColor: "rgba(0,0,0,0.8)",
+  shadowBlur: 6,
 };
 
 const steps = [
@@ -36,6 +37,126 @@ const steps = [
   { key: "generating-broll", label: "Gerando imagens de B-roll com IA..." },
   { key: "ready", label: "Pronto!" },
 ];
+
+// ===== Deterministic caption builder =====
+function buildCaptionsFromTranscription(
+  segments: { start: number; end: number; text: string }[],
+  videoDuration: number
+): Caption[] {
+  const captions: Caption[] = [];
+
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    if (!seg.text || seg.text.trim().length === 0) continue;
+
+    const words = seg.text.trim().split(/\s+/);
+    const segDuration = seg.end - seg.start;
+
+    // Split into chunks of max 6 words for readable captions
+    const maxWords = 6;
+    const chunks: { text: string; startTime: number; endTime: number }[] = [];
+
+    if (words.length <= maxWords) {
+      chunks.push({
+        text: seg.text.trim(),
+        startTime: seg.start,
+        endTime: seg.end,
+      });
+    } else {
+      // Split into multiple chunks
+      let wordIdx = 0;
+      while (wordIdx < words.length) {
+        const chunkWords = words.slice(wordIdx, wordIdx + maxWords);
+        const chunkStart =
+          seg.start + (wordIdx / words.length) * segDuration;
+        const chunkEnd =
+          seg.start +
+          (Math.min(wordIdx + maxWords, words.length) / words.length) *
+            segDuration;
+        chunks.push({
+          text: chunkWords.join(" "),
+          startTime: chunkStart,
+          endTime: chunkEnd,
+        });
+        wordIdx += maxWords;
+      }
+    }
+
+    for (const chunk of chunks) {
+      captions.push({
+        id: uuid(),
+        startTime: Math.max(0, chunk.startTime),
+        endTime: Math.min(chunk.endTime, videoDuration),
+        text: chunk.text,
+        style: { ...defaultCaptionStyle },
+        animation: "karaoke",
+        emphasis: [],
+      });
+    }
+  }
+
+  // Sort and fix overlaps
+  captions.sort((a, b) => a.startTime - b.startTime);
+  for (let i = 1; i < captions.length; i++) {
+    if (captions[i].startTime < captions[i - 1].endTime) {
+      captions[i - 1].endTime = captions[i].startTime;
+    }
+  }
+
+  return captions.filter((c) => c.endTime - c.startTime > 0.05);
+}
+
+// ===== Fallback effect generator =====
+function buildFallbackEffects(
+  segments: { start: number; end: number; text: string }[],
+  videoDuration: number
+): EditEffect[] {
+  const effects: EditEffect[] = [];
+  const zoomTypes: EffectType[] = ["zoom-in", "zoom-out", "zoom-pulse"];
+
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    const zoomType = zoomTypes[i % zoomTypes.length];
+
+    // One zoom per segment
+    effects.push({
+      id: `fb_effect_${i}`,
+      type: zoomType,
+      startTime: seg.start,
+      endTime: seg.end,
+      params:
+        zoomType === "zoom-in"
+          ? { scale: 1.2 + Math.random() * 0.15, focusX: 0.5, focusY: 0.35 }
+          : zoomType === "zoom-out"
+          ? { scale: 1.2 }
+          : { scale: 1.12 },
+    });
+  }
+
+  // Add a cinematic-warm color grade for the entire video
+  if (videoDuration > 0) {
+    effects.push({
+      id: "fb_colorgrade",
+      type: "color-grade",
+      startTime: 0,
+      endTime: videoDuration,
+      params: { preset: "cinematic-warm" },
+    });
+  }
+
+  // Add vignette for the full duration
+  if (videoDuration > 3) {
+    effects.push({
+      id: "fb_vignette",
+      type: "vignette",
+      startTime: 0,
+      endTime: videoDuration,
+      params: { intensity: 0.25 },
+    });
+  }
+
+  return effects;
+}
 
 export default function ProcessingScreen() {
   const {
@@ -62,7 +183,6 @@ export default function ProcessingScreen() {
       try {
         audioBlob = await extractAudioFromVideo(videoFile);
       } catch {
-        // Fallback: send the video file directly for transcription
         audioBlob = videoFile;
       }
 
@@ -71,7 +191,9 @@ export default function ProcessingScreen() {
       const formData = new FormData();
       formData.append(
         "audio",
-        new File([audioBlob], "audio.wav", { type: audioBlob.type || "audio/wav" })
+        new File([audioBlob], "audio.wav", {
+          type: audioBlob.type || "audio/wav",
+        })
       );
 
       const transcribeRes = await fetch("/api/transcribe", {
@@ -85,121 +207,54 @@ export default function ProcessingScreen() {
       }
 
       const transcription: TranscriptionResult = await transcribeRes.json();
-
-      // Step 3: Analyze and generate edit plan
-      setStatus("analyzing");
-      const analyzeRes = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transcription,
-          videoDuration,
-        }),
-      });
-
-      if (!analyzeRes.ok) {
-        const errData = await analyzeRes.json();
-        throw new Error(errData.error || "Analysis failed");
-      }
-
-      setStatus("generating-plan");
-      const editPlan = await analyzeRes.json();
-
-      // Process captions from the edit plan
-      let captions: Caption[] = (editPlan.captions || []).map(
-        (c: Partial<Caption>) => ({
-          id: c.id || uuid(),
-          startTime: c.startTime || 0,
-          endTime: c.endTime || 0,
-          text: c.text || "",
-          style: { ...defaultCaptionStyle, ...c.style },
-          animation: c.animation || "pop",
-          emphasis: c.emphasis || [],
-        })
-      );
-
-      // Fallback: if captions are empty, create from transcription segments
       const segments = transcription.segments || [];
-      if (captions.length === 0 && segments.length > 0) {
-        captions = segments.flatMap(
-          (seg: { start: number; end: number; text: string }, i: number) => {
-            const words = seg.text.split(" ");
-            // Split long segments into smaller captions (max 6-8 words)
-            if (words.length > 8) {
-              const mid = Math.ceil(words.length / 2);
-              const midTime = seg.start + (seg.end - seg.start) * (mid / words.length);
-              return [
-                {
-                  id: `cap_fb_${i}_a`,
-                  startTime: seg.start,
-                  endTime: midTime,
-                  text: words.slice(0, mid).join(" "),
-                  style: { ...defaultCaptionStyle },
-                  animation: "karaoke" as const,
-                  emphasis: [],
-                },
-                {
-                  id: `cap_fb_${i}_b`,
-                  startTime: midTime,
-                  endTime: seg.end,
-                  text: words.slice(mid).join(" "),
-                  style: { ...defaultCaptionStyle },
-                  animation: "karaoke" as const,
-                  emphasis: [],
-                },
-              ];
-            }
-            return [{
-              id: `cap_fb_${i}`,
-              startTime: seg.start,
-              endTime: seg.end,
-              text: seg.text,
-              style: { ...defaultCaptionStyle },
-              animation: "karaoke" as const,
-              emphasis: [],
-            }];
-          }
-        );
-      }
 
-      // Validate and fix caption timing: clamp to video duration
-      captions = captions
-        .filter((c) => c.text && c.text.trim().length > 0)
-        .map((c) => ({
-          ...c,
-          startTime: Math.max(0, Math.min(c.startTime, videoDuration)),
-          endTime: Math.max(c.startTime + 0.1, Math.min(c.endTime, videoDuration)),
-        }))
-        .sort((a, b) => a.startTime - b.startTime);
+      // Step 3: Build captions DETERMINISTICALLY from transcription
+      // This is ALWAYS done, regardless of what the AI returns
+      const captions = buildCaptionsFromTranscription(segments, videoDuration);
 
-      // CRITICAL: Remove overlaps - ensure no two captions overlap in time
-      for (let i = 1; i < captions.length; i++) {
-        if (captions[i].startTime < captions[i - 1].endTime) {
-          // Shrink previous caption's end to match current's start
-          captions[i - 1] = {
-            ...captions[i - 1],
-            endTime: captions[i].startTime,
-          };
+      // Step 4: Get AI-generated effects and b-roll suggestions
+      setStatus("analyzing");
+      let aiEffects: EditEffect[] = [];
+      let bRollSuggestions: BRollSuggestion[] = [];
+      let editPlan: Record<string, unknown> = {};
+
+      try {
+        const analyzeRes = await fetch("/api/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transcription, videoDuration }),
+        });
+
+        if (analyzeRes.ok) {
+          editPlan = await analyzeRes.json();
+
+          // Process AI effects
+          aiEffects = ((editPlan.effects as Partial<EditEffect>[]) || [])
+            .map((e: Partial<EditEffect>) => ({
+              id: e.id || uuid(),
+              type: (e.type || "zoom-in") as EffectType,
+              startTime: e.startTime || 0,
+              endTime: e.endTime || 0,
+              params: e.params || {},
+            }))
+            .filter((e) => e.endTime > e.startTime && e.endTime <= videoDuration + 1);
+
+          bRollSuggestions =
+            (editPlan.bRollSuggestions as BRollSuggestion[]) || [];
         }
+      } catch (err) {
+        console.warn("AI analysis failed, using fallback effects:", err);
       }
-      // Remove any captions that became zero-duration after fixing overlaps
-      captions = captions.filter((c) => c.endTime - c.startTime > 0.05);
 
-      // Process effects
-      const effects: EditEffect[] = (editPlan.effects || []).map(
-        (e: Partial<EditEffect>) => ({
-          id: e.id || uuid(),
-          type: e.type || "zoom-in",
-          startTime: e.startTime || 0,
-          endTime: e.endTime || 0,
-          params: e.params || {},
-        })
-      );
+      // If AI didn't return useful effects, generate fallback
+      setStatus("generating-plan");
+      const effects =
+        aiEffects.length >= 3
+          ? aiEffects
+          : buildFallbackEffects(segments, videoDuration);
 
-      // Process B-roll suggestions (store as placeholders, generate images on demand)
-      const bRollSuggestions: BRollSuggestion[] =
-        editPlan.bRollSuggestions || [];
-
+      // Set state
       setCaptions(captions);
       setEffects(effects);
 
@@ -214,28 +269,34 @@ export default function ProcessingScreen() {
         position: "fullscreen" as const,
       }));
       setBRollImages(bRollItems);
-      setEditPlan(editPlan);
+      setEditPlan(editPlan as unknown as import("@/types").EditPlan);
 
       // Step 5: Auto-generate all B-roll images
       if (bRollItems.length > 0) {
         setStatus("generating-broll");
-        for (const item of bRollItems) {
-          try {
-            const brollRes = await fetch("/api/generate-broll", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ prompt: item.prompt }),
-            });
-            if (brollRes.ok) {
-              const data = await brollRes.json();
-              if (data.imageUrl) {
-                updateBRollImage(item.id, { url: data.imageUrl });
+        // Generate in parallel for speed (max 3 concurrent)
+        const batchSize = 3;
+        for (let i = 0; i < bRollItems.length; i += batchSize) {
+          const batch = bRollItems.slice(i, i + batchSize);
+          await Promise.allSettled(
+            batch.map(async (item) => {
+              try {
+                const brollRes = await fetch("/api/generate-broll", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ prompt: item.prompt }),
+                });
+                if (brollRes.ok) {
+                  const data = await brollRes.json();
+                  if (data.imageUrl) {
+                    updateBRollImage(item.id, { url: data.imageUrl });
+                  }
+                }
+              } catch (err) {
+                console.warn("B-roll generation failed for:", item.prompt, err);
               }
-            }
-          } catch (err) {
-            console.warn("B-roll generation failed for:", item.prompt, err);
-            // Continue with next b-roll, don't block the pipeline
-          }
+            })
+          );
         }
       }
 

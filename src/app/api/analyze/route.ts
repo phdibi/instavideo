@@ -21,9 +21,11 @@ export async function POST(request: NextRequest) {
     const segmentList = segments
       .map(
         (s: { start: number; end: number; text: string }, i: number) =>
-          `Segment ${i + 1}: [${s.start.toFixed(2)}s - ${s.end.toFixed(2)}s] "${s.text}"`
+          `[${i + 1}] ${s.start.toFixed(2)}s-${s.end.toFixed(2)}s: "${s.text}"`
       )
       .join("\n");
+
+    const numSegments = segments.length;
 
     // The AI only generates EFFECTS and B-ROLL. Captions are built deterministically from transcription.
     const response = await ai.models.generateContent({
@@ -33,69 +35,52 @@ export async function POST(request: NextRequest) {
           role: "user",
           parts: [
             {
-              text: `You are a cinematic video editor AI. Create an EFFECTS and B-ROLL plan for this video. Do NOT create captions - they are handled separately.
+              text: `You are a viral social media video editor. Generate EFFECTS and B-ROLL for this talking-head video.
 
-VIDEO DURATION: ${videoDuration} seconds
+VIDEO: ${videoDuration.toFixed(1)}s, ${numSegments} speech segments.
 
-TRANSCRIPTION SEGMENTS:
+SEGMENTS:
 ${segmentList}
 
-CRITICAL: Return ONLY valid JSON. No markdown, no code blocks.
+Return ONLY valid JSON (no markdown, no code blocks).
 
-=== EFFECTS ===
-Create an array of effects synchronized to the segments above.
+EFFECTS INSTRUCTIONS:
+Create exactly ONE zoom per segment using its exact start/end times. Alternate: zoom-in → zoom-out → zoom-pulse → repeat.
 
-Available effect types:
-- "zoom-in": params: { "scale": 1.2, "focusX": 0.5, "focusY": 0.35 }
-- "zoom-out": params: { "scale": 1.2 }
-- "zoom-pulse": params: { "scale": 1.15 }
-- "pan-left" / "pan-right": params: { "distance": 20 }
-- "shake": params: { "intensity": 3, "frequency": 15 }
-- "transition-fade": params: { "duration": 0.4 }
-- "transition-glitch": params: { "intensity": 5 }
-- "vignette": params: { "intensity": 0.3 }
-- "letterbox": params: { "amount": 0.08 }
-- "flash": params: { "color": "#FFFFFF", "duration": 0.15 }
-- "color-grade": params: { "preset": "cinematic-warm" }
+For each segment, copy its start and end time exactly. Example for segment [1] 0.00s-2.50s:
+{"id":"e1","type":"zoom-in","startTime":0.00,"endTime":2.50,"params":{"scale":1.25,"focusX":0.5,"focusY":0.35}}
 
-EFFECT RULES:
-1. Create ONE zoom effect per segment (alternate between zoom-in, zoom-out, zoom-pulse)
-2. Each effect startTime/endTime MUST match a segment's start/end times exactly
-3. Effects of same type must NOT overlap
-4. Also add 2-3 vignette/letterbox/color-grade effects spanning multiple segments
-5. Add transition-fade between major topic changes (0.3s duration at segment boundaries)
-6. Total: roughly 1 effect per segment + a few overlaying visual effects
+Zoom params:
+- zoom-in: scale 1.15-1.35, focusX 0.5, focusY 0.35 (stronger for first 3 seconds = hook zone)
+- zoom-out: scale 1.15-1.25
+- zoom-pulse: scale 1.08-1.15
 
-=== B-ROLL ===
-Suggest 3-5 b-roll images.
+Also add these GLOBAL effects:
+- One color-grade from 0 to ${videoDuration.toFixed(1)}: {"preset":"cinematic-warm"}
+- One vignette from 0 to ${videoDuration.toFixed(1)}: {"intensity":0.2}
 
-B-ROLL RULES:
-- Space evenly across the video timeline
-- Duration: 1.5-2.5 seconds each
-- Prompt must describe a cinematic image (include: subject, style, lighting, mood, composition)
-- timestamp should be the start time of a relevant segment
+Add transition-fade (0.3s) at gaps between segments where silence > 0.5s.
 
-=== RETURN THIS EXACT JSON ===
+TOTAL EFFECTS: ${numSegments} zooms + 2 globals + a few transitions.
+
+B-ROLL INSTRUCTIONS:
+Suggest 3-5 b-roll images spaced evenly across the video.
+- timestamp = a segment's start time
+- duration: 1.5-2.5s
+- prompt: cinematic image description (subject, style, lighting, mood)
+
+RETURN THIS JSON:
 {
   "effects": [
-    {
-      "id": "effect_1",
-      "type": "zoom-in",
-      "startTime": 0.0,
-      "endTime": 2.0,
-      "params": { "scale": 1.3, "focusX": 0.5, "focusY": 0.35 }
-    }
+    {"id":"e1","type":"zoom-in","startTime":0.0,"endTime":2.5,"params":{"scale":1.25,"focusX":0.5,"focusY":0.35}},
+    {"id":"e2","type":"zoom-out","startTime":2.5,"endTime":5.0,"params":{"scale":1.2}},
+    {"id":"cg","type":"color-grade","startTime":0,"endTime":${videoDuration.toFixed(1)},"params":{"preset":"cinematic-warm"}},
+    {"id":"vig","type":"vignette","startTime":0,"endTime":${videoDuration.toFixed(1)},"params":{"intensity":0.2}}
   ],
   "bRollSuggestions": [
-    {
-      "id": "broll_1",
-      "timestamp": 5.0,
-      "duration": 2.0,
-      "prompt": "cinematic close-up of...",
-      "reason": "relates to speech about..."
-    }
+    {"id":"b1","timestamp":5.0,"duration":2.0,"prompt":"cinematic close-up description","reason":"context"}
   ],
-  "overallMood": "intense",
+  "overallMood": "energetic",
   "pacing": "dynamic",
   "colorGrade": "cinematic-warm"
 }`,
@@ -116,7 +101,7 @@ B-ROLL RULES:
     // Ensure required fields
     editPlan.effects = editPlan.effects || [];
     editPlan.bRollSuggestions = editPlan.bRollSuggestions || [];
-    editPlan.captions = []; // Captions will be built client-side
+    editPlan.captions = []; // Captions are built client-side
 
     return NextResponse.json(editPlan);
   } catch (error) {

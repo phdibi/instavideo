@@ -11,6 +11,7 @@ import type {
   EditEffect,
   BRollSuggestion,
   TranscriptionResult,
+  TranscriptionSegment,
   EffectType,
 } from "@/types";
 
@@ -38,64 +39,81 @@ const steps = [
   { key: "ready", label: "Pronto!" },
 ];
 
-// ===== Deterministic caption builder =====
+// ===== Deterministic caption builder using word-level timestamps =====
 function buildCaptionsFromTranscription(
-  segments: { start: number; end: number; text: string }[],
+  segments: TranscriptionSegment[],
   videoDuration: number
 ): Caption[] {
-  const captions: Caption[] = [];
+  // Safety: if videoDuration is still 0, derive it from the last segment's end time
+  const effectiveDuration =
+    videoDuration > 0
+      ? videoDuration
+      : segments.length > 0
+      ? segments[segments.length - 1].end + 0.5
+      : 30;
 
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i];
+  const captions: Caption[] = [];
+  const MAX_WORDS = 5; // Max words per caption for social media readability
+
+  for (const seg of segments) {
     if (!seg.text || seg.text.trim().length === 0) continue;
 
-    const words = seg.text.trim().split(/\s+/);
-    const segDuration = seg.end - seg.start;
+    const words = seg.words && seg.words.length > 0 ? seg.words : null;
 
-    // Split into chunks of max 6 words for readable captions
-    const maxWords = 6;
-    const chunks: { text: string; startTime: number; endTime: number }[] = [];
-
-    if (words.length <= maxWords) {
-      chunks.push({
-        text: seg.text.trim(),
-        startTime: seg.start,
-        endTime: seg.end,
-      });
-    } else {
-      // Split into multiple chunks
+    if (words && words.length > 0) {
+      // Use precise word-level timestamps from transcription
       let wordIdx = 0;
       while (wordIdx < words.length) {
-        const chunkWords = words.slice(wordIdx, wordIdx + maxWords);
+        const chunkWords = words.slice(wordIdx, wordIdx + MAX_WORDS);
+        const startTime = chunkWords[0].start;
+        const endTime = chunkWords[chunkWords.length - 1].end;
+        const text = chunkWords.map((w) => w.word).join(" ");
+
+        if (text.trim().length > 0 && endTime > startTime) {
+          captions.push({
+            id: uuid(),
+            startTime: Math.max(0, startTime),
+            endTime: Math.min(endTime, effectiveDuration),
+            text: text.trim(),
+            style: { ...defaultCaptionStyle },
+            animation: "karaoke",
+            emphasis: [],
+          });
+        }
+        wordIdx += MAX_WORDS;
+      }
+    } else {
+      // Fallback: split segment text into chunks by time proportionally
+      const segWords = seg.text.trim().split(/\s+/);
+      const segDuration = seg.end - seg.start;
+
+      let wordIdx = 0;
+      while (wordIdx < segWords.length) {
+        const chunkWords = segWords.slice(wordIdx, wordIdx + MAX_WORDS);
         const chunkStart =
-          seg.start + (wordIdx / words.length) * segDuration;
+          seg.start + (wordIdx / segWords.length) * segDuration;
         const chunkEnd =
           seg.start +
-          (Math.min(wordIdx + maxWords, words.length) / words.length) *
+          (Math.min(wordIdx + MAX_WORDS, segWords.length) / segWords.length) *
             segDuration;
-        chunks.push({
-          text: chunkWords.join(" "),
-          startTime: chunkStart,
-          endTime: chunkEnd,
-        });
-        wordIdx += maxWords;
-      }
-    }
 
-    for (const chunk of chunks) {
-      captions.push({
-        id: uuid(),
-        startTime: Math.max(0, chunk.startTime),
-        endTime: Math.min(chunk.endTime, videoDuration),
-        text: chunk.text,
-        style: { ...defaultCaptionStyle },
-        animation: "karaoke",
-        emphasis: [],
-      });
+        if (chunkWords.join(" ").trim().length > 0 && chunkEnd > chunkStart) {
+          captions.push({
+            id: uuid(),
+            startTime: Math.max(0, chunkStart),
+            endTime: Math.min(chunkEnd, effectiveDuration),
+            text: chunkWords.join(" "),
+            style: { ...defaultCaptionStyle },
+            animation: "karaoke",
+            emphasis: [],
+          });
+        }
+        wordIdx += MAX_WORDS;
+      }
     }
   }
 
-  // Sort and fix overlaps
+  // Sort by start time and fix any overlaps
   captions.sort((a, b) => a.startTime - b.startTime);
   for (let i = 1; i < captions.length; i++) {
     if (captions[i].startTime < captions[i - 1].endTime) {
@@ -103,55 +121,119 @@ function buildCaptionsFromTranscription(
     }
   }
 
+  // Filter out captions too short to be visible
   return captions.filter((c) => c.endTime - c.startTime > 0.05);
 }
 
-// ===== Fallback effect generator =====
-function buildFallbackEffects(
-  segments: { start: number; end: number; text: string }[],
+// ===== Speech-driven effect generator =====
+// Based on research: effects should sync with speech rhythm, not fixed intervals
+function buildSpeechDrivenEffects(
+  segments: TranscriptionSegment[],
   videoDuration: number
 ): EditEffect[] {
+  const effectiveDuration =
+    videoDuration > 0
+      ? videoDuration
+      : segments.length > 0
+      ? segments[segments.length - 1].end + 0.5
+      : 30;
+
   const effects: EditEffect[] = [];
-  const zoomTypes: EffectType[] = ["zoom-in", "zoom-out", "zoom-pulse"];
+
+  // Pattern: alternate zoom types per segment for visual rhythm
+  // Research says: zoom should follow speech emphasis (new ideas, key phrases)
+  const zoomPattern: EffectType[] = ["zoom-in", "zoom-out", "zoom-pulse"];
 
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
-    const zoomType = zoomTypes[i % zoomTypes.length];
+    const segDuration = seg.end - seg.start;
+    const zoomType = zoomPattern[i % zoomPattern.length];
 
-    // One zoom per segment
+    // Only add zoom if segment is at least 0.3 seconds
+    if (segDuration < 0.3) continue;
+
+    // Vary zoom parameters based on segment position and length
+    // First 3 seconds = "hook" zone - use stronger zooms
+    const isHookZone = seg.start < 3;
+    // Longer sentences get gentler zooms, short impactful ones get stronger
+    const isShortPunchy = segDuration < 2 && seg.text.split(/\s+/).length <= 5;
+
+    let params: Record<string, unknown>;
+    switch (zoomType) {
+      case "zoom-in":
+        params = {
+          scale: isHookZone ? 1.35 : isShortPunchy ? 1.25 : 1.15,
+          focusX: 0.5,
+          focusY: 0.35,
+        };
+        break;
+      case "zoom-out":
+        params = {
+          scale: isHookZone ? 1.3 : 1.15,
+        };
+        break;
+      case "zoom-pulse":
+        params = {
+          scale: isShortPunchy ? 1.15 : 1.08,
+        };
+        break;
+      default:
+        params = { scale: 1.15 };
+    }
+
     effects.push({
-      id: `fb_effect_${i}`,
+      id: `effect_zoom_${i}`,
       type: zoomType,
       startTime: seg.start,
       endTime: seg.end,
-      params:
-        zoomType === "zoom-in"
-          ? { scale: 1.2 + Math.random() * 0.15, focusX: 0.5, focusY: 0.35 }
-          : zoomType === "zoom-out"
-          ? { scale: 1.2 }
-          : { scale: 1.12 },
+      params,
     });
+
+    // Add transition-fade at major pauses (gap > 0.5s between segments)
+    if (i < segments.length - 1) {
+      const gap = segments[i + 1].start - seg.end;
+      if (gap > 0.5) {
+        effects.push({
+          id: `effect_fade_${i}`,
+          type: "transition-fade",
+          startTime: seg.end - 0.15,
+          endTime: seg.end + 0.15,
+          params: { duration: 0.3 },
+        });
+      }
+    }
   }
 
-  // Add a cinematic-warm color grade for the entire video
-  if (videoDuration > 0) {
+  // Add cinematic color grade for full duration
+  if (effectiveDuration > 0) {
     effects.push({
-      id: "fb_colorgrade",
+      id: "effect_colorgrade",
       type: "color-grade",
       startTime: 0,
-      endTime: videoDuration,
+      endTime: effectiveDuration,
       params: { preset: "cinematic-warm" },
     });
   }
 
-  // Add vignette for the full duration
-  if (videoDuration > 3) {
+  // Add subtle vignette for full duration (cinematic framing)
+  if (effectiveDuration > 2) {
     effects.push({
-      id: "fb_vignette",
+      id: "effect_vignette",
       type: "vignette",
       startTime: 0,
-      endTime: videoDuration,
-      params: { intensity: 0.25 },
+      endTime: effectiveDuration,
+      params: { intensity: 0.2 },
+    });
+  }
+
+  // Add letterbox for cinematic feel in hook zone (first 3s)
+  if (effectiveDuration > 4) {
+    effects.push({
+      id: "effect_letterbox_hook",
+      type: "letterbox",
+      startTime: 0,
+      endTime: Math.min(3, effectiveDuration),
+      params: { amount: 0.06 },
     });
   }
 
@@ -209,9 +291,16 @@ export default function ProcessingScreen() {
       const transcription: TranscriptionResult = await transcribeRes.json();
       const segments = transcription.segments || [];
 
-      // Step 3: Build captions DETERMINISTICALLY from transcription
-      // This is ALWAYS done, regardless of what the AI returns
-      const captions = buildCaptionsFromTranscription(segments, videoDuration);
+      // Use effective duration: prefer store videoDuration, fallback to segments
+      const effectiveDuration =
+        videoDuration > 0
+          ? videoDuration
+          : segments.length > 0
+          ? segments[segments.length - 1].end + 0.5
+          : 30;
+
+      // Step 3: Build captions deterministically from transcription segments
+      const captions = buildCaptionsFromTranscription(segments, effectiveDuration);
 
       // Step 4: Get AI-generated effects and b-roll suggestions
       setStatus("analyzing");
@@ -223,13 +312,13 @@ export default function ProcessingScreen() {
         const analyzeRes = await fetch("/api/analyze", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ transcription, videoDuration }),
+          body: JSON.stringify({ transcription, videoDuration: effectiveDuration }),
         });
 
         if (analyzeRes.ok) {
           editPlan = await analyzeRes.json();
 
-          // Process AI effects
+          // Process AI effects - validate each one
           aiEffects = ((editPlan.effects as Partial<EditEffect>[]) || [])
             .map((e: Partial<EditEffect>) => ({
               id: e.id || uuid(),
@@ -238,21 +327,26 @@ export default function ProcessingScreen() {
               endTime: e.endTime || 0,
               params: e.params || {},
             }))
-            .filter((e) => e.endTime > e.startTime && e.endTime <= videoDuration + 1);
+            .filter(
+              (e) =>
+                e.endTime > e.startTime &&
+                e.startTime >= 0 &&
+                e.endTime <= effectiveDuration + 1
+            );
 
           bRollSuggestions =
             (editPlan.bRollSuggestions as BRollSuggestion[]) || [];
         }
       } catch (err) {
-        console.warn("AI analysis failed, using fallback effects:", err);
+        console.warn("AI analysis failed, using speech-driven effects:", err);
       }
 
-      // If AI didn't return useful effects, generate fallback
+      // Step 5: Build effects - prefer AI if good, otherwise speech-driven fallback
       setStatus("generating-plan");
       const effects =
-        aiEffects.length >= 3
+        aiEffects.length >= segments.length * 0.5
           ? aiEffects
-          : buildFallbackEffects(segments, videoDuration);
+          : buildSpeechDrivenEffects(segments, effectiveDuration);
 
       // Set state
       setCaptions(captions);
@@ -263,7 +357,7 @@ export default function ProcessingScreen() {
         url: "",
         prompt: s.prompt,
         startTime: s.timestamp,
-        endTime: s.timestamp + s.duration,
+        endTime: s.timestamp + (s.duration || 2),
         animation: "fade" as const,
         opacity: 0.9,
         position: "fullscreen" as const,
@@ -271,10 +365,9 @@ export default function ProcessingScreen() {
       setBRollImages(bRollItems);
       setEditPlan(editPlan as unknown as import("@/types").EditPlan);
 
-      // Step 5: Auto-generate all B-roll images
+      // Step 6: Auto-generate all B-roll images
       if (bRollItems.length > 0) {
         setStatus("generating-broll");
-        // Generate in parallel for speed (max 3 concurrent)
         const batchSize = 3;
         for (let i = 0; i < bRollItems.length; i += batchSize) {
           const batch = bRollItems.slice(i, i + batchSize);

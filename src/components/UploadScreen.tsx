@@ -6,7 +6,7 @@ import { useProjectStore } from "@/store/useProjectStore";
 import { motion } from "framer-motion";
 
 export default function UploadScreen() {
-  const { setVideoFile, setVideoUrl, setStatus } = useProjectStore();
+  const { setVideoFile, setVideoUrl, setVideoDuration, setStatus } = useProjectStore();
   const [dragOver, setDragOver] = useState(false);
 
   const handleFile = useCallback(
@@ -16,11 +16,26 @@ export default function UploadScreen() {
         return;
       }
       const url = URL.createObjectURL(file);
-      setVideoFile(file);
-      setVideoUrl(url);
-      setStatus("uploading");
+
+      // Extract video duration BEFORE starting the processing pipeline
+      // This is critical: ProcessingScreen needs videoDuration to build captions/effects
+      const video = document.createElement("video");
+      video.preload = "metadata";
+      video.onloadedmetadata = () => {
+        setVideoDuration(video.duration);
+        setVideoFile(file);
+        setVideoUrl(url);
+        setStatus("uploading");
+      };
+      video.onerror = () => {
+        // Even if metadata fails, still proceed (ProcessingScreen has fallbacks)
+        setVideoFile(file);
+        setVideoUrl(url);
+        setStatus("uploading");
+      };
+      video.src = url;
     },
-    [setVideoFile, setVideoUrl, setStatus]
+    [setVideoFile, setVideoUrl, setVideoDuration, setStatus]
   );
 
   const handleDrop = useCallback(

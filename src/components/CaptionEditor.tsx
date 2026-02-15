@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Type,
   Trash2,
@@ -109,9 +109,26 @@ export default function CaptionEditor() {
     setCaptions,
     currentTime,
     setCurrentTime,
+    selectedItem,
   } = useProjectStore();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showPresets, setShowPresets] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // Auto-expand and scroll to selected caption from timeline
+  useEffect(() => {
+    if (selectedItem?.type === "caption") {
+      setExpandedId(selectedItem.id);
+      // Scroll to the item after a short delay to ensure DOM is updated
+      requestAnimationFrame(() => {
+        const el = itemRefs.current.get(selectedItem.id);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+      });
+    }
+  }, [selectedItem]);
 
   const addCaption = () => {
     const newCaption: Caption = {
@@ -191,7 +208,7 @@ export default function CaptionEditor() {
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" ref={listRef}>
         {captions.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] text-sm p-4">
             <Type className="w-8 h-8 mb-2 opacity-50" />
@@ -200,17 +217,25 @@ export default function CaptionEditor() {
         ) : (
           <div className="divide-y divide-[var(--border)]">
             {captions.map((caption) => (
-              <CaptionItem
+              <div
                 key={caption.id}
-                caption={caption}
-                isExpanded={expandedId === caption.id}
-                onToggle={() =>
-                  setExpandedId(expandedId === caption.id ? null : caption.id)
-                }
-                onUpdate={(updates) => updateCaption(caption.id, updates)}
-                onDelete={() => deleteCaption(caption.id)}
-                onSeek={() => setCurrentTime(caption.startTime)}
-              />
+                ref={(el) => {
+                  if (el) itemRefs.current.set(caption.id, el);
+                  else itemRefs.current.delete(caption.id);
+                }}
+              >
+                <CaptionItem
+                  caption={caption}
+                  isExpanded={expandedId === caption.id}
+                  isSelected={selectedItem?.type === "caption" && selectedItem.id === caption.id}
+                  onToggle={() =>
+                    setExpandedId(expandedId === caption.id ? null : caption.id)
+                  }
+                  onUpdate={(updates) => updateCaption(caption.id, updates)}
+                  onDelete={() => deleteCaption(caption.id)}
+                  onSeek={() => setCurrentTime(caption.startTime)}
+                />
+              </div>
             ))}
           </div>
         )}
@@ -222,6 +247,7 @@ export default function CaptionEditor() {
 function CaptionItem({
   caption,
   isExpanded,
+  isSelected,
   onToggle,
   onUpdate,
   onDelete,
@@ -229,13 +255,14 @@ function CaptionItem({
 }: {
   caption: Caption;
   isExpanded: boolean;
+  isSelected: boolean;
   onToggle: () => void;
   onUpdate: (updates: Partial<Caption>) => void;
   onDelete: () => void;
   onSeek: () => void;
 }) {
   return (
-    <div className="bg-[var(--surface)]">
+    <div className={`bg-[var(--surface)] ${isSelected ? "ring-1 ring-[var(--accent)]/50 bg-[var(--accent)]/5" : ""}`}>
       <div
         className="flex items-center gap-2 p-3 cursor-pointer hover:bg-[var(--surface-hover)] transition-colors"
         onClick={onToggle}

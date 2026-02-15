@@ -19,6 +19,7 @@ interface ProjectStore {
   editPlan: EditPlan | null;
   currentTime: number;
   isPlaying: boolean;
+  selectedItem: { type: "caption" | "effect" | "broll"; id: string } | null;
 
   setVideoFile: (file: File) => void;
   setVideoUrl: (url: string) => void;
@@ -36,6 +37,7 @@ interface ProjectStore {
   setEditPlan: (plan: EditPlan) => void;
   setCurrentTime: (time: number) => void;
   setIsPlaying: (playing: boolean) => void;
+  setSelectedItem: (item: { type: "caption" | "effect" | "broll"; id: string } | null) => void;
   reset: () => void;
 }
 
@@ -51,6 +53,7 @@ const initialState = {
   editPlan: null,
   currentTime: 0,
   isPlaying: false,
+  selectedItem: null,
 };
 
 export const useProjectStore = create<ProjectStore>((set) => ({
@@ -97,5 +100,6 @@ export const useProjectStore = create<ProjectStore>((set) => ({
   setEditPlan: (plan) => set({ editPlan: plan }),
   setCurrentTime: (time) => set({ currentTime: time }),
   setIsPlaying: (playing) => set({ isPlaying: playing }),
+  setSelectedItem: (item) => set({ selectedItem: item }),
   reset: () => set(initialState),
 }));

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Sparkles,
   Trash2,
@@ -86,10 +86,24 @@ const defaultParams: Record<string, Record<string, unknown>> = {
 };
 
 export default function EffectsEditor() {
-  const { effects, updateEffect, deleteEffect, setEffects, currentTime, setCurrentTime } =
+  const { effects, updateEffect, deleteEffect, setEffects, currentTime, setCurrentTime, selectedItem } =
     useProjectStore();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // Auto-expand and scroll to selected effect from timeline
+  useEffect(() => {
+    if (selectedItem?.type === "effect") {
+      setExpandedId(selectedItem.id);
+      requestAnimationFrame(() => {
+        const el = itemRefs.current.get(selectedItem.id);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+      });
+    }
+  }, [selectedItem]);
 
   const addEffect = (type: EffectType) => {
     const newEffect: EditEffect = {
@@ -164,136 +178,146 @@ export default function EffectsEditor() {
           </div>
         ) : (
           <div className="divide-y divide-[var(--border)]">
-            {effects.map((effect) => (
-              <div key={effect.id} className="bg-[var(--surface)]">
+            {effects.map((effect) => {
+              const isSelected = selectedItem?.type === "effect" && selectedItem.id === effect.id;
+              return (
                 <div
-                  className="flex items-center gap-2 p-3 cursor-pointer hover:bg-[var(--surface-hover)] transition-colors"
-                  onClick={() =>
-                    setExpandedId(
-                      expandedId === effect.id ? null : effect.id
-                    )
-                  }
+                  key={effect.id}
+                  ref={(el) => {
+                    if (el) itemRefs.current.set(effect.id, el);
+                    else itemRefs.current.delete(effect.id);
+                  }}
+                  className={`bg-[var(--surface)] ${isSelected ? "ring-1 ring-[var(--accent)]/50 bg-[var(--accent)]/5" : ""}`}
                 >
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setCurrentTime(effect.startTime);
-                    }}
-                    className="text-xs font-mono text-[var(--accent-light)] hover:underline shrink-0"
+                  <div
+                    className="flex items-center gap-2 p-3 cursor-pointer hover:bg-[var(--surface-hover)] transition-colors"
+                    onClick={() =>
+                      setExpandedId(
+                        expandedId === effect.id ? null : effect.id
+                      )
+                    }
                   >
-                    {formatTime(effect.startTime)}
-                  </button>
-                  <span
-                    className={`text-[10px] px-1.5 py-0.5 rounded ${getEffectColor(
-                      effect.type
-                    )} shrink-0`}
-                  >
-                    {effect.type}
-                  </span>
-                  <span className="text-xs text-[var(--text-secondary)] ml-auto shrink-0">
-                    {(effect.endTime - effect.startTime).toFixed(1)}s
-                  </span>
-                  {expandedId === effect.id ? (
-                    <ChevronUp className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
-                  ) : (
-                    <ChevronDown className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCurrentTime(effect.startTime);
+                      }}
+                      className="text-xs font-mono text-[var(--accent-light)] hover:underline shrink-0"
+                    >
+                      {formatTime(effect.startTime)}
+                    </button>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.5 rounded ${getEffectColor(
+                        effect.type
+                      )} shrink-0`}
+                    >
+                      {effect.type}
+                    </span>
+                    <span className="text-xs text-[var(--text-secondary)] ml-auto shrink-0">
+                      {(effect.endTime - effect.startTime).toFixed(1)}s
+                    </span>
+                    {expandedId === effect.id ? (
+                      <ChevronUp className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+                    )}
+                  </div>
+
+                  {expandedId === effect.id && (
+                    <div className="px-3 pb-3 space-y-3">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
+                            Início (s)
+                          </label>
+                          <input
+                            type="number"
+                            step="0.1"
+                            value={effect.startTime}
+                            onChange={(e) =>
+                              updateEffect(effect.id, {
+                                startTime: parseFloat(e.target.value) || 0,
+                              })
+                            }
+                            className="w-full mt-1 p-2 text-sm bg-[var(--background)] border border-[var(--border)] rounded-lg focus:border-[var(--accent)] focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
+                            Fim (s)
+                          </label>
+                          <input
+                            type="number"
+                            step="0.1"
+                            value={effect.endTime}
+                            onChange={(e) =>
+                              updateEffect(effect.id, {
+                                endTime: parseFloat(e.target.value) || 0,
+                              })
+                            }
+                            className="w-full mt-1 p-2 text-sm bg-[var(--background)] border border-[var(--border)] rounded-lg focus:border-[var(--accent)] focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Dynamic params editor */}
+                      <div>
+                        <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
+                          Parâmetros
+                        </label>
+                        <div className="space-y-2 mt-1">
+                          {Object.entries(effect.params).map(([key, val]) => (
+                            <div key={key} className="flex items-center gap-2">
+                              <span className="text-xs text-[var(--text-secondary)] w-20 shrink-0">
+                                {key}
+                              </span>
+                              {typeof val === "number" ? (
+                                <input
+                                  type="number"
+                                  step={val < 1 ? "0.05" : "0.1"}
+                                  value={val}
+                                  onChange={(e) =>
+                                    updateEffect(effect.id, {
+                                      params: {
+                                        ...effect.params,
+                                        [key]: parseFloat(e.target.value),
+                                      },
+                                    })
+                                  }
+                                  className="flex-1 p-1.5 text-xs bg-[var(--background)] border border-[var(--border)] rounded-lg focus:border-[var(--accent)] focus:outline-none"
+                                />
+                              ) : (
+                                <input
+                                  type="text"
+                                  value={String(val)}
+                                  onChange={(e) =>
+                                    updateEffect(effect.id, {
+                                      params: {
+                                        ...effect.params,
+                                        [key]: e.target.value,
+                                      },
+                                    })
+                                  }
+                                  className="flex-1 p-1.5 text-xs bg-[var(--background)] border border-[var(--border)] rounded-lg focus:border-[var(--accent)] focus:outline-none"
+                                />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => deleteEffect(effect.id)}
+                        className="flex items-center gap-1 text-xs text-[var(--danger)] hover:text-red-300 transition-colors"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        Remover efeito
+                      </button>
+                    </div>
                   )}
                 </div>
-
-                {expandedId === effect.id && (
-                  <div className="px-3 pb-3 space-y-3">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
-                          Início (s)
-                        </label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={effect.startTime}
-                          onChange={(e) =>
-                            updateEffect(effect.id, {
-                              startTime: parseFloat(e.target.value) || 0,
-                            })
-                          }
-                          className="w-full mt-1 p-2 text-sm bg-[var(--background)] border border-[var(--border)] rounded-lg focus:border-[var(--accent)] focus:outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
-                          Fim (s)
-                        </label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={effect.endTime}
-                          onChange={(e) =>
-                            updateEffect(effect.id, {
-                              endTime: parseFloat(e.target.value) || 0,
-                            })
-                          }
-                          className="w-full mt-1 p-2 text-sm bg-[var(--background)] border border-[var(--border)] rounded-lg focus:border-[var(--accent)] focus:outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Dynamic params editor */}
-                    <div>
-                      <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
-                        Parâmetros
-                      </label>
-                      <div className="space-y-2 mt-1">
-                        {Object.entries(effect.params).map(([key, val]) => (
-                          <div key={key} className="flex items-center gap-2">
-                            <span className="text-xs text-[var(--text-secondary)] w-20 shrink-0">
-                              {key}
-                            </span>
-                            {typeof val === "number" ? (
-                              <input
-                                type="number"
-                                step={val < 1 ? "0.05" : "0.1"}
-                                value={val}
-                                onChange={(e) =>
-                                  updateEffect(effect.id, {
-                                    params: {
-                                      ...effect.params,
-                                      [key]: parseFloat(e.target.value),
-                                    },
-                                  })
-                                }
-                                className="flex-1 p-1.5 text-xs bg-[var(--background)] border border-[var(--border)] rounded-lg focus:border-[var(--accent)] focus:outline-none"
-                              />
-                            ) : (
-                              <input
-                                type="text"
-                                value={String(val)}
-                                onChange={(e) =>
-                                  updateEffect(effect.id, {
-                                    params: {
-                                      ...effect.params,
-                                      [key]: e.target.value,
-                                    },
-                                  })
-                                }
-                                className="flex-1 p-1.5 text-xs bg-[var(--background)] border border-[var(--border)] rounded-lg focus:border-[var(--accent)] focus:outline-none"
-                              />
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => deleteEffect(effect.id)}
-                      className="flex items-center gap-1 text-xs text-[var(--danger)] hover:text-red-300 transition-colors"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                      Remover efeito
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

@@ -40,11 +40,11 @@ const steps = [
 ];
 
 // ===== Deterministic caption builder using word-level timestamps =====
+// Strategy: Collect ALL words with timestamps, then group into gapless captions
 function buildCaptionsFromTranscription(
   segments: TranscriptionSegment[],
   videoDuration: number
 ): Caption[] {
-  // Safety: if videoDuration is still 0, derive it from the last segment's end time
   const effectiveDuration =
     videoDuration > 0
       ? videoDuration
@@ -52,68 +52,122 @@ function buildCaptionsFromTranscription(
       ? segments[segments.length - 1].end + 0.5
       : 30;
 
-  const captions: Caption[] = [];
-  const MAX_WORDS = 5; // Max words per caption for social media readability
+  // Step 1: Collect all words with precise timestamps into a flat list
+  const allWords: { word: string; start: number; end: number }[] = [];
 
   for (const seg of segments) {
     if (!seg.text || seg.text.trim().length === 0) continue;
 
-    const words = seg.words && seg.words.length > 0 ? seg.words : null;
-
-    if (words && words.length > 0) {
-      // Use precise word-level timestamps from transcription
-      let wordIdx = 0;
-      while (wordIdx < words.length) {
-        const chunkWords = words.slice(wordIdx, wordIdx + MAX_WORDS);
-        const startTime = chunkWords[0].start;
-        const endTime = chunkWords[chunkWords.length - 1].end;
-        const text = chunkWords.map((w) => w.word).join(" ");
-
-        if (text.trim().length > 0 && endTime > startTime) {
-          captions.push({
-            id: uuid(),
-            startTime: Math.max(0, startTime),
-            endTime: Math.min(endTime, effectiveDuration),
-            text: text.trim(),
-            style: { ...defaultCaptionStyle },
-            animation: "karaoke",
-            emphasis: [],
-          });
+    if (seg.words && seg.words.length > 0) {
+      for (const w of seg.words) {
+        if (w.word && w.word.trim().length > 0 && w.end > w.start) {
+          allWords.push({ word: w.word.trim(), start: w.start, end: w.end });
         }
-        wordIdx += MAX_WORDS;
       }
     } else {
-      // Fallback: split segment text into chunks by time proportionally
+      // Fallback: split segment text proportionally
       const segWords = seg.text.trim().split(/\s+/);
       const segDuration = seg.end - seg.start;
-
-      let wordIdx = 0;
-      while (wordIdx < segWords.length) {
-        const chunkWords = segWords.slice(wordIdx, wordIdx + MAX_WORDS);
-        const chunkStart =
-          seg.start + (wordIdx / segWords.length) * segDuration;
-        const chunkEnd =
-          seg.start +
-          (Math.min(wordIdx + MAX_WORDS, segWords.length) / segWords.length) *
-            segDuration;
-
-        if (chunkWords.join(" ").trim().length > 0 && chunkEnd > chunkStart) {
-          captions.push({
-            id: uuid(),
-            startTime: Math.max(0, chunkStart),
-            endTime: Math.min(chunkEnd, effectiveDuration),
-            text: chunkWords.join(" "),
-            style: { ...defaultCaptionStyle },
-            animation: "karaoke",
-            emphasis: [],
-          });
+      for (let i = 0; i < segWords.length; i++) {
+        const wStart = seg.start + (i / segWords.length) * segDuration;
+        const wEnd = seg.start + ((i + 1) / segWords.length) * segDuration;
+        if (segWords[i].trim().length > 0) {
+          allWords.push({ word: segWords[i].trim(), start: wStart, end: wEnd });
         }
-        wordIdx += MAX_WORDS;
       }
     }
   }
 
-  // Sort by start time and fix any overlaps
+  if (allWords.length === 0) return [];
+
+  // Step 2: Group words into caption chunks (3-5 words each)
+  // Rule: max 5 words per caption, split at natural pauses (gaps > 0.3s)
+  const MAX_WORDS = 5;
+  const MIN_WORDS = 2;
+  const PAUSE_THRESHOLD = 0.3; // seconds gap between words = forced split
+
+  const rawCaptions: { words: string[]; start: number; end: number }[] = [];
+  let currentChunk: { words: string[]; start: number; end: number } = {
+    words: [allWords[0].word],
+    start: allWords[0].start,
+    end: allWords[0].end,
+  };
+
+  for (let i = 1; i < allWords.length; i++) {
+    const w = allWords[i];
+    const gap = w.start - currentChunk.end;
+    const chunkFull = currentChunk.words.length >= MAX_WORDS;
+    const naturalPause = gap > PAUSE_THRESHOLD;
+
+    if (chunkFull || naturalPause) {
+      // Finish current chunk and start a new one
+      rawCaptions.push({ ...currentChunk });
+      currentChunk = { words: [w.word], start: w.start, end: w.end };
+    } else {
+      // Add word to current chunk
+      currentChunk.words.push(w.word);
+      currentChunk.end = w.end;
+    }
+  }
+  // Don't forget the last chunk
+  rawCaptions.push({ ...currentChunk });
+
+  // Step 3: Merge too-short captions (1 word) with the next one if possible
+  const mergedCaptions: typeof rawCaptions = [];
+  for (let i = 0; i < rawCaptions.length; i++) {
+    const cap = rawCaptions[i];
+    if (
+      cap.words.length < MIN_WORDS &&
+      i + 1 < rawCaptions.length &&
+      rawCaptions[i + 1].words.length + cap.words.length <= MAX_WORDS + 1
+    ) {
+      // Merge with next
+      rawCaptions[i + 1] = {
+        words: [...cap.words, ...rawCaptions[i + 1].words],
+        start: cap.start,
+        end: rawCaptions[i + 1].end,
+      };
+    } else {
+      mergedCaptions.push(cap);
+    }
+  }
+
+  // Step 4: Build caption objects with GAPLESS timing
+  // Each caption extends from its start to the START of the next caption
+  // This ensures there's always a caption visible during speech
+  const captions: Caption[] = [];
+
+  for (let i = 0; i < mergedCaptions.length; i++) {
+    const cap = mergedCaptions[i];
+    const startTime = Math.max(0, cap.start);
+
+    // Extend endTime to the start of next caption (gapless)
+    // If last caption, use the original end time + small buffer
+    let endTime: number;
+    if (i + 1 < mergedCaptions.length) {
+      endTime = mergedCaptions[i + 1].start;
+    } else {
+      // Last caption: extend slightly past the last word
+      endTime = Math.min(cap.end + 0.3, effectiveDuration);
+    }
+
+    // Clamp to video duration
+    endTime = Math.min(endTime, effectiveDuration);
+
+    if (endTime > startTime + 0.05) {
+      captions.push({
+        id: uuid(),
+        startTime,
+        endTime,
+        text: cap.words.join(" "),
+        style: { ...defaultCaptionStyle },
+        animation: "karaoke",
+        emphasis: [],
+      });
+    }
+  }
+
+  // Final overlap fix (shouldn't be needed but safety net)
   captions.sort((a, b) => a.startTime - b.startTime);
   for (let i = 1; i < captions.length; i++) {
     if (captions[i].startTime < captions[i - 1].endTime) {
@@ -121,7 +175,6 @@ function buildCaptionsFromTranscription(
     }
   }
 
-  // Filter out captions too short to be visible
   return captions.filter((c) => c.endTime - c.startTime > 0.05);
 }
 

@@ -22,7 +22,7 @@ export default function CaptionOverlay({ currentTime }: Props) {
   }, [captions, currentTime]);
 
   return (
-    <div className="absolute inset-0 z-50 pointer-events-none">
+    <div className="absolute inset-0 pointer-events-none">
       <AnimatePresence mode="wait">
         {activeCaption && (
           <CaptionDisplay

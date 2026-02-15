@@ -330,16 +330,18 @@ export default function VideoPreview() {
               <div className="absolute bottom-0 left-0 right-0 h-[10%] bg-black z-20" />
             </>
           )}
-
-          {/* Caption overlay */}
-          <CaptionOverlay currentTime={currentTime} />
         </div>
 
-        {/* Click to play/pause */}
+        {/* Click to play/pause - z-40 */}
         <div
           className="absolute inset-0 z-40 cursor-pointer"
           onClick={togglePlay}
         />
+
+        {/* Caption overlay - z-50, MUST be after click handler to render on top */}
+        <div className="absolute inset-0 z-50 pointer-events-none">
+          <CaptionOverlay currentTime={currentTime} />
+        </div>
       </div>
 
       {/* Controls */}

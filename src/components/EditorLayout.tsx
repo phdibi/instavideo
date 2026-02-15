@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Type,
   Sparkles,
@@ -40,7 +40,19 @@ const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
 
 export default function EditorLayout() {
   const [activeTab, setActiveTab] = useState<Tab>("captions");
-  const { reset, captions, effects } = useProjectStore();
+  const { reset, captions, effects, selectedItem } = useProjectStore();
+
+  // Auto-switch sidebar tab when an item is selected from the timeline
+  useEffect(() => {
+    if (!selectedItem) return;
+    const tabMap: Record<string, Tab> = {
+      caption: "captions",
+      effect: "effects",
+      broll: "broll",
+    };
+    const targetTab = tabMap[selectedItem.type];
+    if (targetTab) setActiveTab(targetTab);
+  }, [selectedItem]);
 
   return (
     <div className="h-screen flex flex-col bg-[var(--background)]">
@@ -102,7 +114,7 @@ export default function EditorLayout() {
       </div>
 
       {/* Timeline - bottom */}
-      <div className="h-[140px] shrink-0">
+      <div className="h-[160px] shrink-0">
         <Timeline />
       </div>
     </div>

@@ -4,6 +4,7 @@ import { useRef, useMemo, useCallback, useState } from "react";
 import { useProjectStore } from "@/store/useProjectStore";
 
 const TRACK_HEIGHT = 36;
+const EFFECT_ROW_HEIGHT = 28;
 const HEADER_WIDTH = 76;
 
 interface DragState {
@@ -27,7 +28,9 @@ export default function Timeline() {
     captions,
     effects,
     bRollImages,
+    selectedItem,
     setCurrentTime,
+    setSelectedItem,
     updateCaption,
     updateEffect,
     updateBRollImage,
@@ -64,6 +67,14 @@ export default function Timeline() {
     [pxToTime, setCurrentTime, dragState]
   );
 
+  // === ITEM SELECTION ===
+  const handleItemClick = useCallback(
+    (type: "caption" | "effect" | "broll", id: string) => {
+      setSelectedItem({ type, id });
+    },
+    [setSelectedItem]
+  );
+
   // === DRAG HANDLERS ===
 
   const handleDragStart = useCallback(
@@ -85,8 +96,12 @@ export default function Timeline() {
         initialStart: startTime,
         initialEnd: endTime,
       });
+      // Also select the item when starting drag
+      if (type !== "playhead") {
+        handleItemClick(type, id);
+      }
     },
-    []
+    [handleItemClick]
   );
 
   const handleMouseMove = useCallback(
@@ -160,6 +175,33 @@ export default function Timeline() {
     }
     return result;
   }, [videoDuration]);
+
+  // === EFFECT SUB-ROWS: arrange overlapping effects into non-overlapping rows ===
+  const effectRows = useMemo(() => {
+    const rows: typeof effects[] = [];
+    const sorted = [...effects].sort((a, b) => a.startTime - b.startTime);
+
+    for (const effect of sorted) {
+      let placed = false;
+      for (const row of rows) {
+        // Check if effect overlaps with any in this row
+        const overlaps = row.some(
+          (existing) => effect.startTime < existing.endTime && effect.endTime > existing.startTime
+        );
+        if (!overlaps) {
+          row.push(effect);
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        rows.push([effect]);
+      }
+    }
+    return rows;
+  }, [effects]);
+
+  const effectsTrackHeight = Math.max(EFFECT_ROW_HEIGHT + 4, effectRows.length * EFFECT_ROW_HEIGHT + 4);
 
   const getEffectColor = (type: string) => {
     if (type.startsWith("zoom"))
@@ -243,12 +285,15 @@ export default function Timeline() {
                 const isActive =
                   currentTime >= c.startTime && currentTime < c.endTime;
                 const isHovered = hoveredItem === `caption-${c.id}`;
+                const isSelected = selectedItem?.type === "caption" && selectedItem.id === c.id;
 
                 return (
                   <div
                     key={c.id}
                     className={`absolute top-1 rounded-md border text-[8px] px-2 truncate flex items-center transition-all duration-100 ${
-                      isActive
+                      isSelected
+                        ? "bg-[var(--accent)]/80 border-[var(--accent)] text-white shadow-md shadow-[var(--accent)]/40 z-20 ring-1 ring-white/30"
+                        : isActive
                         ? "bg-[var(--accent)]/70 border-[var(--accent)] text-white shadow-sm shadow-[var(--accent)]/30 z-10"
                         : isHovered
                         ? "bg-[var(--accent)]/50 border-[var(--accent)]/80 text-white z-10"
@@ -263,12 +308,16 @@ export default function Timeline() {
                       width: itemWidth,
                       height: TRACK_HEIGHT - 8,
                     }}
-                    onMouseDown={(e) =>
-                      handleDragStart(e, "caption", c.id, "move", c.startTime, c.endTime)
-                    }
+                    onMouseDown={(e) => {
+                      handleDragStart(e, "caption", c.id, "move", c.startTime, c.endTime);
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleItemClick("caption", c.id);
+                    }}
                     onMouseEnter={() => setHoveredItem(`caption-${c.id}`)}
                     onMouseLeave={() => setHoveredItem(null)}
-                    title={`${c.text}\n${c.startTime.toFixed(1)}s - ${c.endTime.toFixed(1)}s\n↔ Arraste para mover`}
+                    title={`${c.text}\n${c.startTime.toFixed(1)}s - ${c.endTime.toFixed(1)}s\n↔ Arraste para mover | Clique para editar`}
                   >
                     <ResizeHandle
                       side="left"
@@ -291,10 +340,10 @@ export default function Timeline() {
             </div>
           </div>
 
-          {/* Effects track */}
+          {/* Effects track - dynamic height with sub-rows */}
           <div
-            className="flex items-center border-b border-[var(--border)]/30"
-            style={{ height: TRACK_HEIGHT }}
+            className="flex border-b border-[var(--border)]/30"
+            style={{ height: effectsTrackHeight }}
           >
             <div
               className="shrink-0 px-2 text-[9px] text-[var(--text-secondary)] uppercase tracking-wider flex items-center h-full border-r border-[var(--border)] font-medium"
@@ -303,60 +352,70 @@ export default function Timeline() {
               Efeitos
             </div>
             <div className="relative h-full" style={{ width: timelineWidth }}>
-              {effects.map((e) => {
-                const color = getEffectColor(e.type);
-                const itemWidth = Math.max(
-                  (e.endTime - e.startTime) * pxPerSecond,
-                  8
-                );
-                const isActive =
-                  currentTime >= e.startTime && currentTime <= e.endTime;
-                const isHovered = hoveredItem === `effect-${e.id}`;
+              {effectRows.map((row, rowIndex) =>
+                row.map((e) => {
+                  const color = getEffectColor(e.type);
+                  const itemWidth = Math.max(
+                    (e.endTime - e.startTime) * pxPerSecond,
+                    8
+                  );
+                  const isActive =
+                    currentTime >= e.startTime && currentTime <= e.endTime;
+                  const isHovered = hoveredItem === `effect-${e.id}`;
+                  const isSelected = selectedItem?.type === "effect" && selectedItem.id === e.id;
 
-                return (
-                  <div
-                    key={e.id}
-                    className={`absolute top-1 rounded-md border text-[8px] px-1 truncate flex items-center transition-all duration-100 ${color} ${
-                      isActive
-                        ? "brightness-125 shadow-sm z-10"
-                        : isHovered
-                        ? "brightness-115 z-10"
-                        : "hover:brightness-110"
-                    } ${
-                      dragState?.id === e.id
-                        ? "cursor-grabbing opacity-80 z-20"
-                        : "cursor-grab"
-                    }`}
-                    style={{
-                      left: e.startTime * pxPerSecond,
-                      width: itemWidth,
-                      height: TRACK_HEIGHT - 8,
-                    }}
-                    onMouseDown={(ev) =>
-                      handleDragStart(ev, "effect", e.id, "move", e.startTime, e.endTime)
-                    }
-                    onMouseEnter={() => setHoveredItem(`effect-${e.id}`)}
-                    onMouseLeave={() => setHoveredItem(null)}
-                    title={`${e.type}\n${e.startTime.toFixed(1)}s - ${e.endTime.toFixed(1)}s\n↔ Arraste para mover`}
-                  >
-                    <ResizeHandle
-                      side="left"
-                      onMouseDown={(ev) =>
-                        handleDragStart(ev, "effect", e.id, "startTime", e.startTime, e.endTime)
-                      }
-                    />
-                    {itemWidth > 40 && (
-                      <span className="truncate mx-1.5">{e.type}</span>
-                    )}
-                    <ResizeHandle
-                      side="right"
-                      onMouseDown={(ev) =>
-                        handleDragStart(ev, "effect", e.id, "endTime", e.startTime, e.endTime)
-                      }
-                    />
-                  </div>
-                );
-              })}
+                  return (
+                    <div
+                      key={e.id}
+                      className={`absolute rounded-md border text-[8px] px-1 truncate flex items-center transition-all duration-100 ${color} ${
+                        isSelected
+                          ? "brightness-130 shadow-md z-20 ring-1 ring-white/40"
+                          : isActive
+                          ? "brightness-125 shadow-sm z-10"
+                          : isHovered
+                          ? "brightness-115 z-10"
+                          : "hover:brightness-110"
+                      } ${
+                        dragState?.id === e.id
+                          ? "cursor-grabbing opacity-80 z-20"
+                          : "cursor-grab"
+                      }`}
+                      style={{
+                        left: e.startTime * pxPerSecond,
+                        width: itemWidth,
+                        top: rowIndex * EFFECT_ROW_HEIGHT + 2,
+                        height: EFFECT_ROW_HEIGHT - 4,
+                      }}
+                      onMouseDown={(ev) => {
+                        handleDragStart(ev, "effect", e.id, "move", e.startTime, e.endTime);
+                      }}
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        handleItemClick("effect", e.id);
+                      }}
+                      onMouseEnter={() => setHoveredItem(`effect-${e.id}`)}
+                      onMouseLeave={() => setHoveredItem(null)}
+                      title={`${e.type}\n${e.startTime.toFixed(1)}s - ${e.endTime.toFixed(1)}s\n↔ Arraste para mover | Clique para editar`}
+                    >
+                      <ResizeHandle
+                        side="left"
+                        onMouseDown={(ev) =>
+                          handleDragStart(ev, "effect", e.id, "startTime", e.startTime, e.endTime)
+                        }
+                      />
+                      {itemWidth > 40 && (
+                        <span className="truncate mx-1.5">{e.type}</span>
+                      )}
+                      <ResizeHandle
+                        side="right"
+                        onMouseDown={(ev) =>
+                          handleDragStart(ev, "effect", e.id, "endTime", e.startTime, e.endTime)
+                        }
+                      />
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
 
@@ -377,12 +436,17 @@ export default function Timeline() {
                 const isActive =
                   currentTime >= b.startTime && currentTime <= b.endTime;
                 const isHovered = hoveredItem === `broll-${b.id}`;
+                const isSelected = selectedItem?.type === "broll" && selectedItem.id === b.id;
 
                 return (
                   <div
                     key={b.id}
                     className={`absolute top-1 rounded-md border text-[8px] px-1 truncate flex items-center transition-all duration-100 ${
-                      b.url
+                      isSelected
+                        ? b.url
+                          ? "bg-orange-500/80 border-orange-400 text-white shadow-md shadow-orange-500/40 z-20 ring-1 ring-white/30"
+                          : "bg-gray-500/40 border-gray-400 border-dashed text-gray-300 z-20 ring-1 ring-white/30"
+                        : b.url
                         ? isActive
                           ? "bg-orange-500/70 border-orange-400 text-white shadow-sm shadow-orange-500/30 z-10"
                           : isHovered
@@ -399,12 +463,16 @@ export default function Timeline() {
                       width: itemWidth,
                       height: TRACK_HEIGHT - 8,
                     }}
-                    onMouseDown={(ev) =>
-                      handleDragStart(ev, "broll", b.id, "move", b.startTime, b.endTime)
-                    }
+                    onMouseDown={(ev) => {
+                      handleDragStart(ev, "broll", b.id, "move", b.startTime, b.endTime);
+                    }}
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      handleItemClick("broll", b.id);
+                    }}
                     onMouseEnter={() => setHoveredItem(`broll-${b.id}`)}
                     onMouseLeave={() => setHoveredItem(null)}
-                    title={`${b.prompt}\n${b.startTime.toFixed(1)}s - ${b.endTime.toFixed(1)}s\n↔ Arraste para mover`}
+                    title={`${b.prompt}\n${b.startTime.toFixed(1)}s - ${b.endTime.toFixed(1)}s\n↔ Arraste para mover | Clique para editar`}
                   >
                     <ResizeHandle
                       side="left"

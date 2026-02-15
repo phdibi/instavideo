@@ -11,6 +11,7 @@ export default function VideoPreview() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const animFrameRef = useRef<number>(0);
+  const lastExternalSeekRef = useRef<number>(0);
   const [muted, setMuted] = useState(false);
 
   const {
@@ -24,6 +25,18 @@ export default function VideoPreview() {
     setIsPlaying,
     setVideoDuration,
   } = useProjectStore();
+
+  // Sync video element with store currentTime (for timeline/playhead seeking)
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid) return;
+    // Only seek the video element if the time was changed externally (not from playback)
+    // We detect external change if the difference between video.currentTime and store currentTime is > 0.15s
+    const diff = Math.abs(vid.currentTime - currentTime);
+    if (diff > 0.15 && !isPlaying) {
+      vid.currentTime = currentTime;
+    }
+  }, [currentTime, isPlaying]);
 
   // Find active effects at current time
   const activeEffects = useMemo(
@@ -43,7 +56,39 @@ export default function VideoPreview() {
     [bRollImages, currentTime]
   );
 
-  // Compute transform style based on active effects
+  // B-Roll animation: ken-burns style zoom/pan
+  const bRollStyle = useMemo(() => {
+    if (!activeBRoll) return null;
+    const duration = activeBRoll.endTime - activeBRoll.startTime;
+    const progress = Math.min(
+      Math.max((currentTime - activeBRoll.startTime) / duration, 0),
+      1
+    );
+
+    // Fade in during first 15%, fade out during last 15%
+    let opacity = 1;
+    if (progress < 0.15) {
+      opacity = progress / 0.15;
+    } else if (progress > 0.85) {
+      opacity = (1 - progress) / 0.15;
+    }
+
+    // Ken Burns: slow zoom in + slight pan
+    const scale = 1 + progress * 0.12; // Zoom from 1.0 to 1.12
+    const panX = progress * -2; // Slight pan left
+    const panY = progress * -1; // Slight pan up
+
+    return {
+      opacity,
+      transform: `scale(${scale}) translate(${panX}%, ${panY}%)`,
+      backgroundImage: `url(${activeBRoll.url})`,
+      backgroundSize: "cover",
+      backgroundPosition: "center",
+      transition: "opacity 0.2s ease",
+    };
+  }, [activeBRoll, currentTime]);
+
+  // Compute transform style based on active effects - smoother easing
   const videoStyle = useMemo(() => {
     let scale = 1;
     let translateX = 0;
@@ -52,14 +97,17 @@ export default function VideoPreview() {
     let clipPath = "";
 
     for (const effect of activeEffects) {
-      const progress =
+      const rawProgress =
         (currentTime - effect.startTime) / (effect.endTime - effect.startTime);
+      const progress = Math.min(Math.max(rawProgress, 0), 1);
       const params = effect.params as Record<string, number | string>;
 
       switch (effect.type) {
         case "zoom-in": {
           const targetScale = (params.scale as number) || 1.3;
-          scale *= 1 + (targetScale - 1) * easeOut(progress);
+          // Smooth cubic ease-out for fluid zoom
+          const eased = easeOutCubic(progress);
+          scale *= 1 + (targetScale - 1) * eased;
           const focusX = ((params.focusX as number) || 0.5) - 0.5;
           const focusY = ((params.focusY as number) || 0.4) - 0.5;
           translateX -= focusX * (scale - 1) * 100;
@@ -68,48 +116,52 @@ export default function VideoPreview() {
         }
         case "zoom-out": {
           const targetScale = (params.scale as number) || 1.3;
-          scale *= targetScale - (targetScale - 1) * easeOut(progress);
+          // Start zoomed in, smoothly pull out
+          const eased = easeOutCubic(progress);
+          scale *= targetScale - (targetScale - 1) * eased;
           break;
         }
         case "zoom-pulse": {
           const targetScale = (params.scale as number) || 1.2;
+          // Smooth sine pulse for organic feel
           const pulse = Math.sin(progress * Math.PI);
-          scale *= 1 + (targetScale - 1) * pulse;
+          const smoothed = easeInOutQuad(pulse);
+          scale *= 1 + (targetScale - 1) * smoothed;
           break;
         }
         case "pan-left":
-          translateX -= ((params.distance as number) || 30) * easeInOut(progress);
+          translateX -= ((params.distance as number) || 30) * easeInOutCubic(progress);
           break;
         case "pan-right":
-          translateX += ((params.distance as number) || 30) * easeInOut(progress);
+          translateX += ((params.distance as number) || 30) * easeInOutCubic(progress);
           break;
         case "pan-up":
-          translateY -= ((params.distance as number) || 20) * easeInOut(progress);
+          translateY -= ((params.distance as number) || 20) * easeInOutCubic(progress);
           break;
         case "pan-down":
-          translateY += ((params.distance as number) || 20) * easeInOut(progress);
+          translateY += ((params.distance as number) || 20) * easeInOutCubic(progress);
           break;
         case "shake": {
           const intensity = (params.intensity as number) || 3;
           const freq = (params.frequency as number) || 15;
-          translateX += Math.sin(progress * freq * Math.PI * 2) * intensity;
+          // Decay shake over time for realism
+          const decay = 1 - progress * 0.6;
+          translateX += Math.sin(progress * freq * Math.PI * 2) * intensity * decay;
           translateY +=
-            Math.cos(progress * freq * Math.PI * 2 + 1) * intensity;
+            Math.cos(progress * freq * Math.PI * 2 + 1) * intensity * decay;
           break;
         }
         case "vignette":
-          // CSS vignette simulation
           break;
         case "letterbox":
           clipPath = `inset(${((params.amount as number) || 0.1) * 100}% 0)`;
           break;
         case "blur-background":
-          // Applied as a separate filter layer
           break;
         case "color-grade": {
           const preset = params.preset as string;
           if (preset === "cinematic-warm")
-            filter += " sepia(0.15) saturate(1.2) contrast(1.1)";
+            filter += " sepia(0.12) saturate(1.15) contrast(1.08)";
           else if (preset === "cold-thriller")
             filter += " saturate(0.8) hue-rotate(200deg) contrast(1.15)";
           else if (preset === "vintage")
@@ -133,7 +185,8 @@ export default function VideoPreview() {
       transform: `scale(${scale}) translate(${translateX}px, ${translateY}px)`,
       filter: filter || undefined,
       clipPath: clipPath || undefined,
-      transition: "transform 0.05s linear, filter 0.1s linear",
+      // Smoother transitions for fluid feel
+      transition: "transform 0.08s cubic-bezier(0.25, 0.1, 0.25, 1), filter 0.15s ease",
     };
   }, [activeEffects, currentTime]);
 
@@ -160,7 +213,7 @@ export default function VideoPreview() {
     switch (transition.type) {
       case "transition-fade":
         return {
-          backgroundColor: `rgba(0,0,0,${Math.sin(progress * Math.PI) * 0.8})`,
+          backgroundColor: `rgba(0,0,0,${Math.sin(progress * Math.PI) * 0.7})`,
         };
       case "transition-glitch":
         return {
@@ -249,16 +302,11 @@ export default function VideoPreview() {
             playsInline
           />
 
-          {/* B-Roll overlay */}
-          {activeBRoll && (
+          {/* B-Roll overlay - FULLY OPAQUE with ken-burns effect */}
+          {activeBRoll && bRollStyle && (
             <div
-              className="absolute inset-0 z-10 transition-opacity duration-500"
-              style={{
-                opacity: activeBRoll.opacity,
-                backgroundImage: `url(${activeBRoll.url})`,
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-              }}
+              className="absolute inset-0 z-10"
+              style={bRollStyle}
             />
           )}
 
@@ -346,10 +394,15 @@ export default function VideoPreview() {
   );
 }
 
-function easeOut(t: number): number {
+// Smooth easing functions for fluid effects
+function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3);
 }
 
-function easeInOut(t: number): number {
+function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+function easeInOutQuad(t: number): number {
+  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 }

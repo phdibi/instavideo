@@ -177,7 +177,7 @@ export default function ExportPanel() {
         ctx.drawImage(video, dx, dy, dw, dh);
         ctx.restore();
 
-        // Draw B-roll overlay
+        // Draw B-roll overlay - FULLY OPAQUE with ken-burns effect
         const activeBRoll = bRollImages.find(
           (b) => b.url && time >= b.startTime && time <= b.endTime
         );
@@ -190,9 +190,27 @@ export default function ExportPanel() {
               img.onerror = reject;
               if (img.complete) resolve();
             });
-            ctx.globalAlpha = activeBRoll.opacity;
+
+            const bDuration = activeBRoll.endTime - activeBRoll.startTime;
+            const bProgress = Math.min(Math.max((time - activeBRoll.startTime) / bDuration, 0), 1);
+
+            // Fade in/out at edges
+            let bOpacity = 1;
+            if (bProgress < 0.15) bOpacity = bProgress / 0.15;
+            else if (bProgress > 0.85) bOpacity = (1 - bProgress) / 0.15;
+
+            // Ken Burns: slow zoom + slight pan
+            const bScale = 1 + bProgress * 0.12;
+            const bPanX = bProgress * -width * 0.02;
+            const bPanY = bProgress * -height * 0.01;
+
+            ctx.save();
+            ctx.globalAlpha = bOpacity;
+            ctx.translate(width / 2 + bPanX, height / 2 + bPanY);
+            ctx.scale(bScale, bScale);
+            ctx.translate(-width / 2, -height / 2);
             ctx.drawImage(img, 0, 0, width, height);
-            ctx.globalAlpha = 1;
+            ctx.restore();
           } catch {
             // Skip if image can't load
           }

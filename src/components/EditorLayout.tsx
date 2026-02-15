@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Type,
   Sparkles,
@@ -38,9 +38,17 @@ const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
   },
 ];
 
+const MIN_TIMELINE_HEIGHT = 100;
+const MAX_TIMELINE_HEIGHT = 500;
+const DEFAULT_TIMELINE_HEIGHT = 200;
+
 export default function EditorLayout() {
   const [activeTab, setActiveTab] = useState<Tab>("captions");
   const { reset, captions, effects, selectedItem } = useProjectStore();
+  const [timelineHeight, setTimelineHeight] = useState(DEFAULT_TIMELINE_HEIGHT);
+  const isDraggingRef = useRef(false);
+  const startYRef = useRef(0);
+  const startHeightRef = useRef(0);
 
   // Auto-switch sidebar tab when an item is selected from the timeline
   useEffect(() => {
@@ -53,6 +61,37 @@ export default function EditorLayout() {
     const targetTab = tabMap[selectedItem.type];
     if (targetTab) setActiveTab(targetTab);
   }, [selectedItem]);
+
+  // Resize handle for timeline
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingRef.current = true;
+    startYRef.current = e.clientY;
+    startHeightRef.current = timelineHeight;
+
+    const handleMove = (ev: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      const deltaY = startYRef.current - ev.clientY; // dragging up = bigger
+      const newHeight = Math.min(
+        MAX_TIMELINE_HEIGHT,
+        Math.max(MIN_TIMELINE_HEIGHT, startHeightRef.current + deltaY)
+      );
+      setTimelineHeight(newHeight);
+    };
+
+    const handleUp = () => {
+      isDraggingRef.current = false;
+      document.removeEventListener("mousemove", handleMove);
+      document.removeEventListener("mouseup", handleUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    document.addEventListener("mousemove", handleMove);
+    document.addEventListener("mouseup", handleUp);
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+  }, [timelineHeight]);
 
   return (
     <div className="h-screen flex flex-col bg-[var(--background)]">
@@ -113,8 +152,16 @@ export default function EditorLayout() {
         </div>
       </div>
 
-      {/* Timeline - bottom */}
-      <div className="h-[160px] shrink-0">
+      {/* Timeline resize handle */}
+      <div
+        className="h-1.5 bg-[var(--surface)] border-t border-[var(--border)] cursor-row-resize hover:bg-[var(--accent)]/20 active:bg-[var(--accent)]/30 transition-colors flex items-center justify-center shrink-0 group"
+        onMouseDown={handleResizeStart}
+      >
+        <div className="w-8 h-0.5 rounded-full bg-[var(--text-secondary)]/30 group-hover:bg-[var(--accent)]/60 transition-colors" />
+      </div>
+
+      {/* Timeline - bottom, resizable */}
+      <div className="shrink-0" style={{ height: timelineHeight }}>
         <Timeline />
       </div>
     </div>

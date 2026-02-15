@@ -1,17 +1,25 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import { Download, Loader2, Film, Settings } from "lucide-react";
+import { Download, Loader2, Film, Settings, Smartphone, Square, Monitor } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
 
 type ExportFormat = "mp4" | "webm";
 type ExportQuality = "720p" | "1080p";
+type AspectRatio = "9:16" | "1:1" | "16:9";
+
+const aspectRatioConfig: Record<AspectRatio, { label: string; icon: React.ReactNode; w: number; h: number; platform: string }> = {
+  "9:16": { label: "9:16", icon: <Smartphone className="w-4 h-4" />, w: 1080, h: 1920, platform: "TikTok / Reels / Shorts" },
+  "1:1": { label: "1:1", icon: <Square className="w-4 h-4" />, w: 1080, h: 1080, platform: "Instagram Feed / Carrossel" },
+  "16:9": { label: "16:9", icon: <Monitor className="w-4 h-4" />, w: 1920, h: 1080, platform: "YouTube / Landscape" },
+};
 
 export default function ExportPanel() {
   const { videoUrl, captions, effects, bRollImages, videoDuration, status, setStatus } =
     useProjectStore();
   const [format, setFormat] = useState<ExportFormat>("webm");
   const [quality, setQuality] = useState<ExportQuality>("1080p");
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>("9:16");
   const [progress, setProgress] = useState(0);
   const [exporting, setExporting] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -33,8 +41,10 @@ export default function ExportPanel() {
         video.load();
       });
 
-      const width = quality === "1080p" ? 1080 : 720;
-      const height = quality === "1080p" ? 1920 : 1280;
+      const config = aspectRatioConfig[aspectRatio];
+      const qualityMultiplier = quality === "720p" ? 720 / 1080 : 1;
+      const width = Math.round(config.w * qualityMultiplier);
+      const height = Math.round(config.h * qualityMultiplier);
 
       const canvas = canvasRef.current || document.createElement("canvas");
       canvas.width = width;
@@ -48,9 +58,8 @@ export default function ExportPanel() {
       const audioCtx = new AudioContext();
       const audioResponse = await fetch(videoUrl);
       const audioArrayBuffer = await audioResponse.arrayBuffer();
-      let audioBuffer: AudioBuffer;
       try {
-        audioBuffer = await audioCtx.decodeAudioData(audioArrayBuffer);
+        await audioCtx.decodeAudioData(audioArrayBuffer);
         const audioSource = audioCtx.createMediaStreamSource(
           new MediaStream()
         );
@@ -157,7 +166,7 @@ export default function ExportPanel() {
         ctx.scale(scale, scale);
         ctx.translate(-width / 2, -height / 2);
 
-        // Draw video frame
+        // Draw video frame - center crop to target aspect ratio
         const videoAspect = video.videoWidth / video.videoHeight;
         const canvasAspect = width / height;
         let dw, dh, dx, dy;
@@ -385,7 +394,7 @@ export default function ExportPanel() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `cineai-export.${format === "webm" ? "webm" : "webm"}`;
+      a.download = `cineai-export-${aspectRatio.replace(":", "x")}.webm`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -403,16 +412,49 @@ export default function ExportPanel() {
       setExporting(false);
       setProgress(0);
     }
-  }, [videoUrl, captions, effects, bRollImages, videoDuration, format, quality, setStatus]);
+  }, [videoUrl, captions, effects, bRollImages, videoDuration, format, quality, aspectRatio, setStatus]);
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-4 space-y-4 overflow-y-auto h-full">
       <h3 className="font-semibold text-sm flex items-center gap-2">
         <Download className="w-4 h-4 text-[var(--accent-light)]" />
         Exportar Vídeo
       </h3>
 
       <div className="space-y-3">
+        {/* Aspect Ratio */}
+        <div>
+          <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
+            Proporção / Plataforma
+          </label>
+          <div className="flex gap-2 mt-1">
+            {(Object.keys(aspectRatioConfig) as AspectRatio[]).map((ar) => {
+              const cfg = aspectRatioConfig[ar];
+              return (
+                <button
+                  key={ar}
+                  onClick={() => setAspectRatio(ar)}
+                  className={`flex-1 py-2 flex flex-col items-center gap-1 text-xs rounded-lg transition-colors ${
+                    aspectRatio === ar
+                      ? "bg-[var(--accent)] text-white"
+                      : "bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)]"
+                  }`}
+                >
+                  {cfg.icon}
+                  <span className="font-medium">{cfg.label}</span>
+                  <span className={`text-[9px] ${aspectRatio === ar ? "text-white/70" : "text-[var(--text-secondary)]"}`}>
+                    {cfg.platform.split(" / ")[0]}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-[var(--text-secondary)] mt-1">
+            {aspectRatioConfig[aspectRatio].platform}
+          </p>
+        </div>
+
+        {/* Format */}
         <div>
           <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
             Formato
@@ -439,6 +481,7 @@ export default function ExportPanel() {
           </div>
         </div>
 
+        {/* Quality */}
         <div>
           <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
             Qualidade
@@ -455,6 +498,12 @@ export default function ExportPanel() {
                 }`}
               >
                 {q}
+                <span className={`block text-[9px] ${quality === q ? "text-white/70" : "text-[var(--text-secondary)]"}`}>
+                  {q === "1080p"
+                    ? `${aspectRatioConfig[aspectRatio].w}x${aspectRatioConfig[aspectRatio].h}`
+                    : `${Math.round(aspectRatioConfig[aspectRatio].w * 720/1080)}x${Math.round(aspectRatioConfig[aspectRatio].h * 720/1080)}`
+                  }
+                </span>
               </button>
             ))}
           </div>

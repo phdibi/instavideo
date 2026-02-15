@@ -99,6 +99,88 @@ const presetStyles: { name: string; style: Partial<CaptionStyle> }[] = [
       shadowBlur: 8,
     },
   },
+  {
+    name: "Hormozi Bold",
+    style: {
+      color: "#FFFFFF",
+      backgroundColor: "transparent",
+      backgroundOpacity: 0,
+      fontSize: 60,
+      fontWeight: 900,
+      strokeColor: "#000000",
+      strokeWidth: 4,
+      shadowColor: "rgba(0,0,0,0.9)",
+      shadowBlur: 6,
+    },
+  },
+  {
+    name: "MrBeast Pop",
+    style: {
+      color: "#FFFFFF",
+      backgroundColor: "#FF0000",
+      backgroundOpacity: 0.95,
+      fontSize: 52,
+      fontWeight: 900,
+      strokeWidth: 0,
+      shadowColor: "rgba(0,0,0,0.5)",
+      shadowBlur: 10,
+    },
+  },
+  {
+    name: "Retro VHS",
+    style: {
+      color: "#FF6B6B",
+      backgroundColor: "transparent",
+      backgroundOpacity: 0,
+      fontSize: 44,
+      fontWeight: 700,
+      strokeColor: "#FFFFFF",
+      strokeWidth: 2,
+      shadowColor: "rgba(255,107,107,0.4)",
+      shadowBlur: 20,
+    },
+  },
+  {
+    name: "Gradiente Azul",
+    style: {
+      color: "#60A5FA",
+      backgroundColor: "#1E293B",
+      backgroundOpacity: 0.85,
+      fontSize: 46,
+      fontWeight: 700,
+      strokeWidth: 0,
+      shadowColor: "rgba(96,165,250,0.3)",
+      shadowBlur: 12,
+    },
+  },
+  {
+    name: "Neon Rosa",
+    style: {
+      color: "#FF69B4",
+      backgroundColor: "transparent",
+      backgroundOpacity: 0,
+      fontSize: 50,
+      fontWeight: 900,
+      strokeColor: "#000000",
+      strokeWidth: 3,
+      shadowColor: "rgba(255,105,180,0.6)",
+      shadowBlur: 18,
+    },
+  },
+  {
+    name: "Clean White",
+    style: {
+      color: "#FFFFFF",
+      backgroundColor: "transparent",
+      backgroundOpacity: 0,
+      fontSize: 42,
+      fontWeight: 600,
+      strokeColor: "#000000",
+      strokeWidth: 3,
+      shadowColor: "rgba(0,0,0,0.6)",
+      shadowBlur: 4,
+    },
+  },
 ];
 
 export default function CaptionEditor() {
@@ -194,12 +276,13 @@ export default function CaptionEditor() {
           <p className="text-xs text-[var(--text-secondary)] mb-2">
             Aplicar estilo a todas as legendas:
           </p>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-1.5 max-h-[180px] overflow-y-auto">
             {presetStyles.map((p) => (
               <button
                 key={p.name}
                 onClick={() => applyPresetToAll(p.style)}
-                className="px-2 py-1.5 rounded-lg text-xs font-medium bg-[var(--surface-hover)] border border-[var(--border)] hover:border-[var(--accent)]/50 transition-colors"
+                className="px-2 py-1.5 rounded-lg text-[11px] font-medium bg-[var(--surface-hover)] border border-[var(--border)] hover:border-[var(--accent)]/50 transition-colors truncate"
+                title={p.name}
               >
                 {p.name}
               </button>

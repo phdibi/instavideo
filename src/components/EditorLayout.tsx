@@ -45,8 +45,8 @@ const DEFAULT_TIMELINE_HEIGHT = 200;
 
 // Mobile panel height presets (percentage of available space)
 const MOBILE_PANEL_COLLAPSED = 0; // Panel hidden
-const MOBILE_PANEL_HALF = 55; // Panel takes ~55% of area
-const MOBILE_PANEL_FULL = 90; // Panel nearly fullscreen
+const MOBILE_PANEL_HALF = 60; // Panel takes ~60% of area — large enough to edit comfortably
+const MOBILE_PANEL_FULL = 92; // Panel nearly fullscreen
 
 export default function EditorLayout() {
   const [activeTab, setActiveTab] = useState<Tab>("captions");
@@ -235,7 +235,7 @@ export default function EditorLayout() {
         <div ref={mobileContentRef} className="flex-1 min-h-0 flex flex-col relative overflow-hidden">
           {/* Video preview - always visible, shrinks as panel grows */}
           <div
-            className="min-h-[120px] transition-all duration-300 ease-out"
+            className="min-h-[80px] transition-all duration-300 ease-out"
             style={{ flex: `1 1 ${100 - mobilePanelPercent}%` }}
           >
             <VideoPreview />
@@ -299,8 +299,8 @@ export default function EditorLayout() {
           </div>
         </div>
 
-        {/* Timeline - fixed small height on mobile */}
-        <div className="shrink-0 h-[100px]">
+        {/* Timeline - mobile height */}
+        <div className="shrink-0 h-[120px]">
           <Timeline />
         </div>
       </div>

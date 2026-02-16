@@ -312,6 +312,56 @@ export default function ProcessingScreen() {
     processingRef.current = true;
 
     try {
+      // Step 0: Ensure we have a valid video duration
+      // WebM recordings from teleprompter may have Infinity/0 duration initially
+      if (!videoDuration || !isFinite(videoDuration) || videoDuration <= 0) {
+        const resolvedDuration = await new Promise<number>((resolve) => {
+          const tempVideo = document.createElement("video");
+          tempVideo.preload = "auto";
+          tempVideo.muted = true;
+
+          const tryResolveDuration = () => {
+            if (isFinite(tempVideo.duration) && tempVideo.duration > 0) {
+              resolve(tempVideo.duration);
+              tempVideo.src = "";
+              return true;
+            }
+            return false;
+          };
+
+          tempVideo.onloadedmetadata = () => {
+            if (!tryResolveDuration()) {
+              // WebM fix: seek to a very large time to force duration calculation
+              tempVideo.currentTime = Number.MAX_SAFE_INTEGER;
+            }
+          };
+
+          tempVideo.ontimeupdate = () => {
+            if (tryResolveDuration()) return;
+            // If still not available, try seeking to end
+            tempVideo.ontimeupdate = null;
+          };
+
+          tempVideo.ondurationchange = () => {
+            tryResolveDuration();
+          };
+
+          // Fallback timeout — if we still can't determine duration after 5s, use 0 (will be estimated from segments)
+          setTimeout(() => {
+            if (!isFinite(tempVideo.duration) || tempVideo.duration <= 0) {
+              resolve(0);
+            }
+            tempVideo.src = "";
+          }, 5000);
+
+          tempVideo.src = URL.createObjectURL(videoFile);
+        });
+
+        if (resolvedDuration > 0) {
+          useProjectStore.getState().setVideoDuration(resolvedDuration);
+        }
+      }
+
       // Step 1: Extract audio
       setStatus("extracting-audio");
       let audioBlob: Blob;
@@ -344,13 +394,19 @@ export default function ProcessingScreen() {
       const transcription: TranscriptionResult = await transcribeRes.json();
       const segments = transcription.segments || [];
 
-      // Use effective duration: prefer store videoDuration, fallback to segments
+      // Use effective duration: read fresh from store (may have been resolved in Step 0)
+      const currentVideoDuration = useProjectStore.getState().videoDuration;
       const effectiveDuration =
-        videoDuration > 0
-          ? videoDuration
+        currentVideoDuration > 0 && isFinite(currentVideoDuration)
+          ? currentVideoDuration
           : segments.length > 0
           ? segments[segments.length - 1].end + 0.5
           : 30;
+
+      // If we resolved duration from segments, update the store
+      if ((!currentVideoDuration || !isFinite(currentVideoDuration) || currentVideoDuration <= 0) && effectiveDuration > 0) {
+        useProjectStore.getState().setVideoDuration(effectiveDuration);
+      }
 
       // Step 3: Build captions deterministically from transcription segments
       const captions = buildCaptionsFromTranscription(segments, effectiveDuration);

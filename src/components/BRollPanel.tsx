@@ -165,6 +165,62 @@ export default function BRollPanel() {
                       {formatTime(img.startTime)} - {formatTime(img.endTime)}
                     </button>
 
+                    {/* Timing controls */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
+                          Início (s)
+                        </label>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <button
+                            onClick={() => updateBRollImage(img.id, { startTime: Math.max(0, img.startTime - 0.1) })}
+                            className="shrink-0 w-7 h-8 rounded-lg bg-[var(--background)] border border-[var(--border)] text-xs font-bold active:bg-[var(--surface-hover)] transition-colors"
+                          >
+                            −
+                          </button>
+                          <input
+                            type="number"
+                            step="0.1"
+                            value={img.startTime}
+                            onChange={(e) => updateBRollImage(img.id, { startTime: parseFloat(e.target.value) || 0 })}
+                            className="w-full p-1.5 text-xs text-center bg-[var(--background)] border border-[var(--border)] rounded-lg focus:border-[var(--accent)] focus:outline-none"
+                          />
+                          <button
+                            onClick={() => updateBRollImage(img.id, { startTime: Math.min(img.endTime - 0.1, img.startTime + 0.1) })}
+                            className="shrink-0 w-7 h-8 rounded-lg bg-[var(--background)] border border-[var(--border)] text-xs font-bold active:bg-[var(--surface-hover)] transition-colors"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
+                          Fim (s)
+                        </label>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <button
+                            onClick={() => updateBRollImage(img.id, { endTime: Math.max(img.startTime + 0.1, img.endTime - 0.1) })}
+                            className="shrink-0 w-7 h-8 rounded-lg bg-[var(--background)] border border-[var(--border)] text-xs font-bold active:bg-[var(--surface-hover)] transition-colors"
+                          >
+                            −
+                          </button>
+                          <input
+                            type="number"
+                            step="0.1"
+                            value={img.endTime}
+                            onChange={(e) => updateBRollImage(img.id, { endTime: parseFloat(e.target.value) || 0 })}
+                            className="w-full p-1.5 text-xs text-center bg-[var(--background)] border border-[var(--border)] rounded-lg focus:border-[var(--accent)] focus:outline-none"
+                          />
+                          <button
+                            onClick={() => updateBRollImage(img.id, { endTime: img.endTime + 0.1 })}
+                            className="shrink-0 w-7 h-8 rounded-lg bg-[var(--background)] border border-[var(--border)] text-xs font-bold active:bg-[var(--surface-hover)] transition-colors"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Editable prompt */}
                     {isEditingThis ? (
                       <div className="space-y-2">

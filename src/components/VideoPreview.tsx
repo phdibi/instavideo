@@ -295,7 +295,16 @@ export default function VideoPreview() {
             style={videoStyle}
             onLoadedMetadata={(e) => {
               const vid = e.target as HTMLVideoElement;
-              setVideoDuration(vid.duration);
+              if (isFinite(vid.duration) && vid.duration > 0) {
+                setVideoDuration(vid.duration);
+              }
+            }}
+            onDurationChange={(e) => {
+              // WebM blobs may update duration after initial load
+              const vid = e.target as HTMLVideoElement;
+              if (isFinite(vid.duration) && vid.duration > 0 && vid.duration !== videoDuration) {
+                setVideoDuration(vid.duration);
+              }
             }}
             onEnded={() => setIsPlaying(false)}
             muted={muted}

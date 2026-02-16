@@ -391,29 +391,57 @@ function CaptionItem({
               <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
                 Início (s)
               </label>
-              <input
-                type="number"
-                step="0.1"
-                value={caption.startTime}
-                onChange={(e) =>
-                  onUpdate({ startTime: parseFloat(e.target.value) || 0 })
-                }
-                className="w-full mt-1 p-2 text-sm bg-[var(--background)] border border-[var(--border)] rounded-lg focus:border-[var(--accent)] focus:outline-none"
-              />
+              <div className="flex items-center gap-1 mt-1">
+                <button
+                  onClick={() => onUpdate({ startTime: Math.max(0, caption.startTime - 0.1) })}
+                  className="shrink-0 w-8 h-9 rounded-lg bg-[var(--background)] border border-[var(--border)] text-xs font-bold active:bg-[var(--surface-hover)] transition-colors"
+                >
+                  −
+                </button>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={caption.startTime}
+                  onChange={(e) =>
+                    onUpdate({ startTime: parseFloat(e.target.value) || 0 })
+                  }
+                  className="w-full p-2 text-sm text-center bg-[var(--background)] border border-[var(--border)] rounded-lg focus:border-[var(--accent)] focus:outline-none"
+                />
+                <button
+                  onClick={() => onUpdate({ startTime: Math.min(caption.endTime - 0.1, caption.startTime + 0.1) })}
+                  className="shrink-0 w-8 h-9 rounded-lg bg-[var(--background)] border border-[var(--border)] text-xs font-bold active:bg-[var(--surface-hover)] transition-colors"
+                >
+                  +
+                </button>
+              </div>
             </div>
             <div>
               <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
                 Fim (s)
               </label>
-              <input
-                type="number"
-                step="0.1"
-                value={caption.endTime}
-                onChange={(e) =>
-                  onUpdate({ endTime: parseFloat(e.target.value) || 0 })
-                }
-                className="w-full mt-1 p-2 text-sm bg-[var(--background)] border border-[var(--border)] rounded-lg focus:border-[var(--accent)] focus:outline-none"
-              />
+              <div className="flex items-center gap-1 mt-1">
+                <button
+                  onClick={() => onUpdate({ endTime: Math.max(caption.startTime + 0.1, caption.endTime - 0.1) })}
+                  className="shrink-0 w-8 h-9 rounded-lg bg-[var(--background)] border border-[var(--border)] text-xs font-bold active:bg-[var(--surface-hover)] transition-colors"
+                >
+                  −
+                </button>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={caption.endTime}
+                  onChange={(e) =>
+                    onUpdate({ endTime: parseFloat(e.target.value) || 0 })
+                  }
+                  className="w-full p-2 text-sm text-center bg-[var(--background)] border border-[var(--border)] rounded-lg focus:border-[var(--accent)] focus:outline-none"
+                />
+                <button
+                  onClick={() => onUpdate({ endTime: caption.endTime + 0.1 })}
+                  className="shrink-0 w-8 h-9 rounded-lg bg-[var(--background)] border border-[var(--border)] text-xs font-bold active:bg-[var(--surface-hover)] transition-colors"
+                >
+                  +
+                </button>
+              </div>
             </div>
           </div>
 

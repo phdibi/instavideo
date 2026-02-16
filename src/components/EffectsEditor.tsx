@@ -236,33 +236,61 @@ export default function EffectsEditor() {
                           <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
                             Início (s)
                           </label>
-                          <input
-                            type="number"
-                            step="0.1"
-                            value={effect.startTime}
-                            onChange={(e) =>
-                              updateEffect(effect.id, {
-                                startTime: parseFloat(e.target.value) || 0,
-                              })
-                            }
-                            className="w-full mt-1 p-2 text-sm bg-[var(--background)] border border-[var(--border)] rounded-lg focus:border-[var(--accent)] focus:outline-none"
-                          />
+                          <div className="flex items-center gap-1 mt-1">
+                            <button
+                              onClick={() => updateEffect(effect.id, { startTime: Math.max(0, effect.startTime - 0.1) })}
+                              className="shrink-0 w-8 h-9 rounded-lg bg-[var(--background)] border border-[var(--border)] text-xs font-bold active:bg-[var(--surface-hover)] transition-colors"
+                            >
+                              −
+                            </button>
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={effect.startTime}
+                              onChange={(e) =>
+                                updateEffect(effect.id, {
+                                  startTime: parseFloat(e.target.value) || 0,
+                                })
+                              }
+                              className="w-full p-2 text-sm text-center bg-[var(--background)] border border-[var(--border)] rounded-lg focus:border-[var(--accent)] focus:outline-none"
+                            />
+                            <button
+                              onClick={() => updateEffect(effect.id, { startTime: Math.min(effect.endTime - 0.1, effect.startTime + 0.1) })}
+                              className="shrink-0 w-8 h-9 rounded-lg bg-[var(--background)] border border-[var(--border)] text-xs font-bold active:bg-[var(--surface-hover)] transition-colors"
+                            >
+                              +
+                            </button>
+                          </div>
                         </div>
                         <div>
                           <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
                             Fim (s)
                           </label>
-                          <input
-                            type="number"
-                            step="0.1"
-                            value={effect.endTime}
-                            onChange={(e) =>
-                              updateEffect(effect.id, {
-                                endTime: parseFloat(e.target.value) || 0,
-                              })
-                            }
-                            className="w-full mt-1 p-2 text-sm bg-[var(--background)] border border-[var(--border)] rounded-lg focus:border-[var(--accent)] focus:outline-none"
-                          />
+                          <div className="flex items-center gap-1 mt-1">
+                            <button
+                              onClick={() => updateEffect(effect.id, { endTime: Math.max(effect.startTime + 0.1, effect.endTime - 0.1) })}
+                              className="shrink-0 w-8 h-9 rounded-lg bg-[var(--background)] border border-[var(--border)] text-xs font-bold active:bg-[var(--surface-hover)] transition-colors"
+                            >
+                              −
+                            </button>
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={effect.endTime}
+                              onChange={(e) =>
+                                updateEffect(effect.id, {
+                                  endTime: parseFloat(e.target.value) || 0,
+                                })
+                              }
+                              className="w-full p-2 text-sm text-center bg-[var(--background)] border border-[var(--border)] rounded-lg focus:border-[var(--accent)] focus:outline-none"
+                            />
+                            <button
+                              onClick={() => updateEffect(effect.id, { endTime: effect.endTime + 0.1 })}
+                              className="shrink-0 w-8 h-9 rounded-lg bg-[var(--background)] border border-[var(--border)] text-xs font-bold active:bg-[var(--surface-hover)] transition-colors"
+                            >
+                              +
+                            </button>
+                          </div>
                         </div>
                       </div>
 

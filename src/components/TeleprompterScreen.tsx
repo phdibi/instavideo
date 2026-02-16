@@ -257,18 +257,28 @@ export default function TeleprompterScreen() {
     const video = document.createElement("video");
     video.preload = "metadata";
     video.onloadedmetadata = () => {
-      setVideoDuration(video.duration);
+      // WebM blobs often report Infinity duration — use elapsed recording time as fallback
+      const duration = isFinite(video.duration) && video.duration > 0
+        ? video.duration
+        : elapsedTime > 0
+        ? elapsedTime
+        : 30; // last-resort fallback
+      setVideoDuration(duration);
       setVideoFile(file);
       setVideoUrl(recordedUrl);
       setStatus("uploading");
     };
     video.onerror = () => {
+      // Fallback: use elapsed recording time
+      if (elapsedTime > 0) {
+        setVideoDuration(elapsedTime);
+      }
       setVideoFile(file);
       setVideoUrl(recordedUrl);
       setStatus("uploading");
     };
     video.src = recordedUrl;
-  }, [recordedBlob, recordedUrl, setVideoFile, setVideoUrl, setVideoDuration, setStatus]);
+  }, [recordedBlob, recordedUrl, elapsedTime, setVideoFile, setVideoUrl, setVideoDuration, setStatus]);
 
   const reRecord = useCallback(() => {
     if (recordedUrl) URL.revokeObjectURL(recordedUrl);

@@ -119,6 +119,7 @@ export interface ProjectState {
 
 export type ProjectStatus =
   | "idle"
+  | "teleprompter"
   | "uploading"
   | "extracting-audio"
   | "transcribing"
@@ -128,6 +129,21 @@ export type ProjectStatus =
   | "ready"
   | "exporting"
   | "error";
+
+export interface TeleprompterSettings {
+  script: string;
+  fontSize: number;
+  scrollSpeed: number;
+  mirrorText: boolean;
+  showTimer: boolean;
+  countdownSeconds: number;
+  textColor: string;
+  backgroundColor: string;
+  opacity: number;
+  lineHeight: number;
+  paddingHorizontal: number;
+  cueLinePosition: number; // 0-100 percentage from top
+}
 
 export interface TranscriptionResult {
   segments: TranscriptionSegment[];

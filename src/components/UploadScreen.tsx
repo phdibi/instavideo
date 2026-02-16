@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { Upload, Film, Sparkles, Zap, Type, Wand2 } from "lucide-react";
+import { Upload, Film, Sparkles, Zap, Type, Wand2, MonitorPlay } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { motion } from "framer-motion";
 
 export default function UploadScreen() {
-  const { setVideoFile, setVideoUrl, setVideoDuration, setStatus } = useProjectStore();
+  const { setVideoFile, setVideoUrl, setVideoDuration, setStatus } =
+    useProjectStore();
   const [dragOver, setDragOver] = useState(false);
 
   const handleFile = useCallback(
@@ -142,6 +143,34 @@ export default function UploadScreen() {
         <p className="text-sm text-[var(--text-secondary)]">
           MP4, MOV, WebM — Máx. 500MB
         </p>
+      </motion.div>
+
+      {/* Teleprompter option */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.3 }}
+        className="mt-6"
+      >
+        <div className="flex items-center gap-3 text-[var(--text-secondary)] text-sm">
+          <div className="h-px flex-1 bg-[var(--border)]" />
+          <span>ou</span>
+          <div className="h-px flex-1 bg-[var(--border)]" />
+        </div>
+        <button
+          onClick={() => setStatus("teleprompter")}
+          className="mt-4 flex items-center gap-3 px-6 py-3.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] hover:border-[var(--accent)]/50 hover:bg-[var(--surface-hover)] transition-all mx-auto group"
+        >
+          <div className="w-10 h-10 rounded-lg bg-[var(--accent)]/10 flex items-center justify-center group-hover:bg-[var(--accent)]/20 transition-colors">
+            <MonitorPlay className="w-5 h-5 text-[var(--accent-light)]" />
+          </div>
+          <div className="text-left">
+            <p className="font-medium text-sm">Gravar com Teleprompter</p>
+            <p className="text-xs text-[var(--text-secondary)]">
+              Grave lendo seu roteiro e edite automaticamente
+            </p>
+          </div>
+        </button>
       </motion.div>
 
       <motion.div

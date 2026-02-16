@@ -5,6 +5,7 @@ import type {
   BRollImage,
   EditPlan,
   ProjectStatus,
+  TeleprompterSettings,
 } from "@/types";
 
 interface ProjectStore {
@@ -20,6 +21,7 @@ interface ProjectStore {
   currentTime: number;
   isPlaying: boolean;
   selectedItem: { type: "caption" | "effect" | "broll"; id: string } | null;
+  teleprompterSettings: TeleprompterSettings;
 
   setVideoFile: (file: File) => void;
   setVideoUrl: (url: string) => void;
@@ -38,8 +40,24 @@ interface ProjectStore {
   setCurrentTime: (time: number) => void;
   setIsPlaying: (playing: boolean) => void;
   setSelectedItem: (item: { type: "caption" | "effect" | "broll"; id: string } | null) => void;
+  setTeleprompterSettings: (settings: Partial<TeleprompterSettings>) => void;
   reset: () => void;
 }
+
+const defaultTeleprompterSettings: TeleprompterSettings = {
+  script: "",
+  fontSize: 32,
+  scrollSpeed: 3,
+  mirrorText: false,
+  showTimer: true,
+  countdownSeconds: 3,
+  textColor: "#FFFFFF",
+  backgroundColor: "#000000",
+  opacity: 0.85,
+  lineHeight: 1.6,
+  paddingHorizontal: 10,
+  cueLinePosition: 35,
+};
 
 const initialState = {
   videoFile: null,
@@ -54,6 +72,7 @@ const initialState = {
   currentTime: 0,
   isPlaying: false,
   selectedItem: null,
+  teleprompterSettings: { ...defaultTeleprompterSettings },
 };
 
 export const useProjectStore = create<ProjectStore>((set) => ({
@@ -101,5 +120,9 @@ export const useProjectStore = create<ProjectStore>((set) => ({
   setCurrentTime: (time) => set({ currentTime: time }),
   setIsPlaying: (playing) => set({ isPlaying: playing }),
   setSelectedItem: (item) => set({ selectedItem: item }),
+  setTeleprompterSettings: (settings) =>
+    set((state) => ({
+      teleprompterSettings: { ...state.teleprompterSettings, ...settings },
+    })),
   reset: () => set(initialState),
 }));

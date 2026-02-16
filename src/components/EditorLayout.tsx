@@ -9,6 +9,8 @@ import {
   ArrowLeft,
   Film,
   GripHorizontal,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import VideoPreview from "./VideoPreview";
 import CaptionEditor from "./CaptionEditor";
@@ -48,6 +50,12 @@ const MOBILE_PANEL_COLLAPSED = 0; // Panel hidden
 const MOBILE_PANEL_HALF = 60; // Panel takes ~60% of area — large enough to edit comfortably
 const MOBILE_PANEL_FULL = 92; // Panel nearly fullscreen
 
+// Mobile timeline height presets (pixels)
+const MOBILE_TIMELINE_COMPACT = 80;   // Minimal — just see track headers
+const MOBILE_TIMELINE_DEFAULT = 140;  // Default — comfortable viewing
+const MOBILE_TIMELINE_EXPANDED = 260; // Expanded — full editing mode
+const MOBILE_TIMELINE_MAX = 380;      // Maximum — nearly half screen
+
 export default function EditorLayout() {
   const [activeTab, setActiveTab] = useState<Tab>("captions");
   const { reset, captions, effects, selectedItem } = useProjectStore();
@@ -62,6 +70,12 @@ export default function EditorLayout() {
   const mobileDragStartYRef = useRef(0);
   const mobileDragStartPercentRef = useRef(0);
   const mobileContentRef = useRef<HTMLDivElement>(null);
+
+  // Mobile: timeline height (pixels) — resizable
+  const [mobileTimelineHeight, setMobileTimelineHeight] = useState(MOBILE_TIMELINE_DEFAULT);
+  const timelineDragRef = useRef(false);
+  const timelineDragStartYRef = useRef(0);
+  const timelineDragStartHeightRef = useRef(0);
 
   const mobilePanelOpen = mobilePanelPercent > 0;
 
@@ -119,6 +133,48 @@ export default function EditorLayout() {
       if (prev < 72) return MOBILE_PANEL_HALF;
       return MOBILE_PANEL_FULL;
     });
+  }, []);
+
+  // Mobile timeline drag handler (touch) — drag the handle UP to expand, DOWN to collapse
+  const handleTimelineDragStart = useCallback(
+    (e: React.TouchEvent) => {
+      timelineDragRef.current = true;
+      timelineDragStartYRef.current = e.touches[0].clientY;
+      timelineDragStartHeightRef.current = mobileTimelineHeight;
+    },
+    [mobileTimelineHeight]
+  );
+
+  const handleTimelineDragMove = useCallback(
+    (e: React.TouchEvent) => {
+      if (!timelineDragRef.current) return;
+      // Dragging UP (negative deltaY) = increase height
+      const deltaY = timelineDragStartYRef.current - e.touches[0].clientY;
+      const newHeight = Math.min(
+        MOBILE_TIMELINE_MAX,
+        Math.max(MOBILE_TIMELINE_COMPACT, timelineDragStartHeightRef.current + deltaY)
+      );
+      setMobileTimelineHeight(newHeight);
+    },
+    []
+  );
+
+  const handleTimelineDragEnd = useCallback(() => {
+    timelineDragRef.current = false;
+    // Snap to nearest preset
+    setMobileTimelineHeight((prev) => {
+      if (prev < 110) return MOBILE_TIMELINE_COMPACT;
+      if (prev < 200) return MOBILE_TIMELINE_DEFAULT;
+      if (prev < 320) return MOBILE_TIMELINE_EXPANDED;
+      return MOBILE_TIMELINE_MAX;
+    });
+  }, []);
+
+  // Toggle timeline between compact and expanded with one tap
+  const toggleMobileTimeline = useCallback(() => {
+    setMobileTimelineHeight((prev) =>
+      prev <= MOBILE_TIMELINE_DEFAULT ? MOBILE_TIMELINE_EXPANDED : MOBILE_TIMELINE_DEFAULT
+    );
   }, []);
 
   // Resize handle for timeline (desktop)
@@ -299,8 +355,37 @@ export default function EditorLayout() {
           </div>
         </div>
 
-        {/* Timeline - mobile height */}
-        <div className="shrink-0 h-[120px]">
+        {/* Timeline resize handle (mobile) */}
+        <div className="shrink-0 bg-[var(--surface)] border-t border-[var(--border)]">
+          <div
+            className="flex items-center justify-center gap-2 py-1 cursor-grab active:cursor-grabbing touch-none"
+            onTouchStart={handleTimelineDragStart}
+            onTouchMove={handleTimelineDragMove}
+            onTouchEnd={handleTimelineDragEnd}
+          >
+            <button
+              onClick={toggleMobileTimeline}
+              className="p-0.5 rounded-md hover:bg-[var(--surface-hover)] active:bg-[var(--surface-hover)] transition-colors"
+            >
+              {mobileTimelineHeight <= MOBILE_TIMELINE_DEFAULT ? (
+                <ChevronUp className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+              )}
+            </button>
+            <div className="w-8 h-0.5 rounded-full bg-[var(--text-secondary)]/40" />
+            <span className="text-[9px] text-[var(--text-secondary)]/60 uppercase tracking-wider">
+              Timeline
+            </span>
+            <div className="w-8 h-0.5 rounded-full bg-[var(--text-secondary)]/40" />
+          </div>
+        </div>
+
+        {/* Timeline - mobile, resizable */}
+        <div
+          className="shrink-0 transition-[height] duration-200 ease-out"
+          style={{ height: mobileTimelineHeight }}
+        >
           <Timeline />
         </div>
       </div>

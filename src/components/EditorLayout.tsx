@@ -8,6 +8,8 @@ import {
   Download,
   ArrowLeft,
   Film,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import VideoPreview from "./VideoPreview";
 import CaptionEditor from "./CaptionEditor";
@@ -49,6 +51,8 @@ export default function EditorLayout() {
   const isDraggingRef = useRef(false);
   const startYRef = useRef(0);
   const startHeightRef = useRef(0);
+  // Mobile: toggle between video and sidebar panels
+  const [mobileShowPanel, setMobileShowPanel] = useState(false);
 
   // Auto-switch sidebar tab when an item is selected from the timeline
   useEffect(() => {
@@ -62,39 +66,42 @@ export default function EditorLayout() {
     if (targetTab) setActiveTab(targetTab);
   }, [selectedItem]);
 
-  // Resize handle for timeline
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    isDraggingRef.current = true;
-    startYRef.current = e.clientY;
-    startHeightRef.current = timelineHeight;
+  // Resize handle for timeline (desktop)
+  const handleResizeStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      isDraggingRef.current = true;
+      startYRef.current = e.clientY;
+      startHeightRef.current = timelineHeight;
 
-    const handleMove = (ev: MouseEvent) => {
-      if (!isDraggingRef.current) return;
-      const deltaY = startYRef.current - ev.clientY; // dragging up = bigger
-      const newHeight = Math.min(
-        MAX_TIMELINE_HEIGHT,
-        Math.max(MIN_TIMELINE_HEIGHT, startHeightRef.current + deltaY)
-      );
-      setTimelineHeight(newHeight);
-    };
+      const handleMove = (ev: MouseEvent) => {
+        if (!isDraggingRef.current) return;
+        const deltaY = startYRef.current - ev.clientY;
+        const newHeight = Math.min(
+          MAX_TIMELINE_HEIGHT,
+          Math.max(MIN_TIMELINE_HEIGHT, startHeightRef.current + deltaY)
+        );
+        setTimelineHeight(newHeight);
+      };
 
-    const handleUp = () => {
-      isDraggingRef.current = false;
-      document.removeEventListener("mousemove", handleMove);
-      document.removeEventListener("mouseup", handleUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
+      const handleUp = () => {
+        isDraggingRef.current = false;
+        document.removeEventListener("mousemove", handleMove);
+        document.removeEventListener("mouseup", handleUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
 
-    document.addEventListener("mousemove", handleMove);
-    document.addEventListener("mouseup", handleUp);
-    document.body.style.cursor = "row-resize";
-    document.body.style.userSelect = "none";
-  }, [timelineHeight]);
+      document.addEventListener("mousemove", handleMove);
+      document.addEventListener("mouseup", handleUp);
+      document.body.style.cursor = "row-resize";
+      document.body.style.userSelect = "none";
+    },
+    [timelineHeight]
+  );
 
   return (
-    <div className="h-screen flex flex-col bg-[var(--background)]">
+    <div className="h-[100dvh] flex flex-col bg-[var(--background)]">
       {/* Top bar */}
       <header className="h-12 bg-[var(--surface)] border-b border-[var(--border)] flex items-center px-4 gap-3 shrink-0">
         <button
@@ -109,31 +116,113 @@ export default function EditorLayout() {
           <span className="font-semibold text-sm">CineAI Editor</span>
         </div>
         <div className="ml-auto flex items-center gap-3 text-xs text-[var(--text-secondary)]">
-          <span>{captions.length} legendas</span>
-          <span className="w-px h-4 bg-[var(--border)]" />
-          <span>{effects.length} efeitos</span>
+          <span className="hidden sm:inline">{captions.length} legendas</span>
+          <span className="hidden sm:inline w-px h-4 bg-[var(--border)]" />
+          <span className="hidden sm:inline">{effects.length} efeitos</span>
         </div>
       </header>
 
-      {/* Main content */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Video preview - left side */}
-        <div className="flex-1 min-w-0">
-          <VideoPreview />
+      {/* ====== DESKTOP LAYOUT ====== */}
+      <div className="hidden md:flex flex-1 overflow-hidden flex-col">
+        <div className="flex-1 flex overflow-hidden">
+          {/* Video preview - left side */}
+          <div className="flex-1 min-w-0">
+            <VideoPreview />
+          </div>
+
+          {/* Right sidebar */}
+          <div className="w-80 bg-[var(--surface)] border-l border-[var(--border)] flex flex-col shrink-0">
+            {/* Tab bar */}
+            <div className="flex border-b border-[var(--border)] shrink-0">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`flex-1 py-2.5 flex flex-col items-center gap-1 text-[10px] transition-colors ${
+                    activeTab === tab.key
+                      ? "text-[var(--accent-light)] border-b-2 border-[var(--accent)] bg-[var(--accent)]/5"
+                      : "text-[var(--text-secondary)] hover:text-[var(--foreground)] hover:bg-[var(--surface-hover)]"
+                  }`}
+                >
+                  {tab.icon}
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Tab content */}
+            <div className="flex-1 overflow-hidden">
+              {activeTab === "captions" && <CaptionEditor />}
+              {activeTab === "effects" && <EffectsEditor />}
+              {activeTab === "broll" && <BRollPanel />}
+              {activeTab === "export" && <ExportPanel />}
+            </div>
+          </div>
         </div>
 
-        {/* Right sidebar */}
-        <div className="w-80 bg-[var(--surface)] border-l border-[var(--border)] flex flex-col shrink-0">
+        {/* Timeline resize handle */}
+        <div
+          className="h-1.5 bg-[var(--surface)] border-t border-[var(--border)] cursor-row-resize hover:bg-[var(--accent)]/20 active:bg-[var(--accent)]/30 transition-colors flex items-center justify-center shrink-0 group"
+          onMouseDown={handleResizeStart}
+        >
+          <div className="w-8 h-0.5 rounded-full bg-[var(--text-secondary)]/30 group-hover:bg-[var(--accent)]/60 transition-colors" />
+        </div>
+
+        {/* Timeline - bottom, resizable */}
+        <div className="shrink-0" style={{ height: timelineHeight }}>
+          <Timeline />
+        </div>
+      </div>
+
+      {/* ====== MOBILE LAYOUT ====== */}
+      <div className="md:hidden flex-1 flex flex-col overflow-hidden">
+        {/* Video or Panel area */}
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          {!mobileShowPanel ? (
+            /* Video preview - takes full available space */
+            <div className="flex-1 min-h-0">
+              <VideoPreview />
+            </div>
+          ) : (
+            /* Panel content area */
+            <div className="flex-1 min-h-0 bg-[var(--surface)] overflow-hidden">
+              <div className="h-full overflow-y-auto">
+                {activeTab === "captions" && <CaptionEditor />}
+                {activeTab === "effects" && <EffectsEditor />}
+                {activeTab === "broll" && <BRollPanel />}
+                {activeTab === "export" && <ExportPanel />}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Mobile: Toggle video/panel + tab bar */}
+        <div className="shrink-0 bg-[var(--surface)] border-t border-[var(--border)]">
+          {/* Toggle button */}
+          <button
+            onClick={() => setMobileShowPanel(!mobileShowPanel)}
+            className="w-full flex items-center justify-center py-1.5 text-[var(--text-secondary)] active:bg-[var(--surface-hover)] transition-colors"
+          >
+            {mobileShowPanel ? (
+              <ChevronDown className="w-4 h-4" />
+            ) : (
+              <ChevronUp className="w-4 h-4" />
+            )}
+          </button>
+
           {/* Tab bar */}
-          <div className="flex border-b border-[var(--border)] shrink-0">
+          <div className="flex border-t border-[var(--border)]">
             {tabs.map((tab) => (
               <button
                 key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex-1 py-2.5 flex flex-col items-center gap-1 text-[10px] transition-colors ${
-                  activeTab === tab.key
-                    ? "text-[var(--accent-light)] border-b-2 border-[var(--accent)] bg-[var(--accent)]/5"
-                    : "text-[var(--text-secondary)] hover:text-[var(--foreground)] hover:bg-[var(--surface-hover)]"
+                onClick={() => {
+                  setActiveTab(tab.key);
+                  setMobileShowPanel(true);
+                }}
+                className={`flex-1 py-2 flex flex-col items-center gap-0.5 text-[10px] transition-colors ${
+                  activeTab === tab.key && mobileShowPanel
+                    ? "text-[var(--accent-light)] bg-[var(--accent)]/5"
+                    : "text-[var(--text-secondary)] active:text-[var(--foreground)]"
                 }`}
               >
                 {tab.icon}
@@ -141,28 +230,12 @@ export default function EditorLayout() {
               </button>
             ))}
           </div>
-
-          {/* Tab content */}
-          <div className="flex-1 overflow-hidden">
-            {activeTab === "captions" && <CaptionEditor />}
-            {activeTab === "effects" && <EffectsEditor />}
-            {activeTab === "broll" && <BRollPanel />}
-            {activeTab === "export" && <ExportPanel />}
-          </div>
         </div>
-      </div>
 
-      {/* Timeline resize handle */}
-      <div
-        className="h-1.5 bg-[var(--surface)] border-t border-[var(--border)] cursor-row-resize hover:bg-[var(--accent)]/20 active:bg-[var(--accent)]/30 transition-colors flex items-center justify-center shrink-0 group"
-        onMouseDown={handleResizeStart}
-      >
-        <div className="w-8 h-0.5 rounded-full bg-[var(--text-secondary)]/30 group-hover:bg-[var(--accent)]/60 transition-colors" />
-      </div>
-
-      {/* Timeline - bottom, resizable */}
-      <div className="shrink-0" style={{ height: timelineHeight }}>
-        <Timeline />
+        {/* Timeline - fixed small height on mobile */}
+        <div className="shrink-0 h-[100px]">
+          <Timeline />
+        </div>
       </div>
     </div>
   );

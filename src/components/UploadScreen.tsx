@@ -81,12 +81,12 @@ export default function UploadScreen() {
   ];
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen p-8">
+    <div className="flex flex-col items-center justify-center min-h-[100dvh] p-4 md:p-8 overflow-y-auto">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
-        className="text-center mb-12"
+        className="text-center mb-6 md:mb-12"
       >
         <div className="flex items-center justify-center gap-3 mb-4">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[var(--accent)] to-purple-500 flex items-center justify-center">
@@ -106,7 +106,7 @@ export default function UploadScreen() {
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.5, delay: 0.2 }}
-        className={`relative w-full max-w-xl border-2 border-dashed rounded-2xl p-16 text-center cursor-pointer transition-all duration-300 ${
+        className={`relative w-full max-w-xl border-2 border-dashed rounded-2xl p-8 md:p-16 text-center cursor-pointer transition-all duration-300 ${
           dragOver
             ? "border-[var(--accent)] bg-[var(--accent)]/10 scale-[1.02]"
             : "border-[var(--border)] bg-[var(--surface)] hover:border-[var(--accent)]/50 hover:bg-[var(--surface-hover)]"
@@ -177,7 +177,7 @@ export default function UploadScreen() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.4 }}
-        className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-12 max-w-3xl w-full"
+        className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mt-8 md:mt-12 max-w-3xl w-full pb-4"
       >
         {features.map((f, i) => (
           <div

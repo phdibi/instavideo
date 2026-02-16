@@ -213,6 +213,87 @@ export default function Timeline() {
     return "bg-purple-500/50 border-purple-400/70 text-purple-200";
   };
 
+  // Touch support for mobile drag
+  const handleTouchStart = useCallback(
+    (
+      e: React.TouchEvent,
+      type: DragState["type"],
+      id: string,
+      field: DragState["field"],
+      startTime: number,
+      endTime: number
+    ) => {
+      e.stopPropagation();
+      const touch = e.touches[0];
+      setDragState({
+        type,
+        id,
+        field,
+        initialX: touch.clientX,
+        initialStart: startTime,
+        initialEnd: endTime,
+      });
+      if (type !== "playhead") {
+        handleItemClick(type, id);
+      }
+    },
+    [handleItemClick]
+  );
+
+  const handleTouchMove = useCallback(
+    (e: React.TouchEvent) => {
+      if (!dragState) return;
+      const touch = e.touches[0];
+
+      const deltaX = touch.clientX - dragState.initialX;
+      const deltaTime = deltaX / pxPerSecond;
+
+      const { type, id, field, initialStart, initialEnd } = dragState;
+      const duration = initialEnd - initialStart;
+
+      let newStart = initialStart;
+      let newEnd = initialEnd;
+
+      if (field === "move") {
+        newStart = Math.max(0, initialStart + deltaTime);
+        newEnd = newStart + duration;
+        if (newEnd > videoDuration) {
+          newEnd = videoDuration;
+          newStart = videoDuration - duration;
+        }
+      } else if (field === "startTime") {
+        newStart = Math.max(0, Math.min(initialStart + deltaTime, initialEnd - 0.1));
+        newEnd = initialEnd;
+      } else if (field === "endTime") {
+        newStart = initialStart;
+        newEnd = Math.max(initialStart + 0.1, Math.min(initialEnd + deltaTime, videoDuration));
+      }
+
+      if (type === "playhead") {
+        const container = containerRef.current;
+        if (!container) return;
+        const rect = container.getBoundingClientRect();
+        const scrollLeft = container.scrollLeft;
+        const x = touch.clientX - rect.left - HEADER_WIDTH + scrollLeft;
+        const time = Math.min(Math.max(0, x / pxPerSecond), videoDuration);
+        setCurrentTime(time);
+        return;
+      }
+
+      const updates = { startTime: newStart, endTime: newEnd };
+      switch (type) {
+        case "caption": updateCaption(id, updates); break;
+        case "effect": updateEffect(id, updates); break;
+        case "broll": updateBRollImage(id, updates); break;
+      }
+    },
+    [dragState, pxPerSecond, videoDuration, setCurrentTime, updateCaption, updateEffect, updateBRollImage]
+  );
+
+  const handleTouchEnd = useCallback(() => {
+    setDragState(null);
+  }, []);
+
   const ResizeHandle = ({
     side,
     onMouseDown,
@@ -221,7 +302,7 @@ export default function Timeline() {
     onMouseDown: (e: React.MouseEvent) => void;
   }) => (
     <div
-      className={`absolute top-0 bottom-0 w-1.5 cursor-col-resize z-10 hover:bg-white/30 active:bg-white/50 transition-colors ${
+      className={`absolute top-0 bottom-0 w-2.5 md:w-1.5 cursor-col-resize z-10 hover:bg-white/30 active:bg-white/50 transition-colors ${
         side === "left" ? "left-0 rounded-l-md" : "right-0 rounded-r-md"
       }`}
       onMouseDown={onMouseDown}
@@ -230,10 +311,13 @@ export default function Timeline() {
 
   return (
     <div
-      className="h-full bg-[var(--surface)] border-t border-[var(--border)] flex flex-col select-none"
+      className="h-full bg-[var(--surface)] border-t border-[var(--border)] flex flex-col select-none touch-none"
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
     >
       {/* Scrollable container - both X and Y */}
       <div

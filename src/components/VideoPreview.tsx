@@ -285,7 +285,7 @@ export default function VideoPreview() {
       {/* Video Container */}
       <div
         ref={containerRef}
-        className="relative flex-1 bg-black rounded-xl overflow-hidden mx-4 mt-4"
+        className="relative flex-1 bg-black rounded-xl overflow-hidden mx-2 mt-2 md:mx-4 md:mt-4"
       >
         <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
           <video
@@ -345,7 +345,7 @@ export default function VideoPreview() {
       </div>
 
       {/* Controls */}
-      <div className="px-4 py-3 space-y-2">
+      <div className="px-2 py-2 md:px-4 md:py-3 space-y-1.5 md:space-y-2">
         {/* Seek bar */}
         <input
           type="range"

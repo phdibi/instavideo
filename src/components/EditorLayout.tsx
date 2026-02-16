@@ -8,8 +8,7 @@ import {
   Download,
   ArrowLeft,
   Film,
-  ChevronUp,
-  ChevronDown,
+  GripHorizontal,
 } from "lucide-react";
 import VideoPreview from "./VideoPreview";
 import CaptionEditor from "./CaptionEditor";
@@ -44,6 +43,11 @@ const MIN_TIMELINE_HEIGHT = 100;
 const MAX_TIMELINE_HEIGHT = 500;
 const DEFAULT_TIMELINE_HEIGHT = 200;
 
+// Mobile panel height presets (percentage of available space)
+const MOBILE_PANEL_COLLAPSED = 0; // Panel hidden
+const MOBILE_PANEL_HALF = 55; // Panel takes ~55% of area
+const MOBILE_PANEL_FULL = 90; // Panel nearly fullscreen
+
 export default function EditorLayout() {
   const [activeTab, setActiveTab] = useState<Tab>("captions");
   const { reset, captions, effects, selectedItem } = useProjectStore();
@@ -51,8 +55,15 @@ export default function EditorLayout() {
   const isDraggingRef = useRef(false);
   const startYRef = useRef(0);
   const startHeightRef = useRef(0);
-  // Mobile: toggle between video and sidebar panels
-  const [mobileShowPanel, setMobileShowPanel] = useState(false);
+
+  // Mobile: panel height as percentage (0 = collapsed, 55 = half, 90 = full)
+  const [mobilePanelPercent, setMobilePanelPercent] = useState(MOBILE_PANEL_COLLAPSED);
+  const mobileDragRef = useRef(false);
+  const mobileDragStartYRef = useRef(0);
+  const mobileDragStartPercentRef = useRef(0);
+  const mobileContentRef = useRef<HTMLDivElement>(null);
+
+  const mobilePanelOpen = mobilePanelPercent > 0;
 
   // Auto-switch sidebar tab when an item is selected from the timeline
   useEffect(() => {
@@ -63,8 +74,52 @@ export default function EditorLayout() {
       broll: "broll",
     };
     const targetTab = tabMap[selectedItem.type];
-    if (targetTab) setActiveTab(targetTab);
+    if (targetTab) {
+      setActiveTab(targetTab);
+      // Auto-expand panel on mobile when selecting from timeline
+      if (mobilePanelPercent === MOBILE_PANEL_COLLAPSED) {
+        setMobilePanelPercent(MOBILE_PANEL_HALF);
+      }
+    }
   }, [selectedItem]);
+
+  // Mobile panel drag handler (touch)
+  const handleMobilePanelDragStart = useCallback(
+    (e: React.TouchEvent) => {
+      mobileDragRef.current = true;
+      mobileDragStartYRef.current = e.touches[0].clientY;
+      mobileDragStartPercentRef.current = mobilePanelPercent;
+    },
+    [mobilePanelPercent]
+  );
+
+  const handleMobilePanelDragMove = useCallback(
+    (e: React.TouchEvent) => {
+      if (!mobileDragRef.current) return;
+      const container = mobileContentRef.current;
+      if (!container) return;
+
+      const deltaY = mobileDragStartYRef.current - e.touches[0].clientY;
+      const containerHeight = container.getBoundingClientRect().height;
+      const deltaPercent = (deltaY / containerHeight) * 100;
+      const newPercent = Math.min(
+        MOBILE_PANEL_FULL,
+        Math.max(0, mobileDragStartPercentRef.current + deltaPercent)
+      );
+      setMobilePanelPercent(newPercent);
+    },
+    []
+  );
+
+  const handleMobilePanelDragEnd = useCallback(() => {
+    mobileDragRef.current = false;
+    // Snap to nearest preset
+    setMobilePanelPercent((prev) => {
+      if (prev < 20) return MOBILE_PANEL_COLLAPSED;
+      if (prev < 72) return MOBILE_PANEL_HALF;
+      return MOBILE_PANEL_FULL;
+    });
+  }, []);
 
   // Resize handle for timeline (desktop)
   const handleResizeStart = useCallback(
@@ -176,17 +231,34 @@ export default function EditorLayout() {
 
       {/* ====== MOBILE LAYOUT ====== */}
       <div className="md:hidden flex-1 flex flex-col overflow-hidden">
-        {/* Video or Panel area */}
-        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-          {!mobileShowPanel ? (
-            /* Video preview - takes full available space */
-            <div className="flex-1 min-h-0">
-              <VideoPreview />
-            </div>
-          ) : (
-            /* Panel content area */
-            <div className="flex-1 min-h-0 bg-[var(--surface)] overflow-hidden">
-              <div className="h-full overflow-y-auto">
+        {/* Main content area: video + sliding panel */}
+        <div ref={mobileContentRef} className="flex-1 min-h-0 flex flex-col relative overflow-hidden">
+          {/* Video preview - always visible, shrinks as panel grows */}
+          <div
+            className="min-h-[120px] transition-all duration-300 ease-out"
+            style={{ flex: `1 1 ${100 - mobilePanelPercent}%` }}
+          >
+            <VideoPreview />
+          </div>
+
+          {/* Panel area - grows from bottom */}
+          {mobilePanelOpen && (
+            <div
+              className="bg-[var(--surface)] border-t border-[var(--border)] flex flex-col overflow-hidden transition-all duration-300 ease-out"
+              style={{ flex: `0 0 ${mobilePanelPercent}%` }}
+            >
+              {/* Drag handle */}
+              <div
+                className="flex items-center justify-center py-1.5 cursor-grab active:cursor-grabbing touch-none shrink-0"
+                onTouchStart={handleMobilePanelDragStart}
+                onTouchMove={handleMobilePanelDragMove}
+                onTouchEnd={handleMobilePanelDragEnd}
+              >
+                <GripHorizontal className="w-5 h-5 text-[var(--text-secondary)]/50" />
+              </div>
+
+              {/* Panel content */}
+              <div className="flex-1 min-h-0 overflow-y-auto">
                 {activeTab === "captions" && <CaptionEditor />}
                 {activeTab === "effects" && <EffectsEditor />}
                 {activeTab === "broll" && <BRollPanel />}
@@ -196,33 +268,28 @@ export default function EditorLayout() {
           )}
         </div>
 
-        {/* Mobile: Toggle video/panel + tab bar */}
+        {/* Tab bar - always visible */}
         <div className="shrink-0 bg-[var(--surface)] border-t border-[var(--border)]">
-          {/* Toggle button */}
-          <button
-            onClick={() => setMobileShowPanel(!mobileShowPanel)}
-            className="w-full flex items-center justify-center py-1.5 text-[var(--text-secondary)] active:bg-[var(--surface-hover)] transition-colors"
-          >
-            {mobileShowPanel ? (
-              <ChevronDown className="w-4 h-4" />
-            ) : (
-              <ChevronUp className="w-4 h-4" />
-            )}
-          </button>
-
-          {/* Tab bar */}
-          <div className="flex border-t border-[var(--border)]">
+          <div className="flex">
             {tabs.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => {
-                  setActiveTab(tab.key);
-                  setMobileShowPanel(true);
+                  if (activeTab === tab.key && mobilePanelOpen) {
+                    // Tapping same active tab toggles panel
+                    setMobilePanelPercent(MOBILE_PANEL_COLLAPSED);
+                  } else {
+                    setActiveTab(tab.key);
+                    // Open or expand panel when selecting a tab
+                    setMobilePanelPercent((prev) =>
+                      prev < MOBILE_PANEL_HALF ? MOBILE_PANEL_HALF : prev
+                    );
+                  }
                 }}
-                className={`flex-1 py-2 flex flex-col items-center gap-0.5 text-[10px] transition-colors ${
-                  activeTab === tab.key && mobileShowPanel
-                    ? "text-[var(--accent-light)] bg-[var(--accent)]/5"
-                    : "text-[var(--text-secondary)] active:text-[var(--foreground)]"
+                className={`flex-1 py-2.5 flex flex-col items-center gap-0.5 text-[10px] transition-colors ${
+                  activeTab === tab.key && mobilePanelOpen
+                    ? "text-[var(--accent-light)] bg-[var(--accent)]/5 border-t-2 border-[var(--accent)]"
+                    : "text-[var(--text-secondary)] active:text-[var(--foreground)] border-t-2 border-transparent"
                 }`}
               >
                 {tab.icon}

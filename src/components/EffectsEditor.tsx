@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   Sparkles,
   Trash2,
@@ -92,6 +92,12 @@ export default function EffectsEditor() {
   const [showAdd, setShowAdd] = useState(false);
   const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
+  // Sort effects by startTime (like captions)
+  const sortedEffects = useMemo(
+    () => [...effects].sort((a, b) => a.startTime - b.startTime),
+    [effects]
+  );
+
   // Auto-expand and scroll to selected effect from timeline
   useEffect(() => {
     if (selectedItem?.type === "effect") {
@@ -171,14 +177,14 @@ export default function EffectsEditor() {
       )}
 
       <div className="flex-1 overflow-y-auto">
-        {effects.length === 0 ? (
+        {sortedEffects.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] text-sm p-4">
             <Sparkles className="w-8 h-8 mb-2 opacity-50" />
             <p>Nenhum efeito</p>
           </div>
         ) : (
           <div className="divide-y divide-[var(--border)]">
-            {effects.map((effect) => {
+            {sortedEffects.map((effect) => {
               const isSelected = selectedItem?.type === "effect" && selectedItem.id === effect.id;
               return (
                 <div

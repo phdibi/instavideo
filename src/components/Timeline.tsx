@@ -7,6 +7,7 @@ const TRACK_HEIGHT = 36;
 const EFFECT_ROW_HEIGHT = 28;
 const HEADER_WIDTH = 76;
 const RULER_HEIGHT = 24;
+const LONG_PRESS_DURATION = 300; // ms for long-press activation
 
 interface DragState {
   type: "caption" | "effect" | "broll" | "playhead";
@@ -22,6 +23,8 @@ export default function Timeline() {
   const trackAreaRef = useRef<HTMLDivElement>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [longPressActive, setLongPressActive] = useState<string | null>(null); // id of item being long-pressed
 
   const {
     videoDuration,
@@ -213,7 +216,57 @@ export default function Timeline() {
     return "bg-purple-500/50 border-purple-400/70 text-purple-200";
   };
 
-  // Touch support for mobile drag
+  // Long-press handler for mobile: starts drag after hold
+  const handleItemLongPressStart = useCallback(
+    (
+      e: React.TouchEvent,
+      type: DragState["type"],
+      id: string,
+      field: DragState["field"],
+      startTime: number,
+      endTime: number
+    ) => {
+      e.stopPropagation();
+      const touch = e.touches[0];
+      const touchStartX = touch.clientX;
+
+      // Clear any existing timer
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+      }
+
+      // Start long-press timer
+      longPressTimerRef.current = setTimeout(() => {
+        // Haptic feedback
+        if (navigator.vibrate) {
+          navigator.vibrate(30);
+        }
+        setLongPressActive(id);
+        setDragState({
+          type,
+          id,
+          field,
+          initialX: touchStartX,
+          initialStart: startTime,
+          initialEnd: endTime,
+        });
+        if (type !== "playhead") {
+          handleItemClick(type, id);
+        }
+      }, LONG_PRESS_DURATION);
+    },
+    [handleItemClick]
+  );
+
+  const handleItemLongPressEnd = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    setLongPressActive(null);
+  }, []);
+
+  // Touch support for mobile drag (also used by resize handles directly)
   const handleTouchStart = useCallback(
     (
       e: React.TouchEvent,
@@ -292,20 +345,24 @@ export default function Timeline() {
 
   const handleTouchEnd = useCallback(() => {
     setDragState(null);
-  }, []);
+    handleItemLongPressEnd();
+  }, [handleItemLongPressEnd]);
 
   const ResizeHandle = ({
     side,
     onMouseDown,
+    onTouchStart: onTouchStartProp,
   }: {
     side: "left" | "right";
     onMouseDown: (e: React.MouseEvent) => void;
+    onTouchStart?: (e: React.TouchEvent) => void;
   }) => (
     <div
-      className={`absolute top-0 bottom-0 w-2.5 md:w-1.5 cursor-col-resize z-10 hover:bg-white/30 active:bg-white/50 transition-colors ${
+      className={`absolute top-0 bottom-0 w-3 md:w-1.5 cursor-col-resize z-10 hover:bg-white/30 active:bg-white/50 transition-colors ${
         side === "left" ? "left-0 rounded-l-md" : "right-0 rounded-r-md"
       }`}
       onMouseDown={onMouseDown}
+      onTouchStart={onTouchStartProp}
     />
   );
 
@@ -388,8 +445,8 @@ export default function Timeline() {
                           ? "bg-[var(--accent)]/50 border-[var(--accent)]/80 text-white z-10"
                           : "bg-[var(--accent)]/30 border-[var(--accent)]/50 text-white/80"
                       } ${
-                        dragState?.id === c.id
-                          ? "cursor-grabbing opacity-80 z-20"
+                        dragState?.id === c.id || longPressActive === c.id
+                          ? "cursor-grabbing opacity-80 z-20 scale-105"
                           : "cursor-grab"
                       }`}
                       style={{
@@ -399,6 +456,9 @@ export default function Timeline() {
                       }}
                       onMouseDown={(e) => {
                         handleDragStart(e, "caption", c.id, "move", c.startTime, c.endTime);
+                      }}
+                      onTouchStart={(e) => {
+                        handleItemLongPressStart(e, "caption", c.id, "move", c.startTime, c.endTime);
                       }}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -413,6 +473,9 @@ export default function Timeline() {
                         onMouseDown={(e) =>
                           handleDragStart(e, "caption", c.id, "startTime", c.startTime, c.endTime)
                         }
+                        onTouchStart={(e) =>
+                          handleTouchStart(e, "caption", c.id, "startTime", c.startTime, c.endTime)
+                        }
                       />
                       {itemWidth > 30 && (
                         <span className="truncate mx-1.5">{c.text}</span>
@@ -421,6 +484,9 @@ export default function Timeline() {
                         side="right"
                         onMouseDown={(e) =>
                           handleDragStart(e, "caption", c.id, "endTime", c.startTime, c.endTime)
+                        }
+                        onTouchStart={(e) =>
+                          handleTouchStart(e, "caption", c.id, "endTime", c.startTime, c.endTime)
                         }
                       />
                     </div>
@@ -465,8 +531,8 @@ export default function Timeline() {
                             ? "brightness-115 z-10"
                             : "hover:brightness-110"
                         } ${
-                          dragState?.id === e.id
-                            ? "cursor-grabbing opacity-80 z-20"
+                          dragState?.id === e.id || longPressActive === e.id
+                            ? "cursor-grabbing opacity-80 z-20 scale-105"
                             : "cursor-grab"
                         }`}
                         style={{
@@ -477,6 +543,9 @@ export default function Timeline() {
                         }}
                         onMouseDown={(ev) => {
                           handleDragStart(ev, "effect", e.id, "move", e.startTime, e.endTime);
+                        }}
+                        onTouchStart={(ev) => {
+                          handleItemLongPressStart(ev, "effect", e.id, "move", e.startTime, e.endTime);
                         }}
                         onClick={(ev) => {
                           ev.stopPropagation();
@@ -491,6 +560,9 @@ export default function Timeline() {
                           onMouseDown={(ev) =>
                             handleDragStart(ev, "effect", e.id, "startTime", e.startTime, e.endTime)
                           }
+                          onTouchStart={(ev) =>
+                            handleTouchStart(ev, "effect", e.id, "startTime", e.startTime, e.endTime)
+                          }
                         />
                         {itemWidth > 40 && (
                           <span className="truncate mx-1.5">{e.type}</span>
@@ -499,6 +571,9 @@ export default function Timeline() {
                           side="right"
                           onMouseDown={(ev) =>
                             handleDragStart(ev, "effect", e.id, "endTime", e.startTime, e.endTime)
+                          }
+                          onTouchStart={(ev) =>
+                            handleTouchStart(ev, "effect", e.id, "endTime", e.startTime, e.endTime)
                           }
                         />
                       </div>
@@ -543,8 +618,8 @@ export default function Timeline() {
                             : "bg-orange-500/40 border-orange-400/60 text-orange-200"
                           : "bg-gray-500/20 border-gray-500/40 border-dashed text-gray-400"
                       } ${
-                        dragState?.id === b.id
-                          ? "cursor-grabbing opacity-80 z-20"
+                        dragState?.id === b.id || longPressActive === b.id
+                          ? "cursor-grabbing opacity-80 z-20 scale-105"
                           : "cursor-grab"
                       }`}
                       style={{
@@ -554,6 +629,9 @@ export default function Timeline() {
                       }}
                       onMouseDown={(ev) => {
                         handleDragStart(ev, "broll", b.id, "move", b.startTime, b.endTime);
+                      }}
+                      onTouchStart={(ev) => {
+                        handleItemLongPressStart(ev, "broll", b.id, "move", b.startTime, b.endTime);
                       }}
                       onClick={(ev) => {
                         ev.stopPropagation();
@@ -568,6 +646,9 @@ export default function Timeline() {
                         onMouseDown={(ev) =>
                           handleDragStart(ev, "broll", b.id, "startTime", b.startTime, b.endTime)
                         }
+                        onTouchStart={(ev) =>
+                          handleTouchStart(ev, "broll", b.id, "startTime", b.startTime, b.endTime)
+                        }
                       />
                       {itemWidth > 30 && (
                         <span className="truncate mx-1.5">
@@ -578,6 +659,9 @@ export default function Timeline() {
                         side="right"
                         onMouseDown={(ev) =>
                           handleDragStart(ev, "broll", b.id, "endTime", b.startTime, b.endTime)
+                        }
+                        onTouchStart={(ev) =>
+                          handleTouchStart(ev, "broll", b.id, "endTime", b.startTime, b.endTime)
                         }
                       />
                     </div>
@@ -603,12 +687,12 @@ export default function Timeline() {
               />
               {/* Draggable head - pointer events enabled */}
               <div
-                className={`absolute top-0 w-3 h-3 rounded-full bg-red-500 shadow-md shadow-red-500/50 cursor-grab pointer-events-auto group-hover:scale-125 transition-transform ${
+                className={`absolute top-0 w-4 h-4 md:w-3 md:h-3 rounded-full bg-red-500 shadow-md shadow-red-500/50 cursor-grab pointer-events-auto group-hover:scale-125 transition-transform ${
                   dragState?.type === "playhead"
                     ? "scale-150 cursor-grabbing"
                     : ""
                 }`}
-                style={{ left: 2 }}
+                style={{ left: 0 }}
                 onMouseDown={(e) => {
                   e.stopPropagation();
                   e.preventDefault();
@@ -617,6 +701,18 @@ export default function Timeline() {
                     id: "playhead",
                     field: "move",
                     initialX: e.clientX,
+                    initialStart: currentTime,
+                    initialEnd: currentTime,
+                  });
+                }}
+                onTouchStart={(e) => {
+                  e.stopPropagation();
+                  const touch = e.touches[0];
+                  setDragState({
+                    type: "playhead",
+                    id: "playhead",
+                    field: "move",
+                    initialX: touch.clientX,
                     initialStart: currentTime,
                     initialEnd: currentTime,
                   });
@@ -633,6 +729,18 @@ export default function Timeline() {
                     id: "playhead",
                     field: "move",
                     initialX: e.clientX,
+                    initialStart: currentTime,
+                    initialEnd: currentTime,
+                  });
+                }}
+                onTouchStart={(e) => {
+                  e.stopPropagation();
+                  const touch = e.touches[0];
+                  setDragState({
+                    type: "playhead",
+                    id: "playhead",
+                    field: "move",
+                    initialX: touch.clientX,
                     initialStart: currentTime,
                     initialEnd: currentTime,
                   });

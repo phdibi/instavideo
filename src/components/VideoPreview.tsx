@@ -78,23 +78,18 @@ export default function VideoPreview() {
   videoDurationRef.current = videoDuration;
 
   const updateTime = useCallback(() => {
+    // Use the ref as the loop condition — NOT vid.paused.
+    // vid.paused can be momentarily true during buffering/seeking,
+    // which would kill the loop prematurely. The ref is set to false
+    // only by explicit user actions (pause, restart, onEnded).
+    if (!isPlayingRef.current) return;
+
     const vid = videoRef.current;
     if (!vid) return;
-
-    // If the video is actually paused/ended, stop the loop
-    if (vid.paused || vid.ended) {
-      isPlayingRef.current = false;
-      setIsPlaying(false);
-      if (vid.ended && videoDurationRef.current > 0) {
-        setCurrentTime(videoDurationRef.current);
-      }
-      return;
-    }
 
     const now = performance.now();
     if (now - lastUpdateRef.current >= 33) {
       const dur = videoDurationRef.current;
-      // Clamp to duration if known, otherwise pass through raw time
       const t = (dur && dur > 0 && Number.isFinite(dur))
         ? Math.min(vid.currentTime, dur)
         : vid.currentTime;
@@ -103,7 +98,7 @@ export default function VideoPreview() {
     }
 
     animFrameRef.current = requestAnimationFrame(updateTime);
-  }, [setCurrentTime, setIsPlaying]); // Stable deps — no videoDuration
+  }, [setCurrentTime]); // Only stable dep
 
   // Start/stop RAF loop when isPlaying changes
   useEffect(() => {
@@ -315,30 +310,15 @@ export default function VideoPreview() {
     const vid = videoRef.current;
     if (!vid) return;
     if (vid.paused) {
-      // Set ref BEFORE calling play — prevents seek effect from firing during startup
+      // Set BOTH ref AND state IMMEDIATELY — don't wait for play() promise.
+      // This ensures the RAF loop starts on the next render cycle.
       isPlayingRef.current = true;
-      const playPromise = vid.play();
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => setIsPlaying(true))
-          .catch(() => {
-            isPlayingRef.current = false;
-            // Play was interrupted — retry once after a short delay
-            setTimeout(() => {
-              if (vid.paused) {
-                isPlayingRef.current = true;
-                vid.play()
-                  .then(() => setIsPlaying(true))
-                  .catch(() => {
-                    isPlayingRef.current = false;
-                    setIsPlaying(false);
-                  });
-              }
-            }, 100);
-          });
-      } else {
-        setIsPlaying(true);
-      }
+      setIsPlaying(true);
+      vid.play().catch(() => {
+        // Play failed (e.g., autoplay policy) — revert
+        isPlayingRef.current = false;
+        setIsPlaying(false);
+      });
     } else {
       isPlayingRef.current = false;
       vid.pause();

@@ -179,7 +179,8 @@ function buildCaptionsFromTranscription(
 }
 
 // ===== Speech-driven effect generator =====
-// Based on research: effects should sync with speech rhythm, not fixed intervals
+// Selective zooms — only on key moments, not every segment.
+// Professional approach: ~30-40% of segments get zooms.
 function buildSpeechDrivenEffects(
   segments: TranscriptionSegment[],
   videoDuration: number
@@ -193,67 +194,94 @@ function buildSpeechDrivenEffects(
 
   const effects: EditEffect[] = [];
 
-  // Pattern: alternate zoom types per segment for visual rhythm
-  // Research says: zoom should follow speech emphasis (new ideas, key phrases)
+  // Step 1: Score each segment for zoom-worthiness
+  const scoredSegments = segments.map((seg, i) => {
+    let score = 0;
+    const segDuration = seg.end - seg.start;
+    const wordCount = seg.text.trim().split(/\s+/).length;
+
+    // Hook zone (first 3s) — always zoom
+    if (seg.start < 3) score += 10;
+
+    // Short punchy phrases — high energy, worth zooming
+    if (segDuration < 2 && wordCount <= 5) score += 5;
+
+    // After a silence gap (> 0.5s) — topic shift, good for zoom
+    if (i > 0) {
+      const gap = seg.start - segments[i - 1].end;
+      if (gap > 0.5) score += 4;
+    }
+
+    // Very long segments (> 4s) — probably not impactful
+    if (segDuration > 4) score -= 2;
+
+    // Segment too short to notice zoom
+    if (segDuration < 0.3) score -= 10;
+
+    return { seg, index: i, score, segDuration, wordCount };
+  });
+
+  // Step 2: Select top ~35% of segments for zooms (minimum 2, max based on count)
+  const targetZoomCount = Math.max(2, Math.ceil(segments.length * 0.35));
+  const zoomCandidates = scoredSegments
+    .filter((s) => s.score > -5 && s.segDuration >= 0.3)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, targetZoomCount)
+    .sort((a, b) => a.index - b.index); // Re-sort by timeline order
+
+  // Step 3: Generate zoom effects only for selected segments
   const zoomPattern: EffectType[] = ["zoom-in", "zoom-out", "zoom-pulse"];
 
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i];
-    const segDuration = seg.end - seg.start;
-    const zoomType = zoomPattern[i % zoomPattern.length];
+  for (let zi = 0; zi < zoomCandidates.length; zi++) {
+    const { seg, index, segDuration, wordCount } = zoomCandidates[zi];
+    const zoomType = zoomPattern[zi % zoomPattern.length];
 
-    // Only add zoom if segment is at least 0.3 seconds
-    if (segDuration < 0.3) continue;
-
-    // Vary zoom parameters based on segment position and length
-    // First 3 seconds = "hook" zone - use stronger zooms
     const isHookZone = seg.start < 3;
-    // Longer sentences get gentler zooms, short impactful ones get stronger
-    const isShortPunchy = segDuration < 2 && seg.text.split(/\s+/).length <= 5;
+    const isShortPunchy = segDuration < 2 && wordCount <= 5;
 
     let params: Record<string, unknown>;
     switch (zoomType) {
       case "zoom-in":
         params = {
-          scale: isHookZone ? 1.35 : isShortPunchy ? 1.25 : 1.15,
+          scale: isHookZone ? 1.30 : isShortPunchy ? 1.20 : 1.12,
           focusX: 0.5,
           focusY: 0.35,
         };
         break;
       case "zoom-out":
         params = {
-          scale: isHookZone ? 1.3 : 1.15,
+          scale: isHookZone ? 1.20 : 1.12,
         };
         break;
       case "zoom-pulse":
         params = {
-          scale: isShortPunchy ? 1.15 : 1.08,
+          scale: isShortPunchy ? 1.10 : 1.06,
         };
         break;
       default:
-        params = { scale: 1.15 };
+        params = { scale: 1.10 };
     }
 
     effects.push({
-      id: `effect_zoom_${i}`,
+      id: `effect_zoom_${index}`,
       type: zoomType,
       startTime: seg.start,
       endTime: seg.end,
       params,
     });
+  }
 
-    // Add transition-fade at major pauses (gap > 0.5s between segments)
-    if (i < segments.length - 1) {
-      const gap = segments[i + 1].start - seg.end;
-      if (gap > 0.5) {
-        effects.push({
-          id: `effect_fade_${i}`,
-          type: "transition-fade",
-          startTime: seg.end - 0.15,
-          endTime: seg.end + 0.15,
-          params: { duration: 0.3 },
-        });
-      }
+  // Step 4: Add transition-fade at major pauses
+  for (let i = 0; i < segments.length - 1; i++) {
+    const gap = segments[i + 1].start - segments[i].end;
+    if (gap > 0.5) {
+      effects.push({
+        id: `effect_fade_${i}`,
+        type: "transition-fade",
+        startTime: segments[i].end - 0.15,
+        endTime: segments[i].end + 0.15,
+        params: { duration: 0.3 },
+      });
     }
   }
 
@@ -268,7 +296,7 @@ function buildSpeechDrivenEffects(
     });
   }
 
-  // Add subtle vignette for full duration (cinematic framing)
+  // Add subtle vignette for full duration
   if (effectiveDuration > 2) {
     effects.push({
       id: "effect_vignette",
@@ -451,9 +479,10 @@ export default function ProcessingScreen() {
       }
 
       // Step 5: Build effects - prefer AI if good, otherwise speech-driven fallback
+      // Lowered threshold: AI now generates ~35% zooms + globals, so fewer effects expected
       setStatus("generating-plan");
       const effects =
-        aiEffects.length >= segments.length * 0.5
+        aiEffects.length >= Math.max(3, segments.length * 0.2)
           ? aiEffects
           : buildSpeechDrivenEffects(segments, effectiveDuration);
 

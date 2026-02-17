@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
           role: "user",
           parts: [
             {
-              text: `You are a viral social media video editor. Generate EFFECTS and B-ROLL for this talking-head video.
+              text: `You are a professional cinematic video editor. Generate EFFECTS and B-ROLL for this talking-head video.
 
 VIDEO: ${videoDuration.toFixed(1)}s, ${numSegments} speech segments.
 
@@ -45,15 +45,18 @@ ${segmentList}
 Return ONLY valid JSON (no markdown, no code blocks).
 
 EFFECTS INSTRUCTIONS:
-Create exactly ONE zoom per segment using its exact start/end times. Alternate: zoom-in → zoom-out → zoom-pulse → repeat.
+Add zoom effects SELECTIVELY — NOT on every segment. Zooms should emphasize key moments:
+- The HOOK (first 3 seconds): One zoom-in with stronger scale (1.25-1.35)
+- Key emotional/impactful moments: zoom-in or zoom-pulse
+- Topic transitions: zoom-out to "reset" framing
+- Short punchy phrases (< 2 seconds, ≤ 5 words): zoom-pulse for emphasis
 
-For each segment, copy its start and end time exactly. Example for segment [1] 0.00s-2.50s:
-{"id":"e1","type":"zoom-in","startTime":0.00,"endTime":2.50,"params":{"scale":1.25,"focusX":0.5,"focusY":0.35}}
+IMPORTANT: Only add zooms to roughly 30-40% of segments. Leave most segments WITHOUT zoom for a clean, professional look. Too many zooms feels amateur and distracting.
 
 Zoom params:
-- zoom-in: scale 1.15-1.35, focusX 0.5, focusY 0.35 (stronger for first 3 seconds = hook zone)
-- zoom-out: scale 1.15-1.25
-- zoom-pulse: scale 1.08-1.15
+- zoom-in: scale 1.15-1.25, focusX 0.5, focusY 0.35
+- zoom-out: scale 1.10-1.20
+- zoom-pulse: scale 1.05-1.12
 
 Also add these GLOBAL effects:
 - One color-grade from 0 to ${videoDuration.toFixed(1)}: {"preset":"cinematic-warm"}
@@ -61,7 +64,7 @@ Also add these GLOBAL effects:
 
 Add transition-fade (0.3s) at gaps between segments where silence > 0.5s.
 
-TOTAL EFFECTS: ${numSegments} zooms + 2 globals + a few transitions.
+EXPECTED: ~${Math.max(2, Math.ceil(numSegments * 0.35))} zooms + 2 globals + a few transitions.
 
 B-ROLL INSTRUCTIONS:
 Suggest 3-5 b-roll images spaced evenly across the video.
@@ -73,7 +76,7 @@ RETURN THIS JSON:
 {
   "effects": [
     {"id":"e1","type":"zoom-in","startTime":0.0,"endTime":2.5,"params":{"scale":1.25,"focusX":0.5,"focusY":0.35}},
-    {"id":"e2","type":"zoom-out","startTime":2.5,"endTime":5.0,"params":{"scale":1.2}},
+    {"id":"e2","type":"zoom-out","startTime":8.0,"endTime":10.5,"params":{"scale":1.15}},
     {"id":"cg","type":"color-grade","startTime":0,"endTime":${videoDuration.toFixed(1)},"params":{"preset":"cinematic-warm"}},
     {"id":"vig","type":"vignette","startTime":0,"endTime":${videoDuration.toFixed(1)},"params":{"intensity":0.2}}
   ],

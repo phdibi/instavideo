@@ -26,16 +26,35 @@ export default function VideoPreview() {
     setVideoDuration,
   } = useProjectStore();
 
+  // Track if a seek is in progress to avoid queueing multiple seeks
+  const seekingRef = useRef(false);
+  const seekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Sync video element with store currentTime (for timeline/playhead seeking)
+  // Debounced to prevent rapid seeks from corrupting the video decoder
   useEffect(() => {
     const vid = videoRef.current;
     if (!vid) return;
-    // Only seek the video element if the time was changed externally (not from playback)
-    // We detect external change if the difference between video.currentTime and store currentTime is > 0.15s
     const diff = Math.abs(vid.currentTime - currentTime);
     if (diff > 0.15 && !isPlaying) {
-      vid.currentTime = currentTime;
+      // Debounce rapid seeks (e.g. from caption timing edits)
+      if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
+      seekTimeoutRef.current = setTimeout(() => {
+        if (videoRef.current && !seekingRef.current) {
+          seekingRef.current = true;
+          videoRef.current.currentTime = currentTime;
+          // Reset seeking flag after the seek completes
+          const onSeeked = () => {
+            seekingRef.current = false;
+            videoRef.current?.removeEventListener("seeked", onSeeked);
+          };
+          videoRef.current.addEventListener("seeked", onSeeked);
+        }
+      }, 50);
     }
+    return () => {
+      if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
+    };
   }, [currentTime, isPlaying]);
 
   // Find active effects at current time

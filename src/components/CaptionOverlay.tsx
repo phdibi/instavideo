@@ -14,6 +14,7 @@ export default function CaptionOverlay({ currentTime }: Props) {
 
   // Find the SINGLE most relevant caption at this time
   // Only show ONE caption at a time - pick the one with earliest start time
+  // Use a stable key based on caption text + timing to prevent excessive re-renders
   const activeCaption = useMemo(() => {
     const active = captions
       .filter((c) => currentTime >= c.startTime && currentTime < c.endTime)
@@ -21,12 +22,17 @@ export default function CaptionOverlay({ currentTime }: Props) {
     return active.length > 0 ? active[0] : null;
   }, [captions, currentTime]);
 
+  // Stable key: only change when the actual caption identity changes, not on every edit
+  const captionKey = activeCaption
+    ? `${activeCaption.id}-${activeCaption.startTime.toFixed(2)}`
+    : null;
+
   return (
     <div className="absolute inset-0 pointer-events-none">
       <AnimatePresence mode="wait">
-        {activeCaption && (
+        {activeCaption && captionKey && (
           <CaptionDisplay
-            key={activeCaption.id}
+            key={captionKey}
             caption={activeCaption}
             currentTime={currentTime}
           />

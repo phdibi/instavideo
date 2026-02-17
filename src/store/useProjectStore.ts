@@ -85,11 +85,23 @@ export const useProjectStore = create<ProjectStore>((set) => ({
     set({ status, statusMessage: message || "" }),
   setCaptions: (captions) => set({ captions }),
   updateCaption: (id, updates) =>
-    set((state) => ({
-      captions: state.captions.map((c) =>
+    set((state) => {
+      const updated = state.captions.map((c) =>
         c.id === id ? { ...c, ...updates } : c
-      ),
-    })),
+      );
+      // Re-sort only if timing changed to keep order consistent
+      if ('startTime' in updates || 'endTime' in updates) {
+        // Fix overlaps: ensure no two captions occupy the same time range
+        updated.sort((a, b) => a.startTime - b.startTime);
+        for (let i = 1; i < updated.length; i++) {
+          if (updated[i].startTime < updated[i - 1].endTime) {
+            // Clamp previous caption's end to avoid overlap
+            updated[i - 1] = { ...updated[i - 1], endTime: updated[i].startTime };
+          }
+        }
+      }
+      return { captions: updated };
+    }),
   deleteCaption: (id) =>
     set((state) => ({
       captions: state.captions.filter((c) => c.id !== id),

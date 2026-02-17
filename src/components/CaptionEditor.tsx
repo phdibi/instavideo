@@ -8,6 +8,8 @@ import {
   ChevronUp,
   Plus,
   Palette,
+  CheckSquare,
+  Square,
 } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { formatTime } from "@/lib/formatTime";
@@ -195,6 +197,7 @@ export default function CaptionEditor() {
   } = useProjectStore();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showPresets, setShowPresets] = useState(false);
+  const [applyToAll, setApplyToAll] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
@@ -246,6 +249,21 @@ export default function CaptionEditor() {
     setShowPresets(false);
   };
 
+  const handleCaptionUpdate = (id: string, updates: Partial<Caption>) => {
+    if (applyToAll && (updates.style || updates.animation)) {
+      const newCaptions = captions.map((c) => {
+        const cUpdates: Partial<Caption> = {};
+        if (updates.style) cUpdates.style = updates.style;
+        if (updates.animation) cUpdates.animation = updates.animation;
+        // Merge updates, but only if they are style/animation
+        return { ...c, ...cUpdates };
+      });
+      setCaptions(newCaptions);
+    } else {
+      updateCaption(id, updates);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between p-3 border-b border-[var(--border)]">
@@ -253,7 +271,20 @@ export default function CaptionEditor() {
           <Type className="w-4 h-4 text-[var(--accent-light)]" />
           Legendas ({captions.length})
         </h3>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setApplyToAll(!applyToAll)}
+            className={`flex items-center gap-1.5 px-2 py-1 text-[10px] font-medium rounded-lg border transition-colors ${
+              applyToAll
+                ? "bg-[var(--accent)] border-[var(--accent)] text-white"
+                : "bg-transparent border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]"
+            }`}
+            title="Aplicar alterações de estilo a todas as legendas"
+          >
+            {applyToAll ? <CheckSquare className="w-3 h-3" /> : <Square className="w-3 h-3" />}
+            Aplicar a todas
+          </button>
+          <div className="w-px h-4 bg-[var(--border)] mx-1" />
           <button
             onClick={() => setShowPresets(!showPresets)}
             className="p-1.5 rounded-lg hover:bg-[var(--surface-hover)] transition-colors"
@@ -314,7 +345,7 @@ export default function CaptionEditor() {
                   onToggle={() =>
                     setExpandedId(expandedId === caption.id ? null : caption.id)
                   }
-                  onUpdate={(updates) => updateCaption(caption.id, updates)}
+                  onUpdate={(updates) => handleCaptionUpdate(caption.id, updates)}
                   onDelete={() => deleteCaption(caption.id)}
                   onSeek={() => setCurrentTime(caption.startTime)}
                 />

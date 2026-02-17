@@ -72,6 +72,10 @@ export default function VideoPreview() {
   // Reads vid.currentTime → writes to the store at ~30fps.
   // This is the ONLY writer of currentTime during playback.
   const lastUpdateRef = useRef(0);
+  // Use a ref for videoDuration so updateTime doesn't need it as a dep
+  // (avoids callback identity change when WebM blobs update their duration)
+  const videoDurationRef = useRef(videoDuration);
+  videoDurationRef.current = videoDuration;
 
   const updateTime = useCallback(() => {
     const vid = videoRef.current;
@@ -81,23 +85,25 @@ export default function VideoPreview() {
     if (vid.paused || vid.ended) {
       isPlayingRef.current = false;
       setIsPlaying(false);
-      // Clamp final time to duration
-      if (vid.ended && videoDuration > 0) {
-        setCurrentTime(videoDuration);
+      if (vid.ended && videoDurationRef.current > 0) {
+        setCurrentTime(videoDurationRef.current);
       }
       return;
     }
 
     const now = performance.now();
     if (now - lastUpdateRef.current >= 33) {
-      // Clamp time to [0, videoDuration] to prevent timer overflow
-      const t = Math.min(vid.currentTime, videoDuration || Infinity);
+      const dur = videoDurationRef.current;
+      // Clamp to duration if known, otherwise pass through raw time
+      const t = (dur && dur > 0 && Number.isFinite(dur))
+        ? Math.min(vid.currentTime, dur)
+        : vid.currentTime;
       setCurrentTime(t);
       lastUpdateRef.current = now;
     }
 
     animFrameRef.current = requestAnimationFrame(updateTime);
-  }, [setCurrentTime, setIsPlaying, videoDuration]);
+  }, [setCurrentTime, setIsPlaying]); // Stable deps — no videoDuration
 
   // Start/stop RAF loop when isPlaying changes
   useEffect(() => {

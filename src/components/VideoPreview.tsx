@@ -11,13 +11,11 @@ export default function VideoPreview() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const animFrameRef = useRef<number>(0);
-  const lastExternalSeekRef = useRef<number>(0);
   const [muted, setMuted] = useState(false);
 
-  // Track source of currentTime changes to prevent seek-feedback loop
-  // "playback" = RAF loop updating store from vid.currentTime (don't seek back)
-  // "external" = user action via timeline/slider (do seek video element)
-  const seekSourceRef = useRef<"playback" | "external">("external");
+  // Synchronous flag — set immediately on play/pause, not subject to React batching.
+  // This is the SINGLE source of truth for whether we're in playback mode.
+  const isPlayingRef = useRef(false);
 
   const {
     videoUrl,
@@ -31,45 +29,91 @@ export default function VideoPreview() {
     setVideoDuration,
   } = useProjectStore();
 
-  // Track if a seek is in progress to avoid queueing multiple seeks
-  const seekingRef = useRef(false);
+  // ── SEEK SYNC ───────────────────────────────────────────────────────
+  // Syncs the <video> element to match the store's currentTime.
+  // ONLY runs when NOT playing. During playback, the RAF loop is the
+  // single writer of currentTime → there is nothing to sync.
   const seekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seekingRef = useRef(false);
 
-  // Sync video element with store currentTime (for timeline/playhead seeking)
-  // Only seek when the change comes from an external source (user interaction),
-  // NOT when the RAF playback loop is updating the store.
   useEffect(() => {
     const vid = videoRef.current;
     if (!vid) return;
-    // When playing, the RAF loop drives currentTime. Never seek during playback.
-    if (isPlaying) return;
-    // If the currentTime change came from the RAF playback loop, skip the seek.
-    if (seekSourceRef.current === "playback") {
-      seekSourceRef.current = "external"; // reset for next change
-      return;
-    }
+
+    // Guard: NEVER seek the video element during playback.
+    // We check the ref (synchronous, not subject to React batching) AND
+    // the video element's own paused state (ground truth from the browser).
+    if (isPlayingRef.current || !vid.paused) return;
+
     const diff = Math.abs(vid.currentTime - currentTime);
-    if (diff > 0.25 && !seekingRef.current) {
-      // Debounce rapid seeks (e.g. from caption timing edits)
+    if (diff > 0.05 && !seekingRef.current) {
       if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
       seekTimeoutRef.current = setTimeout(() => {
-        if (videoRef.current && !seekingRef.current && videoRef.current.readyState >= 2) {
+        const v = videoRef.current;
+        if (v && !seekingRef.current && !isPlayingRef.current && v.paused && v.readyState >= 2) {
           seekingRef.current = true;
-          videoRef.current.currentTime = currentTime;
+          v.currentTime = currentTime;
           const onSeeked = () => {
             seekingRef.current = false;
-            videoRef.current?.removeEventListener("seeked", onSeeked);
+            v.removeEventListener("seeked", onSeeked);
           };
-          videoRef.current.addEventListener("seeked", onSeeked);
-          // Safety: clear seeking flag after timeout in case seeked event doesn't fire
+          v.addEventListener("seeked", onSeeked);
           setTimeout(() => { seekingRef.current = false; }, 500);
         }
-      }, 50);
+      }, 60);
     }
+
     return () => {
       if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
     };
-  }, [currentTime, isPlaying]);
+  }, [currentTime]); // Intentionally omit isPlaying — we use the ref instead
+
+  // ── RAF PLAYBACK LOOP ───────────────────────────────────────────────
+  // Reads vid.currentTime → writes to the store at ~30fps.
+  // This is the ONLY writer of currentTime during playback.
+  const lastUpdateRef = useRef(0);
+
+  const updateTime = useCallback(() => {
+    const vid = videoRef.current;
+    if (!vid) return;
+
+    // If the video is actually paused/ended, stop the loop
+    if (vid.paused || vid.ended) {
+      isPlayingRef.current = false;
+      setIsPlaying(false);
+      // Clamp final time to duration
+      if (vid.ended && videoDuration > 0) {
+        setCurrentTime(videoDuration);
+      }
+      return;
+    }
+
+    const now = performance.now();
+    if (now - lastUpdateRef.current >= 33) {
+      // Clamp time to [0, videoDuration] to prevent timer overflow
+      const t = Math.min(vid.currentTime, videoDuration || Infinity);
+      setCurrentTime(t);
+      lastUpdateRef.current = now;
+    }
+
+    animFrameRef.current = requestAnimationFrame(updateTime);
+  }, [setCurrentTime, setIsPlaying, videoDuration]);
+
+  // Start/stop RAF loop when isPlaying changes
+  useEffect(() => {
+    if (isPlaying) {
+      lastUpdateRef.current = 0; // Force immediate first update
+      animFrameRef.current = requestAnimationFrame(updateTime);
+    }
+    return () => {
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = 0;
+      }
+    };
+  }, [isPlaying, updateTime]);
+
+  // ── EFFECTS, B-ROLL, VISUAL OVERLAYS ─────────────────────────────────
 
   // Find active effects at current time
   const activeEffects = useMemo(
@@ -98,7 +142,6 @@ export default function VideoPreview() {
       1
     );
 
-    // Fade in during first 15%, fade out during last 15%
     let opacity = 1;
     if (progress < 0.15) {
       opacity = progress / 0.15;
@@ -106,10 +149,9 @@ export default function VideoPreview() {
       opacity = (1 - progress) / 0.15;
     }
 
-    // Ken Burns: slow zoom in + slight pan
-    const scale = 1 + progress * 0.12; // Zoom from 1.0 to 1.12
-    const panX = progress * -2; // Slight pan left
-    const panY = progress * -1; // Slight pan up
+    const scale = 1 + progress * 0.12;
+    const panX = progress * -2;
+    const panY = progress * -1;
 
     return {
       opacity,
@@ -121,7 +163,7 @@ export default function VideoPreview() {
     };
   }, [activeBRoll, currentTime]);
 
-  // Compute transform style based on active effects - smoother easing
+  // Compute transform style based on active effects
   const videoStyle = useMemo(() => {
     let scale = 1;
     let translateX = 0;
@@ -138,7 +180,6 @@ export default function VideoPreview() {
       switch (effect.type) {
         case "zoom-in": {
           const targetScale = (params.scale as number) || 1.3;
-          // Smooth cubic ease-out for fluid zoom
           const eased = easeOutCubic(progress);
           scale *= 1 + (targetScale - 1) * eased;
           const focusX = ((params.focusX as number) || 0.5) - 0.5;
@@ -149,14 +190,12 @@ export default function VideoPreview() {
         }
         case "zoom-out": {
           const targetScale = (params.scale as number) || 1.3;
-          // Start zoomed in, smoothly pull out
           const eased = easeOutCubic(progress);
           scale *= targetScale - (targetScale - 1) * eased;
           break;
         }
         case "zoom-pulse": {
           const targetScale = (params.scale as number) || 1.2;
-          // Smooth sine pulse for organic feel
           const pulse = Math.sin(progress * Math.PI);
           const smoothed = easeInOutQuad(pulse);
           scale *= 1 + (targetScale - 1) * smoothed;
@@ -177,7 +216,6 @@ export default function VideoPreview() {
         case "shake": {
           const intensity = (params.intensity as number) || 3;
           const freq = (params.frequency as number) || 15;
-          // Decay shake over time for realism
           const decay = 1 - progress * 0.6;
           translateX += Math.sin(progress * freq * Math.PI * 2) * intensity * decay;
           translateY +=
@@ -218,8 +256,6 @@ export default function VideoPreview() {
       transform: `scale(${scale}) translate(${translateX}px, ${translateY}px)`,
       filter: filter || undefined,
       clipPath: clipPath || undefined,
-      // No CSS transition during playback — RAF provides smooth 60fps updates directly.
-      // CSS transitions at 0.08s fought with per-frame updates causing visible jumps/flicker.
       willChange: "transform, filter",
     };
   }, [activeEffects, currentTime]);
@@ -250,7 +286,6 @@ export default function VideoPreview() {
           backgroundColor: `rgba(0,0,0,${Math.sin(progress * Math.PI) * 0.7})`,
         };
       case "transition-glitch": {
-        // Deterministic pseudo-random based on progress to avoid flicker
         const glitchR = Math.abs(Math.sin(progress * 127.1)) * 255;
         const glitchB = Math.abs(Math.sin(progress * 269.5)) * 255;
         return {
@@ -260,58 +295,38 @@ export default function VideoPreview() {
       }
       case "transition-zoom":
         return {
-          backgroundColor: `rgba(255,255,255,${
-            Math.sin(progress * Math.PI) * 0.5
-          })`,
+          backgroundColor: `rgba(255,255,255,${Math.sin(progress * Math.PI) * 0.5
+            })`,
         };
       default:
         return null;
     }
   }, [activeEffects, currentTime]);
 
-  // Throttle store updates to ~30fps — sufficient for smooth playhead/caption sync
-  // while dramatically reducing React re-renders (video still plays at native framerate)
-  const lastUpdateRef = useRef(0);
-  const updateTime = useCallback(() => {
-    if (videoRef.current) {
-      const now = performance.now();
-      // 33ms = ~30fps store updates — halves re-render load vs 60fps
-      if (now - lastUpdateRef.current >= 33) {
-        // Mark this update as coming from playback so the seek effect ignores it
-        seekSourceRef.current = "playback";
-        setCurrentTime(videoRef.current.currentTime);
-        lastUpdateRef.current = now;
-      }
-    }
-    if (isPlaying) {
-      animFrameRef.current = requestAnimationFrame(updateTime);
-    }
-  }, [isPlaying, setCurrentTime]);
-
-  useEffect(() => {
-    if (isPlaying) {
-      animFrameRef.current = requestAnimationFrame(updateTime);
-    }
-    return () => {
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-    };
-  }, [isPlaying, updateTime]);
+  // ── PLAY/PAUSE/SEEK CONTROLS ──────────────────────────────────────────
 
   const togglePlay = useCallback(() => {
     const vid = videoRef.current;
     if (!vid) return;
     if (vid.paused) {
+      // Set ref BEFORE calling play — prevents seek effect from firing during startup
+      isPlayingRef.current = true;
       const playPromise = vid.play();
       if (playPromise !== undefined) {
         playPromise
           .then(() => setIsPlaying(true))
           .catch(() => {
-            // Play was interrupted (e.g., by a seek) — retry once after a short delay
+            isPlayingRef.current = false;
+            // Play was interrupted — retry once after a short delay
             setTimeout(() => {
               if (vid.paused) {
+                isPlayingRef.current = true;
                 vid.play()
                   .then(() => setIsPlaying(true))
-                  .catch(() => setIsPlaying(false));
+                  .catch(() => {
+                    isPlayingRef.current = false;
+                    setIsPlaying(false);
+                  });
               }
             }, 100);
           });
@@ -319,6 +334,7 @@ export default function VideoPreview() {
         setIsPlaying(true);
       }
     } else {
+      isPlayingRef.current = false;
       vid.pause();
       setIsPlaying(false);
     }
@@ -327,9 +343,12 @@ export default function VideoPreview() {
   const restart = useCallback(() => {
     const vid = videoRef.current;
     if (!vid) return;
+    isPlayingRef.current = false;
+    vid.pause();
     vid.currentTime = 0;
+    setIsPlaying(false);
     setCurrentTime(0);
-  }, [setCurrentTime]);
+  }, [setCurrentTime, setIsPlaying]);
 
   const seekTo = useCallback(
     (time: number) => {
@@ -367,7 +386,10 @@ export default function VideoPreview() {
                 setVideoDuration(vid.duration);
               }
             }}
-            onEnded={() => setIsPlaying(false)}
+            onEnded={() => {
+              isPlayingRef.current = false;
+              setIsPlaying(false);
+            }}
             muted={muted}
             playsInline
           />

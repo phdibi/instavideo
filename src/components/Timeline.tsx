@@ -2,6 +2,7 @@
 
 import { useRef, useMemo, useCallback, useState, useEffect } from "react";
 import { useProjectStore } from "@/store/useProjectStore";
+import { formatTime } from "@/lib/formatTime";
 
 const TRACK_HEIGHT = 44;
 const EFFECT_ROW_HEIGHT = 36;
@@ -86,6 +87,47 @@ export default function Timeline() {
     [pxPerSecond, videoDuration]
   );
 
+  // Snap time to grid or to nearby item boundaries for precise editing
+  const SNAP_GRID = 0.05; // 50ms grid for fine control
+  const SNAP_MAGNETIC = 0.15; // seconds — magnetic snap range to other items' edges
+  const snapTime = useCallback(
+    (time: number, field: "startTime" | "endTime", excludeId?: string): number => {
+      // First: collect all item edge times for magnetic snapping
+      const edges: number[] = [0, videoDuration];
+      for (const c of captions) {
+        if (c.id === excludeId) continue;
+        edges.push(c.startTime, c.endTime);
+      }
+      for (const e of effects) {
+        if (e.id === excludeId) continue;
+        edges.push(e.startTime, e.endTime);
+      }
+      for (const b of bRollImages) {
+        if (b.id === excludeId) continue;
+        edges.push(b.startTime, b.endTime);
+      }
+
+      // Magnetic snap: find nearest edge within range
+      let snapped = time;
+      let bestDist = SNAP_MAGNETIC;
+      for (const edge of edges) {
+        const dist = Math.abs(time - edge);
+        if (dist < bestDist) {
+          bestDist = dist;
+          snapped = edge;
+        }
+      }
+
+      // If no magnetic snap hit, snap to grid
+      if (snapped === time) {
+        snapped = Math.round(time / SNAP_GRID) * SNAP_GRID;
+      }
+
+      return Math.max(0, Math.min(snapped, videoDuration));
+    },
+    [videoDuration, captions, effects, bRollImages]
+  );
+
   const flushPendingUpdate = useCallback(() => {
     const pending = pendingUpdateRef.current;
     if (!pending) return;
@@ -104,9 +146,12 @@ export default function Timeline() {
     }
   }, [updateCaption, updateEffect, updateBRollImage]);
 
-  const handleTrackClick = useCallback(
+  // Only seek the playhead when clicking on the RULER area (top time bar),
+  // NOT when clicking on the track items area below it
+  const handleRulerClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (dragState) return;
+      e.stopPropagation();
       const time = pxToTime(e.clientX);
       setCurrentTime(time);
     },
@@ -215,17 +260,15 @@ export default function Timeline() {
           newStart = videoDuration - duration;
         }
       } else if (field === "startTime") {
-        newStart = Math.max(
-          0,
-          Math.min(initialStart + deltaTime, initialEnd - 0.1)
-        );
+        const raw = Math.max(0, Math.min(initialStart + deltaTime, initialEnd - 0.1));
+        newStart = snapTime(raw, "startTime", id);
+        newStart = Math.min(newStart, initialEnd - 0.1); // ensure min duration
         newEnd = initialEnd;
       } else if (field === "endTime") {
+        const raw = Math.max(initialStart + 0.1, Math.min(initialEnd + deltaTime, videoDuration));
+        newEnd = snapTime(raw, "endTime", id);
+        newEnd = Math.max(newEnd, initialStart + 0.1); // ensure min duration
         newStart = initialStart;
-        newEnd = Math.max(
-          initialStart + 0.1,
-          Math.min(initialEnd + deltaTime, videoDuration)
-        );
       }
 
       // Update playhead to follow drag for real-time preview
@@ -257,6 +300,7 @@ export default function Timeline() {
       pxToTime,
       setCurrentTime,
       autoScroll,
+      snapTime,
       updateCaption,
       updateEffect,
       updateBRollImage,
@@ -404,17 +448,15 @@ export default function Timeline() {
           newStart = videoDuration - duration;
         }
       } else if (field === "startTime") {
-        newStart = Math.max(
-          0,
-          Math.min(initialStart + deltaTime, initialEnd - 0.1)
-        );
+        const raw = Math.max(0, Math.min(initialStart + deltaTime, initialEnd - 0.1));
+        newStart = snapTime(raw, "startTime", id);
+        newStart = Math.min(newStart, initialEnd - 0.1);
         newEnd = initialEnd;
       } else if (field === "endTime") {
+        const raw = Math.max(initialStart + 0.1, Math.min(initialEnd + deltaTime, videoDuration));
+        newEnd = snapTime(raw, "endTime", id);
+        newEnd = Math.max(newEnd, initialStart + 0.1);
         newStart = initialStart;
-        newEnd = Math.max(
-          initialStart + 0.1,
-          Math.min(initialEnd + deltaTime, videoDuration)
-        );
       }
 
       // Update playhead to follow drag for real-time preview
@@ -444,6 +486,7 @@ export default function Timeline() {
       setCurrentTime,
       clearLongPress,
       autoScroll,
+      snapTime,
       flushPendingUpdate,
     ]
   );
@@ -550,7 +593,8 @@ export default function Timeline() {
     return "bg-purple-500/50 border-purple-400/70 text-purple-200";
   };
 
-  // Resize handle — much larger on mobile for easy touch, with visual indicator
+  // Resize handle — extra large touch target with visual affordance
+  // Inspired by CapCut: bright colored handles when selected, always easy to grab
   const ResizeHandle = ({
     side,
     isSelected,
@@ -565,20 +609,23 @@ export default function Timeline() {
     <div
       className={`absolute top-0 bottom-0 cursor-col-resize z-10 flex items-center justify-center
         ${side === "left" ? "rounded-l-md" : "rounded-r-md"}
-        ${isSelected ? "w-5 md:w-2 bg-white/20 hover:bg-white/40" : "w-5 md:w-1.5 hover:bg-white/30"}
-        active:bg-white/50 transition-colors`}
+        ${isSelected
+          ? "w-7 md:w-3 bg-white/30 hover:bg-white/50 border-white/60"
+          : "w-6 md:w-2 hover:bg-white/30"
+        }
+        active:bg-white/60 transition-colors`}
       style={{
-        [side === "left" ? "left" : "right"]: isSelected ? -2 : -1,
+        [side === "left" ? "left" : "right"]: isSelected ? -4 : -2,
       }}
       onMouseDown={onMouseDown}
       onTouchStart={onTouchStartProp}
     >
-      {/* Visual grip indicator on mobile when selected */}
+      {/* Visual grip indicator — always visible when selected */}
       {isSelected && (
-        <div className="md:hidden flex flex-col gap-0.5">
-          <div className="w-0.5 h-1.5 bg-white/70 rounded-full" />
-          <div className="w-0.5 h-1.5 bg-white/70 rounded-full" />
-          <div className="w-0.5 h-1.5 bg-white/70 rounded-full" />
+        <div className="flex flex-col gap-[2px]">
+          <div className="w-[3px] h-[6px] bg-white/90 rounded-full" />
+          <div className="w-[3px] h-[6px] bg-white/90 rounded-full" />
+          <div className="w-[3px] h-[6px] bg-white/90 rounded-full" />
         </div>
       )}
     </div>
@@ -611,15 +658,18 @@ export default function Timeline() {
       onTouchCancel={handleContainerTouchEnd}
       style={{ touchAction: isDragging ? "none" : "pan-x pan-y" }}
     >
-      {/* Drag mode indicator */}
+      {/* Drag mode indicator with precise time display */}
       {isDragging && dragState.type !== "playhead" && (
-        <div className="md:hidden shrink-0 bg-[var(--accent)]/20 border-b border-[var(--accent)]/30 px-3 py-1 flex items-center justify-center">
+        <div className="shrink-0 bg-[var(--accent)]/15 border-b border-[var(--accent)]/30 px-3 py-1 flex items-center justify-center gap-3">
           <span className="text-[10px] text-[var(--accent-light)] font-medium">
             {dragState.field === "move"
-              ? "↔ Arraste para mover"
+              ? "↔ Mover"
               : dragState.field === "startTime"
-                ? "← Ajustando início"
-                : "→ Ajustando fim"}
+                ? "← Início"
+                : "→ Fim"}
+          </span>
+          <span className="text-[11px] text-white font-mono font-bold bg-[var(--accent)]/40 px-2 py-0.5 rounded">
+            {formatTime(currentTime)}
           </span>
         </div>
       )}
@@ -632,14 +682,14 @@ export default function Timeline() {
       >
         <div
           ref={trackAreaRef}
-          className={`relative min-w-full ${dragState ? "cursor-grabbing" : "cursor-crosshair"}`}
+          className={`relative min-w-full ${dragState ? "cursor-grabbing" : ""}`}
           style={{ width: timelineWidth + HEADER_WIDTH + 40 }}
-          onClick={handleTrackClick}
         >
-          {/* Time ruler */}
+          {/* Time ruler — click here to seek playhead */}
           <div
-            className="flex items-end border-b border-[var(--border)] bg-[var(--surface)] sticky top-0 z-20"
+            className="flex items-end border-b border-[var(--border)] bg-[var(--surface)] sticky top-0 z-20 cursor-crosshair"
             style={{ height: RULER_HEIGHT }}
+            onClick={handleRulerClick}
           >
             <div className="shrink-0" style={{ width: HEADER_WIDTH }} />
             <div className="relative h-full" style={{ width: timelineWidth }}>
@@ -1090,6 +1140,7 @@ export default function Timeline() {
                 width: 14,
                 top: 0,
                 bottom: 0,
+                willChange: "left",
               }}
             >
               <div

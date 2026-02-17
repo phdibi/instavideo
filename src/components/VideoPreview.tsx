@@ -208,8 +208,9 @@ export default function VideoPreview() {
       transform: `scale(${scale}) translate(${translateX}px, ${translateY}px)`,
       filter: filter || undefined,
       clipPath: clipPath || undefined,
-      // Smoother transitions for fluid feel
-      transition: "transform 0.08s cubic-bezier(0.25, 0.1, 0.25, 1), filter 0.15s ease",
+      // No CSS transition during playback — RAF provides smooth 60fps updates directly.
+      // CSS transitions at 0.08s fought with per-frame updates causing visible jumps/flicker.
+      willChange: "transform, filter",
     };
   }, [activeEffects, currentTime]);
 
@@ -238,13 +239,15 @@ export default function VideoPreview() {
         return {
           backgroundColor: `rgba(0,0,0,${Math.sin(progress * Math.PI) * 0.7})`,
         };
-      case "transition-glitch":
+      case "transition-glitch": {
+        // Deterministic pseudo-random based on progress to avoid flicker
+        const glitchR = Math.abs(Math.sin(progress * 127.1)) * 255;
+        const glitchB = Math.abs(Math.sin(progress * 269.5)) * 255;
         return {
-          backgroundColor: `rgba(${Math.random() * 255},0,${
-            Math.random() * 255
-          },${Math.sin(progress * Math.PI) * 0.3})`,
+          backgroundColor: `rgba(${glitchR},0,${glitchB},${Math.sin(progress * Math.PI) * 0.3})`,
           mixBlendMode: "screen" as const,
         };
+      }
       case "transition-zoom":
         return {
           backgroundColor: `rgba(255,255,255,${
@@ -256,13 +259,14 @@ export default function VideoPreview() {
     }
   }, [activeEffects, currentTime]);
 
-  // Throttle store updates to ~60fps max — avoids flooding Zustand/React with updates
+  // Throttle store updates to ~30fps — sufficient for smooth playhead/caption sync
+  // while dramatically reducing React re-renders (video still plays at native framerate)
   const lastUpdateRef = useRef(0);
   const updateTime = useCallback(() => {
     if (videoRef.current) {
       const now = performance.now();
-      // Only update store at ~60fps (16ms intervals) to reduce re-renders
-      if (now - lastUpdateRef.current >= 16) {
+      // 33ms = ~30fps store updates — halves re-render load vs 60fps
+      if (now - lastUpdateRef.current >= 33) {
         setCurrentTime(videoRef.current.currentTime);
         lastUpdateRef.current = now;
       }

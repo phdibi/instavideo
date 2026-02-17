@@ -163,23 +163,23 @@ function buildCaptionsFromTranscription(
     }
   }
 
-  // Step 4: Build caption objects with GAPLESS timing
-  // Each caption extends from its start to the START of the next caption
-  // This ensures there's always a caption visible during speech
+  // Step 4: Build caption objects with TIGHT word-level timing
+  // Each caption starts when the first word is spoken and ends when the last word finishes
+  // A small buffer (150ms) is added after the last word for readability
+  // This avoids the "gapless" approach which caused premature/lingering captions
+  const READABILITY_BUFFER = 0.15; // seconds after last word
   const captions: Caption[] = [];
 
   for (let i = 0; i < mergedCaptions.length; i++) {
     const cap = mergedCaptions[i];
     const startTime = Math.max(0, cap.start);
 
-    // Extend endTime to the start of next caption (gapless)
-    // If last caption, use the original end time + small buffer
-    let endTime: number;
+    // Use the actual end time of the last word + small readability buffer
+    let endTime = cap.end + READABILITY_BUFFER;
+
+    // Ensure we don't overlap with the next caption
     if (i + 1 < mergedCaptions.length) {
-      endTime = mergedCaptions[i + 1].start;
-    } else {
-      // Last caption: extend slightly past the last word
-      endTime = Math.min(cap.end + 0.3, effectiveDuration);
+      endTime = Math.min(endTime, mergedCaptions[i + 1].start);
     }
 
     // Clamp to video duration

@@ -22,9 +22,9 @@ export default function CaptionOverlay({ currentTime }: Props) {
     return active.length > 0 ? active[0] : null;
   }, [captions, currentTime]);
 
-  // Stable key: only change when the actual caption identity changes, not on every edit
+  // Stable key: only change when a different caption becomes active, not during edits/drags
   const captionKey = activeCaption
-    ? `${activeCaption.id}-${activeCaption.startTime.toFixed(2)}`
+    ? activeCaption.id
     : null;
 
   return (
@@ -100,10 +100,10 @@ function CaptionDisplay({
           backgroundColor:
             caption.style.backgroundOpacity > 0
               ? `${caption.style.backgroundColor}${Math.round(
-                  caption.style.backgroundOpacity * 255
-                )
-                  .toString(16)
-                  .padStart(2, "0")}`
+                caption.style.backgroundOpacity * 255
+              )
+                .toString(16)
+                .padStart(2, "0")}`
               : "transparent",
         }}
       >
@@ -135,23 +135,23 @@ function CaptionDisplay({
                 fontWeight: wordState.isActive
                   ? 900
                   : wordState.isEmphasis
-                  ? 900
-                  : caption.style.fontWeight,
+                    ? 900
+                    : caption.style.fontWeight,
                 color: wordState.isActive
                   ? wordState.activeColor
                   : wordState.isEmphasis
-                  ? "#FFD700"
-                  : wordState.isPast
-                  ? caption.style.color
-                  : `${caption.style.color}99`,
+                    ? "#FFD700"
+                    : wordState.isPast
+                      ? caption.style.color
+                      : `${caption.style.color}99`,
                 WebkitTextStroke: caption.style.strokeWidth
                   ? `${caption.style.strokeWidth * 0.5}px ${caption.style.strokeColor}`
                   : undefined,
                 textShadow: wordState.isActive
                   ? `0 0 20px ${wordState.activeColor}80, 0 2px ${caption.style.shadowBlur}px ${caption.style.shadowColor}`
                   : caption.style.shadowBlur
-                  ? `0 2px ${caption.style.shadowBlur}px ${caption.style.shadowColor}`
-                  : undefined,
+                    ? `0 2px ${caption.style.shadowBlur}px ${caption.style.shadowColor}`
+                    : undefined,
                 transition: "color 0.15s ease, opacity 0.15s ease",
               }}
             >

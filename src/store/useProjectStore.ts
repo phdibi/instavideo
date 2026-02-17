@@ -91,14 +91,7 @@ export const useProjectStore = create<ProjectStore>((set) => ({
       );
       // Re-sort only if timing changed to keep order consistent
       if ('startTime' in updates || 'endTime' in updates) {
-        // Fix overlaps: ensure no two captions occupy the same time range
         updated.sort((a, b) => a.startTime - b.startTime);
-        for (let i = 1; i < updated.length; i++) {
-          if (updated[i].startTime < updated[i - 1].endTime) {
-            // Clamp previous caption's end to avoid overlap
-            updated[i - 1] = { ...updated[i - 1], endTime: updated[i].startTime };
-          }
-        }
       }
       return { captions: updated };
     }),

@@ -49,8 +49,8 @@ function buildCaptionsFromTranscription(
     videoDuration > 0
       ? videoDuration
       : segments.length > 0
-      ? segments[segments.length - 1].end + 0.5
-      : 30;
+        ? segments[segments.length - 1].end + 0.5
+        : 30;
 
   // Step 1: Collect all words with precise timestamps into a flat list
   const allWords: { word: string; start: number; end: number }[] = [];
@@ -163,16 +163,17 @@ function buildCaptionsFromTranscription(
     }
   }
 
-  // Step 4: Build caption objects with TIGHT word-level timing
-  // Each caption starts when the first word is spoken and ends when the last word finishes
-  // A small buffer (150ms) is added after the last word for readability
-  // This avoids the "gapless" approach which caused premature/lingering captions
-  const READABILITY_BUFFER = 0.15; // seconds after last word
+  // Step 4: Build caption objects with word-level timing + professional offsets
+  // ANTICIPATION_OFFSET: captions appear slightly BEFORE the first word is spoken,
+  // matching professional subtitle standards (viewers need ~100ms to notice text)
+  // READABILITY_BUFFER: captions stay slightly after the last word finishes
+  const ANTICIPATION_OFFSET = 0.1; // seconds before first word
+  const READABILITY_BUFFER = 0.3; // seconds after last word
   const captions: Caption[] = [];
 
   for (let i = 0; i < mergedCaptions.length; i++) {
     const cap = mergedCaptions[i];
-    const startTime = Math.max(0, cap.start);
+    const startTime = Math.max(0, cap.start - ANTICIPATION_OFFSET);
 
     // Use the actual end time of the last word + small readability buffer
     let endTime = cap.end + READABILITY_BUFFER;
@@ -220,8 +221,8 @@ function buildSpeechDrivenEffects(
     videoDuration > 0
       ? videoDuration
       : segments.length > 0
-      ? segments[segments.length - 1].end + 0.5
-      : 30;
+        ? segments[segments.length - 1].end + 0.5
+        : 30;
 
   const effects: EditEffect[] = [];
 
@@ -459,8 +460,8 @@ export default function ProcessingScreen() {
         currentVideoDuration > 0 && isFinite(currentVideoDuration)
           ? currentVideoDuration
           : segments.length > 0
-          ? segments[segments.length - 1].end + 0.5
-          : 30;
+            ? segments[segments.length - 1].end + 0.5
+            : 30;
 
       // If we resolved duration from segments, update the store
       if ((!currentVideoDuration || !isFinite(currentVideoDuration) || currentVideoDuration <= 0) && effectiveDuration > 0) {
@@ -611,13 +612,12 @@ export default function ProcessingScreen() {
             return (
               <div
                 key={step.key}
-                className={`flex items-center gap-3 p-4 rounded-xl transition-all duration-500 ${
-                  isCurrent
+                className={`flex items-center gap-3 p-4 rounded-xl transition-all duration-500 ${isCurrent
                     ? "bg-[var(--accent)]/10 border border-[var(--accent)]/30"
                     : isComplete
-                    ? "bg-[var(--success)]/5 border border-[var(--success)]/20"
-                    : "bg-[var(--surface)] border border-[var(--border)]"
-                }`}
+                      ? "bg-[var(--success)]/5 border border-[var(--success)]/20"
+                      : "bg-[var(--surface)] border border-[var(--border)]"
+                  }`}
               >
                 {isComplete ? (
                   <CheckCircle className="w-5 h-5 text-[var(--success)] shrink-0" />
@@ -625,17 +625,15 @@ export default function ProcessingScreen() {
                   <Loader2 className="w-5 h-5 text-[var(--accent)] animate-spin shrink-0" />
                 ) : (
                   <div
-                    className={`w-5 h-5 rounded-full border-2 shrink-0 ${
-                      isPending
+                    className={`w-5 h-5 rounded-full border-2 shrink-0 ${isPending
                         ? "border-[var(--border)]"
                         : "border-[var(--accent)]"
-                    }`}
+                      }`}
                   />
                 )}
                 <span
-                  className={`text-sm ${
-                    isPending ? "text-[var(--text-secondary)]" : ""
-                  } ${isCurrent ? "font-medium" : ""}`}
+                  className={`text-sm ${isPending ? "text-[var(--text-secondary)]" : ""
+                    } ${isCurrent ? "font-medium" : ""}`}
                 >
                   {step.label}
                 </span>

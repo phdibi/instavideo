@@ -40,7 +40,7 @@ const steps = [
 ];
 
 // ===== Deterministic caption builder using word-level timestamps =====
-// Strategy: Collect ALL words with timestamps, then group into gapless captions
+// Strategy: Collect ALL words with timestamps, validate/correct timing, then group into gapless captions
 function buildCaptionsFromTranscription(
   segments: TranscriptionSegment[],
   videoDuration: number
@@ -59,10 +59,41 @@ function buildCaptionsFromTranscription(
     if (!seg.text || seg.text.trim().length === 0) continue;
 
     if (seg.words && seg.words.length > 0) {
-      for (const w of seg.words) {
-        if (w.word && w.word.trim().length > 0 && w.end > w.start) {
-          allWords.push({ word: w.word.trim(), start: w.start, end: w.end });
+      // Validate word timestamps against segment boundaries
+      const segStart = seg.start;
+      const segEnd = seg.end;
+      const segDuration = segEnd - segStart;
+      const wordCount = seg.words.length;
+
+      for (let wi = 0; wi < wordCount; wi++) {
+        const w = seg.words[wi];
+        if (!w.word || w.word.trim().length === 0) continue;
+
+        let wStart = w.start;
+        let wEnd = w.end;
+
+        // Fix: word timestamps outside segment boundaries — redistribute proportionally
+        if (wStart < segStart - 0.1 || wEnd > segEnd + 0.5 || wEnd <= wStart || wStart < 0) {
+          wStart = segStart + (wi / wordCount) * segDuration;
+          wEnd = segStart + ((wi + 1) / wordCount) * segDuration;
         }
+
+        // Ensure monotonic ordering with previous word
+        if (allWords.length > 0) {
+          const prev = allWords[allWords.length - 1];
+          if (wStart < prev.end) {
+            // Overlap detected — shift this word to start right after previous
+            const shift = prev.end - wStart + 0.01;
+            wStart += shift;
+            wEnd = Math.max(wEnd + shift, wStart + 0.05);
+          }
+        }
+
+        // Clamp to video duration
+        wStart = Math.max(0, Math.min(wStart, effectiveDuration));
+        wEnd = Math.max(wStart + 0.03, Math.min(wEnd, effectiveDuration));
+
+        allWords.push({ word: w.word.trim(), start: wStart, end: wEnd });
       }
     } else {
       // Fallback: split segment text proportionally

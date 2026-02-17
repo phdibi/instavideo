@@ -72,11 +72,19 @@ function CaptionDisplay({
   const totalWords = words.length;
 
   // Calculate which word is currently being spoken
-  // Each word gets an equal share of the total duration
-  const currentWordIndex = Math.min(
-    Math.floor(progress * totalWords),
-    totalWords - 1
-  );
+  // Weight each word by character length for more natural karaoke timing
+  // (longer words get proportionally more time)
+  const currentWordIndex = useMemo(() => {
+    if (totalWords <= 1) return 0;
+    const charLengths = words.map((w) => Math.max(w.length, 1));
+    const totalChars = charLengths.reduce((a, b) => a + b, 0);
+    let cumulative = 0;
+    for (let i = 0; i < totalWords; i++) {
+      cumulative += charLengths[i] / totalChars;
+      if (progress < cumulative) return i;
+    }
+    return totalWords - 1;
+  }, [words, totalWords, progress]);
 
   return (
     <motion.div

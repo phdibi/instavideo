@@ -40,9 +40,9 @@ export async function POST(request: NextRequest) {
               },
             },
             {
-              text: `You are a professional transcription engine with millisecond-precision timing. Transcribe the audio with extremely precise timestamps.
+              text: `You are a professional audio transcription engine. Your job is to produce perfectly synchronized subtitles with frame-accurate timing.
 
-CRITICAL: Return ONLY valid JSON, no markdown, no code blocks, no explanations.
+CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations.
 
 Return this exact JSON structure:
 {
@@ -63,19 +63,17 @@ Return this exact JSON structure:
   "language": "pt-BR"
 }
 
-CRITICAL RULES FOR TIMESTAMPS:
-- Listen carefully to WHEN each word and phrase is spoken
-- Segment audio into natural sentence/phrase boundaries (2-5 seconds each, shorter is better)
-- The start time of each segment MUST be exactly when the first word begins being spoken
-- The end time of each segment MUST be exactly when the last word finishes being spoken
-- Do NOT add padding or gaps between segments - if speech is continuous, segments should be nearly continuous
-- Segments must NEVER overlap
-- Include word-level timestamps for EVERY word - this is required, not optional
-- Be extremely precise - timestamps should be accurate to within 0.1 seconds of actual speech
-- Detect language automatically
-- Keep text natural, include punctuation
-- If the audio is in Portuguese, transcribe in Portuguese
-- If there are pauses/silence longer than 0.5s, that should be a segment boundary`,
+TIMESTAMP RULES (EXTREMELY IMPORTANT):
+1. TIMING ACCURACY: Each word's start time must be the EXACT moment the speaker begins articulating that word. Each word's end time must be the EXACT moment the speaker finishes articulating that word. Accuracy must be within 50ms.
+2. NO EARLY TIMESTAMPS: Never place a word's start time BEFORE the speaker actually starts saying it. If unsure, round the start time UP (later) by 50-100ms rather than placing it too early.
+3. NO LATE TIMESTAMPS: Never place a word's end time AFTER the speaker finishes saying it plus 100ms.
+4. WORD-LEVEL TIMESTAMPS ARE MANDATORY: Every single word MUST have its own start and end timestamp in the "words" array. This is critical for karaoke-style subtitle display.
+5. NATURAL SEGMENTS: Group words into segments of 2-5 seconds at natural phrase/sentence boundaries. Shorter segments (2-3 seconds) are preferred.
+6. NO OVERLAPS: Segments must never overlap. Words within a segment must not overlap.
+7. NO ARTIFICIAL GAPS: If speech is continuous between segments, the next segment should start where the previous ended. Do not add padding.
+8. SILENCE BOUNDARIES: Pauses longer than 0.4 seconds in speech should be segment boundaries.
+9. MONOTONIC TIMESTAMPS: Word timestamps must be strictly increasing within each segment. Segment timestamps must be strictly increasing.
+10. Detect language automatically. Transcribe in the original language. Keep natural punctuation.`,
             },
           ],
         },

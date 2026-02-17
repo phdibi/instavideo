@@ -35,20 +35,24 @@ export default function VideoPreview() {
   useEffect(() => {
     const vid = videoRef.current;
     if (!vid) return;
+    // When playing, don't fight with the video element's own time progression.
+    // The RAF loop already reads from vid.currentTime → store.
+    if (isPlaying) return;
     const diff = Math.abs(vid.currentTime - currentTime);
-    if (diff > 0.15 && !isPlaying) {
+    if (diff > 0.15) {
       // Debounce rapid seeks (e.g. from caption timing edits)
       if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
       seekTimeoutRef.current = setTimeout(() => {
         if (videoRef.current && !seekingRef.current) {
           seekingRef.current = true;
           videoRef.current.currentTime = currentTime;
-          // Reset seeking flag after the seek completes
           const onSeeked = () => {
             seekingRef.current = false;
             videoRef.current?.removeEventListener("seeked", onSeeked);
           };
           videoRef.current.addEventListener("seeked", onSeeked);
+          // Safety: clear seeking flag after timeout in case seeked event doesn't fire
+          setTimeout(() => { seekingRef.current = false; }, 500);
         }
       }, 50);
     }
@@ -252,9 +256,16 @@ export default function VideoPreview() {
     }
   }, [activeEffects, currentTime]);
 
+  // Throttle store updates to ~60fps max — avoids flooding Zustand/React with updates
+  const lastUpdateRef = useRef(0);
   const updateTime = useCallback(() => {
     if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime);
+      const now = performance.now();
+      // Only update store at ~60fps (16ms intervals) to reduce re-renders
+      if (now - lastUpdateRef.current >= 16) {
+        setCurrentTime(videoRef.current.currentTime);
+        lastUpdateRef.current = now;
+      }
     }
     if (isPlaying) {
       animFrameRef.current = requestAnimationFrame(updateTime);
@@ -274,8 +285,23 @@ export default function VideoPreview() {
     const vid = videoRef.current;
     if (!vid) return;
     if (vid.paused) {
-      vid.play();
-      setIsPlaying(true);
+      const playPromise = vid.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => setIsPlaying(true))
+          .catch(() => {
+            // Play was interrupted (e.g., by a seek) — retry once after a short delay
+            setTimeout(() => {
+              if (vid.paused) {
+                vid.play()
+                  .then(() => setIsPlaying(true))
+                  .catch(() => setIsPlaying(false));
+              }
+            }, 100);
+          });
+      } else {
+        setIsPlaying(true);
+      }
     } else {
       vid.pause();
       setIsPlaying(false);

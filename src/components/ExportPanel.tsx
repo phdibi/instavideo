@@ -54,18 +54,25 @@ export default function ExportPanel() {
       const mimeType = format === "webm" ? "video/webm;codecs=vp9" : "video/webm";
       const stream = canvas.captureStream(30);
 
-      // Add audio from original video
-      const audioCtx = new AudioContext();
-      const audioResponse = await fetch(videoUrl);
-      const audioArrayBuffer = await audioResponse.arrayBuffer();
+      // Add audio from original video using a hidden video element
       try {
-        await audioCtx.decodeAudioData(audioArrayBuffer);
-        const audioSource = audioCtx.createMediaStreamSource(
-          new MediaStream()
-        );
+        const audioVideo = document.createElement("video");
+        audioVideo.src = videoUrl;
+        audioVideo.muted = false;
+        audioVideo.crossOrigin = "anonymous";
+        await new Promise<void>((resolve) => {
+          audioVideo.onloadeddata = () => resolve();
+          audioVideo.load();
+        });
+        const audioCtx = new AudioContext();
+        const audioSource = audioCtx.createMediaElementSource(audioVideo);
         const dest = audioCtx.createMediaStreamDestination();
         audioSource.connect(dest);
+        audioSource.connect(audioCtx.destination); // Also connect to speakers for monitoring
         dest.stream.getAudioTracks().forEach((track) => stream.addTrack(track));
+        // Play the audio video in sync — we'll seek it frame by frame alongside the main video
+        audioVideo.currentTime = 0;
+        audioVideo.play().catch(() => {});
       } catch {
         // Audio extraction might fail - continue without audio
       }
@@ -90,6 +97,26 @@ export default function ExportPanel() {
       });
 
       recorder.start(100);
+
+      // Pre-load B-roll images to avoid loading per frame
+      const bRollImageCache = new Map<string, HTMLImageElement>();
+      for (const b of bRollImages) {
+        if (b.url) {
+          try {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.src = b.url;
+            await new Promise<void>((resolve, reject) => {
+              img.onload = () => resolve();
+              img.onerror = reject;
+              if (img.complete) resolve();
+            });
+            bRollImageCache.set(b.id, img);
+          } catch {
+            // Skip failed images
+          }
+        }
+      }
 
       // Render frames
       const fps = 30;
@@ -191,15 +218,8 @@ export default function ExportPanel() {
           (b) => b.url && time >= b.startTime && time <= b.endTime
         );
         if (activeBRoll) {
-          const img = new Image();
-          img.src = activeBRoll.url;
-          try {
-            await new Promise<void>((resolve, reject) => {
-              img.onload = () => resolve();
-              img.onerror = reject;
-              if (img.complete) resolve();
-            });
-
+          const img = bRollImageCache.get(activeBRoll.id);
+          if (img) {
             const bDuration = activeBRoll.endTime - activeBRoll.startTime;
             const bProgress = Math.min(Math.max((time - activeBRoll.startTime) / bDuration, 0), 1);
 
@@ -220,8 +240,6 @@ export default function ExportPanel() {
             ctx.translate(-width / 2, -height / 2);
             ctx.drawImage(img, 0, 0, width, height);
             ctx.restore();
-          } catch {
-            // Skip if image can't load
           }
         }
 
@@ -287,10 +305,17 @@ export default function ExportPanel() {
 
           const words = caption.text.split(" ");
           const totalWords = words.length;
-          const currentWordIndex = Math.min(
-            Math.floor(captionProgress * totalWords),
-            totalWords - 1
-          );
+          // Weight each word by character length for more natural karaoke timing
+          let currentWordIndex = totalWords - 1;
+          if (totalWords > 1) {
+            const charLengths = words.map((w) => Math.max(w.length, 1));
+            const totalChars = charLengths.reduce((a, b) => a + b, 0);
+            let cumulative = 0;
+            for (let i = 0; i < totalWords; i++) {
+              cumulative += charLengths[i] / totalChars;
+              if (captionProgress < cumulative) { currentWordIndex = i; break; }
+            }
+          }
 
           // Calculate total text width for centering
           const spaceWidth = ctx.measureText(" ").width;

@@ -133,8 +133,17 @@ export default function Timeline() {
   const resumeAfterDrag = useCallback(() => {
     if (wasPlayingRef.current) {
       wasPlayingRef.current = false;
+      // Actually resume playback
+      setIsPlaying(true);
+      const vid = document.querySelector("video") as HTMLVideoElement | null;
+      if (vid && vid.paused) {
+        vid.play().catch(() => {
+          // Play failed, sync state back
+          setIsPlaying(false);
+        });
+      }
     }
-  }, []);
+  }, [setIsPlaying]);
 
   // === MOUSE DRAG (desktop) ===
   const handleDragStart = useCallback(
@@ -163,6 +172,21 @@ export default function Timeline() {
     [handleItemClick, pauseForDrag]
   );
 
+  // Auto-scroll timeline when dragging near edges (like CapCut)
+  const autoScroll = useCallback((clientX: number) => {
+    const container = containerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const edgeZone = 40; // px from edge to start scrolling
+    const scrollSpeed = 3; // px per frame
+
+    if (clientX < rect.left + edgeZone + HEADER_WIDTH) {
+      container.scrollLeft -= scrollSpeed;
+    } else if (clientX > rect.right - edgeZone) {
+      container.scrollLeft += scrollSpeed;
+    }
+  }, []);
+
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
       if (!dragState) return;
@@ -176,6 +200,9 @@ export default function Timeline() {
         setCurrentTime(pxToTime(e.clientX));
         return;
       }
+
+      // Auto-scroll when near edges
+      autoScroll(e.clientX);
 
       let newStart = initialStart;
       let newEnd = initialEnd;
@@ -201,6 +228,15 @@ export default function Timeline() {
         );
       }
 
+      // Update playhead to follow drag for real-time preview
+      if (field === "move") {
+        setCurrentTime(newStart);
+      } else if (field === "startTime") {
+        setCurrentTime(newStart);
+      } else if (field === "endTime") {
+        setCurrentTime(newEnd);
+      }
+
       const updates = { startTime: newStart, endTime: newEnd };
       switch (type) {
         case "caption":
@@ -220,6 +256,7 @@ export default function Timeline() {
       videoDuration,
       pxToTime,
       setCurrentTime,
+      autoScroll,
       updateCaption,
       updateEffect,
       updateBRollImage,
@@ -353,6 +390,9 @@ export default function Timeline() {
         return;
       }
 
+      // Auto-scroll when near edges
+      autoScroll(touch.clientX);
+
       let newStart = initialStart;
       let newEnd = initialEnd;
 
@@ -377,6 +417,15 @@ export default function Timeline() {
         );
       }
 
+      // Update playhead to follow drag for real-time preview
+      if (field === "move") {
+        setCurrentTime(newStart);
+      } else if (field === "startTime") {
+        setCurrentTime(newStart);
+      } else if (field === "endTime") {
+        setCurrentTime(newEnd);
+      }
+
       // RAF-throttled update
       const updates = { startTime: newStart, endTime: newEnd };
       pendingUpdateRef.current = { type, id, updates };
@@ -394,6 +443,7 @@ export default function Timeline() {
       videoDuration,
       setCurrentTime,
       clearLongPress,
+      autoScroll,
       flushPendingUpdate,
     ]
   );
@@ -536,6 +586,20 @@ export default function Timeline() {
 
   const isDragging = !!dragState;
 
+  // Lock body scroll during drag to prevent the entire page/container from shifting
+  useEffect(() => {
+    if (isDragging) {
+      const prev = document.body.style.overflow;
+      const prevTouch = document.body.style.touchAction;
+      document.body.style.overflow = "hidden";
+      document.body.style.touchAction = "none";
+      return () => {
+        document.body.style.overflow = prev;
+        document.body.style.touchAction = prevTouch;
+      };
+    }
+  }, [isDragging]);
+
   return (
     <div
       className="h-full bg-[var(--surface)] border-t border-[var(--border)] flex flex-col select-none"
@@ -562,7 +626,7 @@ export default function Timeline() {
 
       {/* Scrollable container */}
       <div
-        className="flex-1 overflow-auto"
+        className={`flex-1 ${isDragging ? "overflow-hidden" : "overflow-auto"}`}
         ref={containerRef}
         style={{ touchAction: isDragging ? "none" : "pan-x pan-y" }}
       >

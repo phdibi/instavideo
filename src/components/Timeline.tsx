@@ -52,6 +52,9 @@ export default function Timeline() {
 
   const wasPlayingRef = useRef(false);
 
+  // Frozen row map for effects — prevents row jumping during drag
+  const frozenEffectRowMapRef = useRef<Map<string, number> | null>(null);
+
   const {
     videoDuration,
     currentTime,
@@ -67,6 +70,32 @@ export default function Timeline() {
     updateEffect,
     updateBRollImage,
   } = useProjectStore();
+
+  // Helper: compute effect row map from current effects (same algo as effectRows memo)
+  const snapshotEffectRowMap = useCallback(() => {
+    const rowMap = new Map<string, number>();
+    const rows: { id: string; startTime: number; endTime: number }[][] = [];
+    const sorted = [...effects].sort((a, b) => a.startTime - b.startTime);
+    for (const effect of sorted) {
+      let placed = false;
+      for (let ri = 0; ri < rows.length; ri++) {
+        const overlaps = rows[ri].some(
+          (existing) => effect.startTime < existing.endTime && effect.endTime > existing.startTime
+        );
+        if (!overlaps) {
+          rows[ri].push(effect);
+          rowMap.set(effect.id, ri);
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        rows.push([effect]);
+        rowMap.set(effect.id, rows.length - 1);
+      }
+    }
+    return rowMap;
+  }, [effects]);
 
   const pxPerSecond = useMemo(() => {
     if (!videoDuration) return 60;
@@ -203,6 +232,10 @@ export default function Timeline() {
       e.stopPropagation();
       e.preventDefault();
       pauseForDrag();
+      // Snapshot effect row assignments for stable drag
+      if (type === "effect") {
+        frozenEffectRowMapRef.current = snapshotEffectRowMap();
+      }
       setDragState({
         type,
         id,
@@ -214,7 +247,7 @@ export default function Timeline() {
       setActiveDragId(id);
       if (type !== "playhead") handleItemClick(type, id);
     },
-    [handleItemClick, pauseForDrag]
+    [handleItemClick, pauseForDrag, snapshotEffectRowMap]
   );
 
   // Auto-scroll timeline when dragging near edges (like CapCut)
@@ -314,6 +347,7 @@ export default function Timeline() {
     }
     setDragState(null);
     setActiveDragId(null);
+    frozenEffectRowMapRef.current = null;
   }, [dragState, flushPendingUpdate, resumeAfterDrag]);
 
   // === TOUCH GESTURE DISAMBIGUATION ===
@@ -356,6 +390,10 @@ export default function Timeline() {
         if (navigator.vibrate) navigator.vibrate(20);
 
         pauseForDrag();
+        // Snapshot effect row assignments for stable drag (touch)
+        if (pending.type === "effect") {
+          frozenEffectRowMapRef.current = snapshotEffectRowMap();
+        }
         setDragState({
           type: pending.type,
           id: pending.id,
@@ -369,7 +407,7 @@ export default function Timeline() {
         pendingTouchRef.current = null;
       }, LONG_PRESS_MS);
     },
-    [clearLongPress, pauseForDrag, handleItemClick]
+    [clearLongPress, pauseForDrag, handleItemClick, snapshotEffectRowMap]
   );
 
   // Resize handles activate IMMEDIATELY (no long-press) — like CapCut trim handles
@@ -388,6 +426,10 @@ export default function Timeline() {
 
       if (navigator.vibrate) navigator.vibrate(15);
       pauseForDrag();
+      // Snapshot effect row assignments for stable drag (resize touch)
+      if (type === "effect") {
+        frozenEffectRowMapRef.current = snapshotEffectRowMap();
+      }
       setDragState({
         type,
         id,
@@ -399,7 +441,7 @@ export default function Timeline() {
       setActiveDragId(id);
       handleItemClick(type, id);
     },
-    [pauseForDrag, handleItemClick]
+    [pauseForDrag, handleItemClick, snapshotEffectRowMap]
   );
 
   const handleContainerTouchMove = useCallback(
@@ -506,6 +548,7 @@ export default function Timeline() {
     }
     setDragState(null);
     setActiveDragId(null);
+    frozenEffectRowMapRef.current = null;
   }, [
     clearLongPress,
     dragState,
@@ -558,7 +601,19 @@ export default function Timeline() {
     const rows: (typeof effects)[] = [];
     const sorted = [...effects].sort((a, b) => a.startTime - b.startTime);
 
+    // If we have a frozen row map (during drag), use it for the dragged item
+    const frozenMap = frozenEffectRowMapRef.current;
+
     for (const effect of sorted) {
+      // If this effect has a frozen row assignment, use it
+      if (frozenMap && activeDragId && frozenMap.has(effect.id)) {
+        const frozenRow = frozenMap.get(effect.id)!;
+        // Ensure the row exists
+        while (rows.length <= frozenRow) rows.push([]);
+        rows[frozenRow].push(effect);
+        continue;
+      }
+
       let placed = false;
       for (const row of rows) {
         const overlaps = row.some(
@@ -575,7 +630,7 @@ export default function Timeline() {
       if (!placed) rows.push([effect]);
     }
     return rows;
-  }, [effects]);
+  }, [effects, activeDragId]);
 
   const effectsTrackHeight = Math.max(
     EFFECT_ROW_HEIGHT + 4,
@@ -744,15 +799,14 @@ export default function Timeline() {
                   return (
                     <div
                       key={c.id}
-                      className={`absolute top-1 rounded-md border text-[8px] px-1 truncate flex items-center will-change-transform ${
-                        isSelected
-                          ? "bg-[var(--accent)]/80 border-[var(--accent)] text-white shadow-md shadow-[var(--accent)]/40 z-20 ring-2 ring-white/40"
-                          : isActive
-                            ? "bg-[var(--accent)]/70 border-[var(--accent)] text-white shadow-sm shadow-[var(--accent)]/30 z-10"
-                            : isHovered
-                              ? "bg-[var(--accent)]/50 border-[var(--accent)]/80 text-white z-10"
-                              : "bg-[var(--accent)]/30 border-[var(--accent)]/50 text-white/80"
-                      } ${isDraggingThis ? "opacity-90 z-30 scale-y-110 shadow-lg ring-2 ring-[var(--accent)]" : "cursor-grab"}`}
+                      className={`absolute top-1 rounded-md border text-[8px] px-1 truncate flex items-center will-change-transform ${isSelected
+                        ? "bg-[var(--accent)]/80 border-[var(--accent)] text-white shadow-md shadow-[var(--accent)]/40 z-20 ring-2 ring-white/40"
+                        : isActive
+                          ? "bg-[var(--accent)]/70 border-[var(--accent)] text-white shadow-sm shadow-[var(--accent)]/30 z-10"
+                          : isHovered
+                            ? "bg-[var(--accent)]/50 border-[var(--accent)]/80 text-white z-10"
+                            : "bg-[var(--accent)]/30 border-[var(--accent)]/50 text-white/80"
+                        } ${isDraggingThis ? "opacity-90 z-30 scale-y-110 shadow-lg ring-2 ring-[var(--accent)]" : "cursor-grab"}`}
                       style={{
                         left: c.startTime * pxPerSecond,
                         width: itemWidth,
@@ -885,15 +939,14 @@ export default function Timeline() {
                     return (
                       <div
                         key={e.id}
-                        className={`absolute rounded-md border text-[8px] px-1 truncate flex items-center will-change-transform ${color} ${
-                          isSelected
-                            ? "brightness-130 shadow-md z-20 ring-2 ring-white/40"
-                            : isActive
-                              ? "brightness-125 shadow-sm z-10"
-                              : isHovered
-                                ? "brightness-115 z-10"
-                                : "hover:brightness-110"
-                        } ${isDraggingThis ? "opacity-90 z-30 scale-y-110 shadow-lg ring-2 ring-white/50" : "cursor-grab"}`}
+                        className={`absolute rounded-md border text-[8px] px-1 truncate flex items-center will-change-transform ${color} ${isSelected
+                          ? "brightness-130 shadow-md z-20 ring-2 ring-white/40"
+                          : isActive
+                            ? "brightness-125 shadow-sm z-10"
+                            : isHovered
+                              ? "brightness-115 z-10"
+                              : "hover:brightness-110"
+                          } ${isDraggingThis ? "opacity-90 z-30 scale-y-110 shadow-lg ring-2 ring-white/50" : "cursor-grab"}`}
                         style={{
                           left: e.startTime * pxPerSecond,
                           width: itemWidth,
@@ -1025,19 +1078,18 @@ export default function Timeline() {
                   return (
                     <div
                       key={b.id}
-                      className={`absolute top-1 rounded-md border text-[8px] px-1 truncate flex items-center will-change-transform ${
-                        isSelected
-                          ? b.url
-                            ? "bg-orange-500/80 border-orange-400 text-white shadow-md shadow-orange-500/40 z-20 ring-2 ring-white/40"
-                            : "bg-gray-500/40 border-gray-400 border-dashed text-gray-300 z-20 ring-2 ring-white/40"
-                          : b.url
-                            ? isActive
-                              ? "bg-orange-500/70 border-orange-400 text-white shadow-sm shadow-orange-500/30 z-10"
-                              : isHovered
-                                ? "bg-orange-500/55 border-orange-400/80 text-white z-10"
-                                : "bg-orange-500/40 border-orange-400/60 text-orange-200"
-                            : "bg-gray-500/20 border-gray-500/40 border-dashed text-gray-400"
-                      } ${isDraggingThis ? "opacity-90 z-30 scale-y-110 shadow-lg ring-2 ring-orange-400" : "cursor-grab"}`}
+                      className={`absolute top-1 rounded-md border text-[8px] px-1 truncate flex items-center will-change-transform ${isSelected
+                        ? b.url
+                          ? "bg-orange-500/80 border-orange-400 text-white shadow-md shadow-orange-500/40 z-20 ring-2 ring-white/40"
+                          : "bg-gray-500/40 border-gray-400 border-dashed text-gray-300 z-20 ring-2 ring-white/40"
+                        : b.url
+                          ? isActive
+                            ? "bg-orange-500/70 border-orange-400 text-white shadow-sm shadow-orange-500/30 z-10"
+                            : isHovered
+                              ? "bg-orange-500/55 border-orange-400/80 text-white z-10"
+                              : "bg-orange-500/40 border-orange-400/60 text-orange-200"
+                          : "bg-gray-500/20 border-gray-500/40 border-dashed text-gray-400"
+                        } ${isDraggingThis ? "opacity-90 z-30 scale-y-110 shadow-lg ring-2 ring-orange-400" : "cursor-grab"}`}
                       style={{
                         left: b.startTime * pxPerSecond,
                         width: itemWidth,
@@ -1148,11 +1200,10 @@ export default function Timeline() {
                 style={{ left: 6 }}
               />
               <div
-                className={`absolute -top-1 w-4 h-4 md:w-3 md:h-3 rounded-full bg-red-500 shadow-md shadow-red-500/50 cursor-grab pointer-events-auto group-hover:scale-125 transition-transform ${
-                  dragState?.type === "playhead"
-                    ? "scale-150 cursor-grabbing"
-                    : ""
-                }`}
+                className={`absolute -top-1 w-4 h-4 md:w-3 md:h-3 rounded-full bg-red-500 shadow-md shadow-red-500/50 cursor-grab pointer-events-auto group-hover:scale-125 transition-transform ${dragState?.type === "playhead"
+                  ? "scale-150 cursor-grabbing"
+                  : ""
+                  }`}
                 style={{ left: 3 }}
                 onMouseDown={(e) => {
                   e.stopPropagation();

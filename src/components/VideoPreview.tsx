@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useCallback, useMemo } from "react";
-import { Play, Pause, RotateCcw, Volume2, VolumeX } from "lucide-react";
+import { Play, Pause, RotateCcw, Volume2, VolumeX, Download } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { formatTime } from "@/lib/formatTime";
 import CaptionOverlay from "./CaptionOverlay";
@@ -13,6 +13,11 @@ export default function VideoPreview() {
   const animFrameRef = useRef<number>(0);
   const lastExternalSeekRef = useRef<number>(0);
   const [muted, setMuted] = useState(false);
+
+  // Track source of currentTime changes to prevent seek-feedback loop
+  // "playback" = RAF loop updating store from vid.currentTime (don't seek back)
+  // "external" = user action via timeline/slider (do seek video element)
+  const seekSourceRef = useRef<"playback" | "external">("external");
 
   const {
     videoUrl,
@@ -31,15 +36,20 @@ export default function VideoPreview() {
   const seekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Sync video element with store currentTime (for timeline/playhead seeking)
-  // Debounced to prevent rapid seeks from corrupting the video decoder
+  // Only seek when the change comes from an external source (user interaction),
+  // NOT when the RAF playback loop is updating the store.
   useEffect(() => {
     const vid = videoRef.current;
     if (!vid) return;
-    // When playing, don't fight with the video element's own time progression.
-    // The RAF loop already reads from vid.currentTime → store.
+    // When playing, the RAF loop drives currentTime. Never seek during playback.
     if (isPlaying) return;
+    // If the currentTime change came from the RAF playback loop, skip the seek.
+    if (seekSourceRef.current === "playback") {
+      seekSourceRef.current = "external"; // reset for next change
+      return;
+    }
     const diff = Math.abs(vid.currentTime - currentTime);
-    if (diff > 0.15 && !seekingRef.current) {
+    if (diff > 0.25 && !seekingRef.current) {
       // Debounce rapid seeks (e.g. from caption timing edits)
       if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
       seekTimeoutRef.current = setTimeout(() => {
@@ -267,6 +277,8 @@ export default function VideoPreview() {
       const now = performance.now();
       // 33ms = ~30fps store updates — halves re-render load vs 60fps
       if (now - lastUpdateRef.current >= 33) {
+        // Mark this update as coming from playback so the seek effect ignores it
+        seekSourceRef.current = "playback";
         setCurrentTime(videoRef.current.currentTime);
         lastUpdateRef.current = now;
       }
@@ -443,6 +455,23 @@ export default function VideoPreview() {
                 <Volume2 className="w-4 h-4" />
               )}
             </button>
+            {/* Download original video */}
+            {videoUrl && (
+              <button
+                onClick={() => {
+                  const a = document.createElement("a");
+                  a.href = videoUrl;
+                  a.download = "video-original.webm";
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                }}
+                className="w-9 h-9 rounded-lg bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center hover:bg-[var(--surface-hover)] transition-colors"
+                title="Baixar vídeo original"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+            )}
           </div>
 
           <span className="text-sm text-[var(--text-secondary)] font-mono">

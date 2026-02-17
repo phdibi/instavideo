@@ -19,6 +19,7 @@ import {
   CameraOff,
   GripHorizontal,
   X,
+  Download,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useProjectStore } from "@/store/useProjectStore";
@@ -261,8 +262,8 @@ export default function TeleprompterScreen() {
       const duration = isFinite(video.duration) && video.duration > 0
         ? video.duration
         : elapsedTime > 0
-        ? elapsedTime
-        : 30; // last-resort fallback
+          ? elapsedTime
+          : 30; // last-resort fallback
       setVideoDuration(duration);
       setVideoFile(file);
       setVideoUrl(recordedUrl);
@@ -628,6 +629,22 @@ export default function TeleprompterScreen() {
                 <RotateCcw className="w-4 h-4" />
                 Regravar
               </button>
+              {recordedUrl && (
+                <button
+                  onClick={() => {
+                    const a = document.createElement("a");
+                    a.href = recordedUrl;
+                    a.download = `gravacao-teleprompter-${Date.now()}.webm`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                  }}
+                  className="flex items-center gap-2 px-5 py-3 rounded-full bg-white/10 backdrop-blur-md hover:bg-white/20 transition-colors text-white active:scale-95"
+                >
+                  <Download className="w-4 h-4" />
+                  Baixar
+                </button>
+              )}
               <button onClick={useRecording} className="flex items-center gap-2 px-6 py-3 rounded-full bg-[var(--accent)] hover:bg-[var(--accent-hover)] transition-colors text-white font-medium shadow-lg shadow-[var(--accent)]/30 active:scale-95">
                 <Video className="w-4 h-4" />
                 Usar e Editar

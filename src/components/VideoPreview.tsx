@@ -39,11 +39,11 @@ export default function VideoPreview() {
     // The RAF loop already reads from vid.currentTime → store.
     if (isPlaying) return;
     const diff = Math.abs(vid.currentTime - currentTime);
-    if (diff > 0.15) {
+    if (diff > 0.15 && !seekingRef.current) {
       // Debounce rapid seeks (e.g. from caption timing edits)
       if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
       seekTimeoutRef.current = setTimeout(() => {
-        if (videoRef.current && !seekingRef.current) {
+        if (videoRef.current && !seekingRef.current && videoRef.current.readyState >= 2) {
           seekingRef.current = true;
           videoRef.current.currentTime = currentTime;
           const onSeeked = () => {
@@ -344,14 +344,14 @@ export default function VideoPreview() {
             style={videoStyle}
             onLoadedMetadata={(e) => {
               const vid = e.target as HTMLVideoElement;
-              if (isFinite(vid.duration) && vid.duration > 0) {
+              if (Number.isFinite(vid.duration) && vid.duration > 0) {
                 setVideoDuration(vid.duration);
               }
             }}
             onDurationChange={(e) => {
               // WebM blobs may update duration after initial load
               const vid = e.target as HTMLVideoElement;
-              if (isFinite(vid.duration) && vid.duration > 0 && vid.duration !== videoDuration) {
+              if (Number.isFinite(vid.duration) && vid.duration > 0 && vid.duration !== videoDuration) {
                 setVideoDuration(vid.duration);
               }
             }}

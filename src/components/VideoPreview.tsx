@@ -346,6 +346,29 @@ export default function VideoPreview() {
     [setCurrentTime]
   );
 
+  // ── SPACEBAR PLAY/PAUSE ────────────────────────────────────────────
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code !== "Space") return;
+
+      // Don't intercept if user is typing in an input, textarea, or contentEditable
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLInputElement ||
+        active instanceof HTMLTextAreaElement ||
+        (active instanceof HTMLElement && active.isContentEditable)
+      ) {
+        return;
+      }
+
+      e.preventDefault(); // Prevent page scroll
+      togglePlay();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [togglePlay]);
+
   return (
     <div className="flex flex-col h-full">
       {/* Video Container */}

@@ -31,7 +31,13 @@ export type CaptionAnimation =
   | "slide-up"
   | "pop"
   | "highlight-word"
-  | "karaoke";
+  | "karaoke"
+  | "glow"
+  | "shake"
+  | "wave"
+  | "zoom-in"
+  | "flip"
+  | "color-cycle";
 
 export interface EditEffect {
   id: string;

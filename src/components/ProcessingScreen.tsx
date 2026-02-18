@@ -177,24 +177,23 @@ function buildCaptionsFromTranscription(
     }
   }
 
-  // Step 4: Build final caption objects with improved timing offsets
-  // REDUCED ANTICIPATION: From 0.1s to 0.05s to feel "snappier"
-  const ANTICIPATION_OFFSET = 0.05;
-  const READABILITY_BUFFER = 0.2;
+  // Step 4: Build final caption objects with precise timing
+  // NO anticipation — captions appear exactly when (or slightly after) speech starts
+  // Small reactive delay makes captions feel "responsive" rather than "early"
+  const REACTIVE_DELAY = 0.03; // 30ms after word starts — feels natural
+  const READABILITY_BUFFER = 0.1; // Keep caption visible 100ms after last word ends
   const captions: Caption[] = [];
 
   for (let i = 0; i < mergedCaptions.length; i++) {
     const cap = mergedCaptions[i];
-    const startTime = Math.max(0, cap.start - ANTICIPATION_OFFSET);
+    const startTime = Math.max(0, cap.start + REACTIVE_DELAY);
 
-    // End time logic: precise end of last word + buffer
+    // End time logic: precise end of last word + small buffer
     let endTime = cap.end + READABILITY_BUFFER;
 
     // Ensure we don't overlap with the next caption's start time
     if (i + 1 < mergedCaptions.length) {
-      // If next caption starts strictly after this one ends, great.
-      // If they overlap due to buffer, cut this one short.
-      const nextStart = mergedCaptions[i + 1].start - ANTICIPATION_OFFSET;
+      const nextStart = mergedCaptions[i + 1].start + REACTIVE_DELAY;
       endTime = Math.min(endTime, nextStart);
     }
 

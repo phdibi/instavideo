@@ -177,7 +177,7 @@ function getWordState(
   wordIndex: number,
   currentWordIndex: number,
   _totalWords: number,
-  _progress: number,
+  progress: number,
   emphasis: string[],
   word: string
 ): WordState {
@@ -209,6 +209,24 @@ function getWordState(
       break;
     case "bounce":
       activeColor = "#4ECDC4";
+      break;
+    case "glow":
+      activeColor = "#00FFFF";
+      break;
+    case "shake":
+      activeColor = "#FF4444";
+      break;
+    case "wave":
+      activeColor = "#A78BFA";
+      break;
+    case "zoom-in":
+      activeColor = "#F97316";
+      break;
+    case "flip":
+      activeColor = "#34D399";
+      break;
+    case "color-cycle":
+      activeColor = `hsl(${(progress * 360) % 360}, 100%, 70%)`;
       break;
     case "typewriter":
       // Show words progressively
@@ -289,6 +307,42 @@ function getAnimationVariants(animation: CaptionAnimation) {
         initial: { opacity: 0 },
         animate: { opacity: 1 },
         exit: { opacity: 0 },
+      };
+    case "glow":
+      return {
+        initial: { opacity: 0, filter: "brightness(2)" },
+        animate: { opacity: 1, filter: "brightness(1)" },
+        exit: { opacity: 0, filter: "brightness(2)" },
+      };
+    case "shake":
+      return {
+        initial: { opacity: 0, x: -10 },
+        animate: { opacity: 1, x: 0, transition: { type: "spring" as const, damping: 8, stiffness: 400 } },
+        exit: { opacity: 0, x: 10 },
+      };
+    case "wave":
+      return {
+        initial: { opacity: 0, y: 15, rotate: -2 },
+        animate: { opacity: 1, y: 0, rotate: 0 },
+        exit: { opacity: 0, y: -10, rotate: 2 },
+      };
+    case "zoom-in":
+      return {
+        initial: { opacity: 0, scale: 0.3 },
+        animate: { opacity: 1, scale: 1, transition: { type: "spring" as const, damping: 10, stiffness: 250 } },
+        exit: { opacity: 0, scale: 1.5 },
+      };
+    case "flip":
+      return {
+        initial: { opacity: 0, rotateX: 90 },
+        animate: { opacity: 1, rotateX: 0, transition: { type: "spring" as const, damping: 15, stiffness: 200 } },
+        exit: { opacity: 0, rotateX: -90 },
+      };
+    case "color-cycle":
+      return {
+        initial: { opacity: 0, scale: 0.9 },
+        animate: { opacity: 1, scale: 1 },
+        exit: { opacity: 0, scale: 0.9 },
       };
     default:
       return {

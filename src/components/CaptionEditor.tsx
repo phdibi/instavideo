@@ -25,6 +25,12 @@ const animations: { value: CaptionAnimation; label: string }[] = [
   { value: "typewriter", label: "Máquina de Escrever" },
   { value: "karaoke", label: "Karaokê" },
   { value: "highlight-word", label: "Destaque" },
+  { value: "glow", label: "Brilho" },
+  { value: "shake", label: "Tremor" },
+  { value: "wave", label: "Onda" },
+  { value: "zoom-in", label: "Zoom In" },
+  { value: "flip", label: "Virar" },
+  { value: "color-cycle", label: "Arco-Íris" },
 ];
 
 const presetStyles: { name: string; style: Partial<CaptionStyle> }[] = [
@@ -170,6 +176,87 @@ const presetStyles: { name: string; style: Partial<CaptionStyle> }[] = [
     },
   },
   {
+    name: "Fogo",
+    style: {
+      color: "#FF4500",
+      backgroundColor: "transparent",
+      backgroundOpacity: 0,
+      fontSize: 54,
+      fontWeight: 900,
+      strokeColor: "#FFD700",
+      strokeWidth: 3,
+      shadowColor: "rgba(255,69,0,0.7)",
+      shadowBlur: 20,
+    },
+  },
+  {
+    name: "Roxo Neon",
+    style: {
+      color: "#BF5AF2",
+      backgroundColor: "transparent",
+      backgroundOpacity: 0,
+      fontSize: 50,
+      fontWeight: 900,
+      strokeColor: "#000000",
+      strokeWidth: 3,
+      shadowColor: "rgba(191,90,242,0.6)",
+      shadowBlur: 18,
+    },
+  },
+  {
+    name: "Outline Bold",
+    style: {
+      color: "transparent",
+      backgroundColor: "transparent",
+      backgroundOpacity: 0,
+      fontSize: 56,
+      fontWeight: 900,
+      strokeColor: "#FFFFFF",
+      strokeWidth: 4,
+      shadowColor: "rgba(0,0,0,0.5)",
+      shadowBlur: 4,
+    },
+  },
+  {
+    name: "Pastel Suave",
+    style: {
+      color: "#FBBF24",
+      backgroundColor: "#FEF3C7",
+      backgroundOpacity: 0.9,
+      fontSize: 42,
+      fontWeight: 600,
+      strokeWidth: 0,
+      shadowBlur: 0,
+      shadowColor: "transparent",
+    },
+  },
+  {
+    name: "Red Alert",
+    style: {
+      color: "#FFFFFF",
+      backgroundColor: "#DC2626",
+      backgroundOpacity: 0.95,
+      fontSize: 50,
+      fontWeight: 900,
+      strokeWidth: 0,
+      shadowColor: "rgba(220,38,38,0.5)",
+      shadowBlur: 15,
+    },
+  },
+  {
+    name: "Matrix",
+    style: {
+      color: "#00FF41",
+      backgroundColor: "#000000",
+      backgroundOpacity: 0.85,
+      fontSize: 44,
+      fontWeight: 700,
+      strokeWidth: 0,
+      shadowColor: "rgba(0,255,65,0.5)",
+      shadowBlur: 12,
+    },
+  },
+  {
     name: "Clean White",
     style: {
       color: "#FFFFFF",
@@ -274,11 +361,10 @@ export default function CaptionEditor() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setApplyToAll(!applyToAll)}
-            className={`flex items-center gap-1.5 px-2 py-1 text-[10px] font-medium rounded-lg border transition-colors ${
-              applyToAll
+            className={`flex items-center gap-1.5 px-2 py-1 text-[10px] font-medium rounded-lg border transition-colors ${applyToAll
                 ? "bg-[var(--accent)] border-[var(--accent)] text-white"
                 : "bg-transparent border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]"
-            }`}
+              }`}
             title="Aplicar alterações de estilo a todas as legendas"
           >
             {applyToAll ? <CheckSquare className="w-3 h-3" /> : <Square className="w-3 h-3" />}
@@ -565,11 +651,10 @@ function CaptionItem({
                       style: { ...caption.style, position: pos },
                     })
                   }
-                  className={`flex-1 py-1.5 text-xs rounded-lg transition-colors ${
-                    caption.style.position === pos
+                  className={`flex-1 py-1.5 text-xs rounded-lg transition-colors ${caption.style.position === pos
                       ? "bg-[var(--accent)] text-white"
                       : "bg-[var(--background)] border border-[var(--border)] hover:bg-[var(--surface-hover)]"
-                  }`}
+                    }`}
                 >
                   {pos === "top" ? "Topo" : pos === "center" ? "Centro" : "Base"}
                 </button>

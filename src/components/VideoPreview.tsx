@@ -40,9 +40,11 @@ export default function VideoPreview() {
     const vid = videoRef.current;
     if (!vid) return;
 
+    // Only the VISIBLE instance should sync — skip if hidden (display:none)
+    const container = containerRef.current;
+    if (!container || container.offsetParent === null) return;
+
     // Guard: NEVER seek the video element during playback.
-    // We check the ref (synchronous, not subject to React batching) AND
-    // the video element's own paused state (ground truth from the browser).
     if (isPlayingRef.current || !vid.paused) return;
 
     const diff = Math.abs(vid.currentTime - currentTime);
@@ -78,11 +80,11 @@ export default function VideoPreview() {
   videoDurationRef.current = videoDuration;
 
   const updateTime = useCallback(() => {
-    // Use the ref as the loop condition — NOT vid.paused.
-    // vid.paused can be momentarily true during buffering/seeking,
-    // which would kill the loop prematurely. The ref is set to false
-    // only by explicit user actions (pause, restart, onEnded).
     if (!isPlayingRef.current) return;
+
+    // Only the VISIBLE instance drives currentTime
+    const container = containerRef.current;
+    if (!container || container.offsetParent === null) return;
 
     const vid = videoRef.current;
     if (!vid) return;
@@ -100,8 +102,11 @@ export default function VideoPreview() {
     animFrameRef.current = requestAnimationFrame(updateTime);
   }, [setCurrentTime]); // Only stable dep
 
-  // Start/stop RAF loop when isPlaying changes
+  // Start/stop RAF loop when isPlaying changes — ONLY for visible instance
   useEffect(() => {
+    const container = containerRef.current;
+    if (!container || container.offsetParent === null) return;
+
     if (isPlaying) {
       lastUpdateRef.current = 0; // Force immediate first update
       animFrameRef.current = requestAnimationFrame(updateTime);

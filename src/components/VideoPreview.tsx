@@ -92,9 +92,14 @@ export default function VideoPreview() {
     const now = performance.now();
     if (now - lastUpdateRef.current >= 33) {
       const dur = videoDurationRef.current;
-      const t = (dur && dur > 0 && Number.isFinite(dur))
+      // Compensate for browser audio decode buffering:
+      // vid.currentTime reports the decoded position, which is slightly
+      // ahead of the audio that's actually being heard (~50ms).
+      const AUDIO_SYNC_COMPENSATION = 0.05; // 50ms
+      const raw = (dur && dur > 0 && Number.isFinite(dur))
         ? Math.min(vid.currentTime, dur)
         : vid.currentTime;
+      const t = Math.max(0, raw - AUDIO_SYNC_COMPENSATION);
       setCurrentTime(t);
       lastUpdateRef.current = now;
     }
@@ -139,7 +144,7 @@ export default function VideoPreview() {
     [bRollImages, currentTime]
   );
 
-  // B-Roll animation: ken-burns style zoom/pan
+  // B-Roll animation: respects the `animation` property chosen in the sidebar
   const bRollStyle = useMemo(() => {
     if (!activeBRoll) return null;
     const duration = activeBRoll.endTime - activeBRoll.startTime;
@@ -148,20 +153,44 @@ export default function VideoPreview() {
       1
     );
 
-    let opacity = 1;
+    // Fade in/out envelope for all animations
+    let opacity = activeBRoll.opacity ?? 1;
     if (progress < 0.15) {
-      opacity = progress / 0.15;
+      opacity *= progress / 0.15;
     } else if (progress > 0.85) {
-      opacity = (1 - progress) / 0.15;
+      opacity *= (1 - progress) / 0.15;
     }
 
-    const scale = 1 + progress * 0.12;
-    const panX = progress * -2;
-    const panY = progress * -1;
+    let scale = 1;
+    let translateX = 0;
+    let translateY = 0;
+
+    const animation = activeBRoll.animation || "ken-burns";
+
+    switch (animation) {
+      case "fade":
+        // Pure fade — no movement
+        break;
+      case "slide":
+        // Horizontal pan from left to right
+        translateX = (progress - 0.5) * -6; // -3% to +3%
+        break;
+      case "zoom":
+        // Smooth zoom in
+        scale = 1 + progress * 0.2;
+        break;
+      case "ken-burns":
+      default:
+        // Classic ken-burns: zoom + pan
+        scale = 1 + progress * 0.12;
+        translateX = progress * -2;
+        translateY = progress * -1;
+        break;
+    }
 
     return {
       opacity,
-      transform: `scale(${scale}) translate(${panX}%, ${panY}%)`,
+      transform: `scale(${scale}) translate(${translateX}%, ${translateY}%)`,
       backgroundImage: `url(${activeBRoll.url})`,
       backgroundSize: "cover",
       backgroundPosition: "center",

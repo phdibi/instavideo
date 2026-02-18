@@ -81,19 +81,8 @@ function buildCaptionsFromTranscription(
           wEnd = segStart + ((wi + 1) / wordCount) * segDuration;
         }
 
-        // Ensure monotonic ordering with previous word, but allow small gaps (breaths)
-        if (allWords.length > 0) {
-          const prev = allWords[allWords.length - 1];
-          if (wStart < prev.end - 0.05) { // Allow tiny 50ms overlap for cross-fades
-            // Overlap detected — push start to end of previous, keep original duration
-            wStart = prev.end;
-            // Keep the original word duration, don't inflate wEnd
-            const originalDuration = w.end - w.start;
-            wEnd = Math.max(wStart + Math.min(originalDuration, 0.3), wStart + 0.05);
-          }
-        }
-
-        // Clamp to video duration
+        // Clamp to video duration — don't try to fix overlaps, trust the API timestamps
+        // Word-level overlaps are harmless since we group into captions at Step 2
         wStart = Math.max(0, Math.min(wStart, effectiveDuration));
         wEnd = Math.max(wStart + 0.05, Math.min(wEnd, effectiveDuration));
 

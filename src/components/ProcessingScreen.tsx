@@ -13,7 +13,10 @@ import type {
   TranscriptionResult,
   TranscriptionSegment,
   EffectType,
+  VideoSegment,
+  PresetType,
 } from "@/types";
+import { buildSegmentsFromTranscription, applyAllPresets } from "@/lib/presets";
 
 const defaultCaptionStyle: CaptionStyle = {
   fontFamily: "Inter",
@@ -509,10 +512,59 @@ export default function ProcessingScreen() {
           ? aiEffects
           : buildSpeechDrivenEffects(segments, effectiveDuration);
 
-      // Set state
-      setCaptions(captions);
-      setEffects(effects);
+      // Step 5b: Build semantic segments for AI presets
+      const bRollTimings = bRollSuggestions.map(s => ({
+        startTime: s.timestamp,
+        endTime: s.timestamp + (s.duration || 2),
+      }));
+      const videoSegments = buildSegmentsFromTranscription(
+        segments,
+        effectiveDuration,
+        bRollTimings
+      );
 
+      // Try to enhance with AI preset detection
+      try {
+        const presetRes = await fetch("/api/segment-presets", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transcription, videoDuration: effectiveDuration }),
+        });
+
+        if (presetRes.ok) {
+          const presetData = await presetRes.json();
+          const aiSegments = presetData.segments || [];
+
+          for (let i = 0; i < videoSegments.length && i < aiSegments.length; i++) {
+            const aiSeg = aiSegments.find((a: { index: number }) => a.index === i);
+            if (aiSeg) {
+              videoSegments[i].preset = aiSeg.preset as PresetType;
+              videoSegments[i].keywordHighlight = aiSeg.keywordHighlight || videoSegments[i].keywordHighlight;
+              videoSegments[i].brollQuery = aiSeg.brollQuery || videoSegments[i].brollQuery;
+              videoSegments[i].confidence = aiSeg.confidence || 0.9;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("AI preset detection failed, using heuristic presets:", err);
+      }
+
+      // Apply presets to captions and generate preset-specific effects
+      const presetResult = applyAllPresets(videoSegments, captions, effectiveDuration);
+
+      // Merge preset effects with AI/speech-driven effects
+      const mergedEffects = [
+        ...effects.filter(e => !e.id.startsWith("preset_")),
+        ...presetResult.presetEffects,
+      ].sort((a, b) => a.startTime - b.startTime);
+
+      // Set state
+      useProjectStore.getState().setSegments(videoSegments);
+      setCaptions(presetResult.updatedCaptions);
+      setEffects(mergedEffects);
+
+      // Combine B-Roll from AI suggestions + preset-generated B-Roll
+      const presetBrollItems = presetResult.presetBroll;
       const bRollItems = bRollSuggestions.map((s: BRollSuggestion) => ({
         id: s.id || uuid(),
         url: "",
@@ -523,15 +575,17 @@ export default function ProcessingScreen() {
         opacity: 0.9,
         position: "fullscreen" as const,
       }));
-      setBRollImages(bRollItems);
+      const allBRollItems = [...bRollItems, ...presetBrollItems];
+      setBRollImages(allBRollItems);
       setEditPlan(editPlan as unknown as import("@/types").EditPlan);
 
-      // Step 6: Auto-generate all B-roll images
-      if (bRollItems.length > 0) {
+      // Step 6: Auto-generate all B-roll images (AI + preset)
+      const brollToGenerate = allBRollItems.filter(item => !item.url);
+      if (brollToGenerate.length > 0) {
         setStatus("generating-broll");
         const batchSize = 3;
-        for (let i = 0; i < bRollItems.length; i += batchSize) {
-          const batch = bRollItems.slice(i, i + batchSize);
+        for (let i = 0; i < brollToGenerate.length; i += batchSize) {
+          const batch = brollToGenerate.slice(i, i + batchSize);
           await Promise.allSettled(
             batch.map(async (item) => {
               try {

@@ -136,6 +136,20 @@ export type ProjectStatus =
   | "exporting"
   | "error";
 
+// ===== AI Preset System =====
+export type PresetType = "hook" | "talking-head" | "talking-head-broll" | "futuristic-hud";
+
+export interface VideoSegment {
+  id: string;
+  startTime: number;
+  endTime: number;
+  text: string;
+  preset: PresetType;
+  keywordHighlight: string; // most important word/phrase to highlight
+  brollQuery: string; // query for B-Roll search/generation
+  confidence: number; // 0-1 how confident the detection is
+}
+
 export interface TeleprompterSettings {
   script: string;
   fontSize: number;

@@ -6,6 +6,7 @@ import type {
   EditPlan,
   ProjectStatus,
   TeleprompterSettings,
+  VideoSegment,
 } from "@/types";
 
 interface ProjectStore {
@@ -20,9 +21,12 @@ interface ProjectStore {
   editPlan: EditPlan | null;
   currentTime: number;
   isPlaying: boolean;
+  segments: VideoSegment[];
   selectedItem: { type: "caption" | "effect" | "broll"; id: string } | null;
   teleprompterSettings: TeleprompterSettings;
 
+  setSegments: (segments: VideoSegment[]) => void;
+  updateSegment: (id: string, updates: Partial<VideoSegment>) => void;
   setVideoFile: (file: File) => void;
   setVideoUrl: (url: string) => void;
   setVideoDuration: (duration: number) => void;
@@ -69,6 +73,7 @@ const initialState = {
   effects: [],
   bRollImages: [],
   editPlan: null,
+  segments: [],
   currentTime: 0,
   isPlaying: false,
   selectedItem: null,
@@ -120,6 +125,13 @@ export const useProjectStore = create<ProjectStore>((set) => ({
   deleteBRollImage: (id) =>
     set((state) => ({
       bRollImages: state.bRollImages.filter((b) => b.id !== id),
+    })),
+  setSegments: (segments) => set({ segments }),
+  updateSegment: (id, updates) =>
+    set((state) => ({
+      segments: state.segments.map((s) =>
+        s.id === id ? { ...s, ...updates } : s
+      ),
     })),
   setEditPlan: (plan) => set({ editPlan: plan }),
   setCurrentTime: (time) => set({ currentTime: time }),

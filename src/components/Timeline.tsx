@@ -61,6 +61,7 @@ export default function Timeline() {
     captions,
     effects,
     bRollImages,
+    segments,
     selectedItem,
     isPlaying,
     setCurrentTime,
@@ -661,11 +662,12 @@ export default function Timeline() {
     }).filter((cat) => cat.count > 0); // Hide empty categories
   }, [effects, activeDragId, EFFECT_CATEGORIES]);
 
+  const PRESET_TRACK_HEIGHT = segments.length > 0 ? 32 : 0;
   const effectsTrackHeight = categorizedEffects.reduce(
     (total, cat) => total + Math.max(EFFECT_ROW_HEIGHT + 4, cat.rows.length * EFFECT_ROW_HEIGHT + 4),
     0
   ) || (EFFECT_ROW_HEIGHT + 4); // Minimum height when no effects
-  const totalTracksHeight = TRACK_HEIGHT + effectsTrackHeight + TRACK_HEIGHT;
+  const totalTracksHeight = PRESET_TRACK_HEIGHT + TRACK_HEIGHT + effectsTrackHeight + TRACK_HEIGHT;
 
   // Freeze height during drag to prevent layout jumps
   const frozenTracksHeightRef = useRef<number | null>(null);
@@ -805,6 +807,69 @@ export default function Timeline() {
 
           {/* Tracks */}
           <div className="relative" style={{ minHeight: stableTracksHeight }}>
+            {/* === PRESET SEGMENTS TRACK === */}
+            {segments.length > 0 && (
+              <div
+                className="flex items-center border-b border-[var(--border)]/30"
+                style={{ height: PRESET_TRACK_HEIGHT }}
+              >
+                <div
+                  className="shrink-0 px-1.5 text-[8px] text-[var(--text-secondary)] uppercase tracking-wider flex items-center h-full border-r border-[var(--border)] font-medium bg-[var(--surface)]"
+                  style={{
+                    width: HEADER_WIDTH,
+                    position: "sticky",
+                    left: 0,
+                    zIndex: 5,
+                  }}
+                >
+                  AI Edit
+                </div>
+                <div
+                  className="relative h-full"
+                  style={{ width: timelineWidth }}
+                >
+                  {segments.map((seg) => {
+                    const itemWidth = Math.max(
+                      (seg.endTime - seg.startTime) * pxPerSecond,
+                      20
+                    );
+                    const presetColors: Record<string, string> = {
+                      "hook": "bg-red-500/40 border-red-400/60 text-red-200",
+                      "talking-head": "bg-blue-500/30 border-blue-400/50 text-blue-200",
+                      "talking-head-broll": "bg-orange-500/35 border-orange-400/55 text-orange-200",
+                      "futuristic-hud": "bg-cyan-500/35 border-cyan-400/55 text-cyan-200",
+                    };
+                    const presetLabels: Record<string, string> = {
+                      "hook": "Hook",
+                      "talking-head": "TH",
+                      "talking-head-broll": "TH+BR",
+                      "futuristic-hud": "HUD",
+                    };
+                    const color = presetColors[seg.preset] || "bg-gray-500/30 border-gray-400/50 text-gray-200";
+
+                    return (
+                      <div
+                        key={seg.id}
+                        className={`absolute top-0.5 rounded border text-[7px] font-medium px-1 truncate flex items-center ${color}`}
+                        style={{
+                          left: seg.startTime * pxPerSecond,
+                          width: itemWidth,
+                          height: PRESET_TRACK_HEIGHT - 4,
+                        }}
+                        title={`AI Edit: ${seg.preset} — "${seg.text.slice(0, 40)}..."`}
+                      >
+                        {itemWidth > 25 && (
+                          <span className="truncate">
+                            {presetLabels[seg.preset] || seg.preset}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* === CAPTIONS TRACK === */}
             <div
               className="flex items-center border-b border-[var(--border)]/30"

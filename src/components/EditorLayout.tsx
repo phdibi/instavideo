@@ -11,18 +11,25 @@ import {
   GripHorizontal,
   ChevronUp,
   ChevronDown,
+  Wand2,
 } from "lucide-react";
 import VideoPreview from "./VideoPreview";
 import CaptionEditor from "./CaptionEditor";
 import EffectsEditor from "./EffectsEditor";
 import BRollPanel from "./BRollPanel";
 import ExportPanel from "./ExportPanel";
+import PresetPanel from "./PresetPanel";
 import Timeline from "./Timeline";
 import { useProjectStore } from "@/store/useProjectStore";
 
-type Tab = "captions" | "effects" | "broll" | "export";
+type Tab = "presets" | "captions" | "effects" | "broll" | "export";
 
 const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
+  {
+    key: "presets",
+    label: "AI Edit",
+    icon: <Wand2 className="w-4 h-4" />,
+  },
   { key: "captions", label: "Legendas", icon: <Type className="w-4 h-4" /> },
   {
     key: "effects",
@@ -57,8 +64,8 @@ const MOBILE_TIMELINE_EXPANDED = 260; // Expanded — full editing mode
 const MOBILE_TIMELINE_MAX = 380;      // Maximum — nearly half screen
 
 export default function EditorLayout() {
-  const [activeTab, setActiveTab] = useState<Tab>("captions");
-  const { reset, captions, effects, selectedItem } = useProjectStore();
+  const [activeTab, setActiveTab] = useState<Tab>("presets");
+  const { reset, captions, effects, segments, selectedItem } = useProjectStore();
   const [timelineHeight, setTimelineHeight] = useState(DEFAULT_TIMELINE_HEIGHT);
   const isDraggingRef = useRef(false);
   const startYRef = useRef(0);
@@ -227,6 +234,8 @@ export default function EditorLayout() {
           <span className="font-semibold text-sm">CineAI Editor</span>
         </div>
         <div className="ml-auto flex items-center gap-3 text-xs text-[var(--text-secondary)]">
+          <span className="hidden sm:inline">{segments.length} segmentos</span>
+          <span className="hidden sm:inline w-px h-4 bg-[var(--border)]" />
           <span className="hidden sm:inline">{captions.length} legendas</span>
           <span className="hidden sm:inline w-px h-4 bg-[var(--border)]" />
           <span className="hidden sm:inline">{effects.length} efeitos</span>
@@ -263,6 +272,7 @@ export default function EditorLayout() {
 
             {/* Tab content */}
             <div className="flex-1 overflow-hidden">
+              {activeTab === "presets" && <PresetPanel />}
               {activeTab === "captions" && <CaptionEditor />}
               {activeTab === "effects" && <EffectsEditor />}
               {activeTab === "broll" && <BRollPanel />}

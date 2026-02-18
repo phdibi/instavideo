@@ -180,7 +180,7 @@ function buildCaptionsFromTranscription(
   // Step 4: Build final caption objects with precise timing
   // NO anticipation — captions appear exactly when (or slightly after) speech starts
   // Small reactive delay makes captions feel "responsive" rather than "early"
-  const REACTIVE_DELAY = 0.03; // 30ms after word starts — feels natural
+  const REACTIVE_DELAY = 0.08; // 80ms after word starts — eliminates "ahead" feeling
   const READABILITY_BUFFER = 0.1; // Keep caption visible 100ms after last word ends
   const captions: Caption[] = [];
 

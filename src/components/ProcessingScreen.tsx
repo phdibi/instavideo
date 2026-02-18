@@ -73,10 +73,9 @@ function buildCaptionsFromTranscription(
         let wStart = w.start;
         let wEnd = w.end;
 
-        // Fix: word timestamps outside segment boundaries — redistribute proportionally
-        // BUT prioritize original timestamps if they seem plausible
-        if (wStart < segStart - 0.2 || wEnd > segEnd + 0.5 || wEnd <= wStart || wStart < 0) {
-          // Only force redistribution if drastically wrong
+        // Only redistribute if timestamps are completely broken (negative, reversed, or absurd)
+        // Trust API timestamps when they're even roughly correct — they're better than proportional
+        if (wEnd <= wStart || wStart < 0 || wStart > effectiveDuration || wEnd < 0) {
           wStart = segStart + (wi / wordCount) * segDuration;
           wEnd = segStart + ((wi + 1) / wordCount) * segDuration;
         }

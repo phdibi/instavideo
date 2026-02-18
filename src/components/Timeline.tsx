@@ -667,6 +667,21 @@ export default function Timeline() {
   ) || (EFFECT_ROW_HEIGHT + 4); // Minimum height when no effects
   const totalTracksHeight = TRACK_HEIGHT + effectsTrackHeight + TRACK_HEIGHT;
 
+  // Freeze height during drag to prevent layout jumps
+  const frozenTracksHeightRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (activeDragId) {
+      // Capture height at drag start
+      if (frozenTracksHeightRef.current === null) {
+        frozenTracksHeightRef.current = totalTracksHeight;
+      }
+    } else {
+      frozenTracksHeightRef.current = null;
+    }
+  }, [activeDragId, totalTracksHeight]);
+
+  const stableTracksHeight = frozenTracksHeightRef.current ?? totalTracksHeight;
+
   const getEffectColor = (type: string) => {
     for (const cat of EFFECT_CATEGORIES) {
       if (cat.types.includes(type)) return cat.color;
@@ -789,7 +804,7 @@ export default function Timeline() {
           </div>
 
           {/* Tracks */}
-          <div className="relative" style={{ minHeight: totalTracksHeight }}>
+          <div className="relative" style={{ minHeight: stableTracksHeight }}>
             {/* === CAPTIONS TRACK === */}
             <div
               className="flex items-center border-b border-[var(--border)]/30"

@@ -103,11 +103,9 @@ function buildCaptionsFromTranscription(
 
   if (allWords.length === 0) return [];
 
-  // Step 2: Group words into caption chunks (3-6 words each)
-  // Improved grouping: respects sentence endings and natural pauses more strictly
-  const MAX_WORDS = 6; // Increased slightly for better flow
-  const MIN_WORDS = 1; // Allow single words if emphatic
-  const PAUSE_THRESHOLD = 0.4; // >0.4s gap triggers new caption
+  // Step 2: Group words into caption chunks (2-3 words for tight sync)
+  const MAX_WORDS = 3; // Smaller chunks = tighter sync with speech
+  const PAUSE_THRESHOLD = 0.3; // >0.3s gap triggers new caption
 
   const rawCaptions: { words: string[]; start: number; end: number }[] = [];
   let currentChunk: { words: string[]; start: number; end: number } = {
@@ -140,48 +138,24 @@ function buildCaptionsFromTranscription(
   // Don't forget the last chunk
   rawCaptions.push({ ...currentChunk });
 
-  // Step 3: Merge extremely short captions with next IF no pause
-  const mergedCaptions: typeof rawCaptions = [];
-  for (let i = 0; i < rawCaptions.length; i++) {
-    const cap = rawCaptions[i];
-
-    // Check if next caption exists and gap is small
-    const nextCap = i + 1 < rawCaptions.length ? rawCaptions[i + 1] : null;
-    const gapToNext = nextCap ? nextCap.start - cap.end : Infinity;
-
-    if (
-      cap.words.length < 2 &&
-      nextCap &&
-      gapToNext < 0.2 &&
-      !/[.!?]$/.test(cap.words[0]) // Don't merge if it's a sentence end
-    ) {
-      // Merge with next
-      rawCaptions[i + 1] = {
-        words: [...cap.words, ...nextCap.words],
-        start: cap.start,
-        end: nextCap.end,
-      };
-    } else {
-      mergedCaptions.push(cap);
-    }
-  }
+  // Step 3: Use raw captions directly (no merging — we want tight small chunks)
+  const mergedCaptions = rawCaptions;
 
   // Step 4: Build final caption objects with precise timing
-  // Small reactive delay so captions feel responsive but not early
-  const REACTIVE_DELAY = 0.03; // 30ms after word starts
-  const READABILITY_BUFFER = 0.1; // Keep caption visible 100ms after last word ends
+  // No artificial delay — the 50ms audio compensation in VideoPreview handles sync
+  const READABILITY_BUFFER = 0.05; // Keep caption visible 50ms after last word ends
   const captions: Caption[] = [];
 
   for (let i = 0; i < mergedCaptions.length; i++) {
     const cap = mergedCaptions[i];
-    const startTime = Math.max(0, cap.start + REACTIVE_DELAY);
+    const startTime = Math.max(0, cap.start);
 
     // End time logic: precise end of last word + small buffer
     let endTime = cap.end + READABILITY_BUFFER;
 
     // Ensure we don't overlap with the next caption's start time
     if (i + 1 < mergedCaptions.length) {
-      const nextStart = mergedCaptions[i + 1].start + REACTIVE_DELAY;
+      const nextStart = mergedCaptions[i + 1].start;
       endTime = Math.min(endTime, nextStart);
     }
 

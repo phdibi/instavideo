@@ -75,7 +75,7 @@ export interface BRollImage {
   prompt: string;
   startTime: number;
   endTime: number;
-  animation: "fade" | "slide" | "zoom" | "ken-burns";
+  animation: "fade" | "slide" | "zoom" | "ken-burns" | "pan-left" | "pan-up" | "pan-down" | "blur-in";
   opacity: number;
   position: "fullscreen" | "overlay" | "split" | "pip";
 }

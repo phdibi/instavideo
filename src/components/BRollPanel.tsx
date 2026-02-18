@@ -52,7 +52,7 @@ export default function BRollPanel() {
       console.error("B-roll generation error:", error);
       alert(
         "Erro ao gerar B-roll: " +
-          (error instanceof Error ? error.message : "Erro desconhecido")
+        (error instanceof Error ? error.message : "Erro desconhecido")
       );
     } finally {
       setGenerating(null);
@@ -124,11 +124,10 @@ export default function BRollPanel() {
                     if (el) itemRefs.current.set(img.id, el);
                     else itemRefs.current.delete(img.id);
                   }}
-                  className={`bg-[var(--surface)] border rounded-xl overflow-hidden transition-all ${
-                    isSelected
+                  className={`bg-[var(--surface)] border rounded-xl overflow-hidden transition-all ${isSelected
                       ? "border-[var(--accent)] ring-1 ring-[var(--accent)]/30 shadow-md shadow-[var(--accent)]/10"
                       : "border-[var(--border)]"
-                  }`}
+                    }`}
                 >
                   {/* Image or placeholder */}
                   <div className="relative aspect-video bg-[var(--background)]">
@@ -281,6 +280,10 @@ export default function BRollPanel() {
                         <option value="slide">Slide</option>
                         <option value="zoom">Zoom</option>
                         <option value="ken-burns">Ken Burns</option>
+                        <option value="pan-left">Pan Esquerda</option>
+                        <option value="pan-up">Pan Cima</option>
+                        <option value="pan-down">Pan Baixo</option>
+                        <option value="blur-in">Blur In</option>
                       </select>
 
                       <div className="flex items-center gap-1">

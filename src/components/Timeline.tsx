@@ -599,6 +599,12 @@ export default function Timeline() {
   // === EFFECT CATEGORIES ===
   const EFFECT_CATEGORIES = useMemo(() => [
     {
+      key: "transition",
+      label: "✨ Transições",
+      types: ["transition-fade", "transition-swipe", "transition-zoom", "transition-glitch"],
+      color: "bg-yellow-500/50 border-yellow-400/70 text-yellow-200",
+    },
+    {
       key: "zoom",
       label: "🔎 Zoom",
       types: ["zoom-in", "zoom-out", "zoom-pulse"],
@@ -609,12 +615,6 @@ export default function Timeline() {
       label: "🎥 Movimento",
       types: ["pan-left", "pan-right", "pan-up", "pan-down", "shake"],
       color: "bg-green-500/50 border-green-400/70 text-green-200",
-    },
-    {
-      key: "transition",
-      label: "✨ Transições",
-      types: ["transition-fade", "transition-swipe", "transition-zoom", "transition-glitch"],
-      color: "bg-yellow-500/50 border-yellow-400/70 text-yellow-200",
     },
     {
       key: "visual",
@@ -943,6 +943,147 @@ export default function Timeline() {
               </div>
             </div>
 
+            {/* === B-ROLL TRACK === */}
+            <div
+              className="flex items-center border-b border-[var(--border)]/30"
+              style={{ height: TRACK_HEIGHT }}
+            >
+              <div
+                className="shrink-0 px-2 text-[9px] text-[var(--text-secondary)] uppercase tracking-wider flex items-center h-full border-r border-[var(--border)] font-medium bg-[var(--surface)]"
+                style={{
+                  width: HEADER_WIDTH,
+                  position: "sticky",
+                  left: 0,
+                  zIndex: 5,
+                }}
+              >
+                B-Roll
+              </div>
+              <div
+                className="relative h-full"
+                style={{ width: timelineWidth }}
+              >
+                {bRollImages.map((b) => {
+                  const itemWidth = Math.max(
+                    (b.endTime - b.startTime) * pxPerSecond,
+                    8
+                  );
+                  const isActive =
+                    currentTime >= b.startTime && currentTime <= b.endTime;
+                  const isHovered = hoveredItem === `broll-${b.id}`;
+                  const isSelected =
+                    selectedItem?.type === "broll" && selectedItem.id === b.id;
+                  const isDraggingThis = activeDragId === b.id;
+
+                  return (
+                    <div
+                      key={b.id}
+                      className={`absolute top-1 rounded-md border text-[8px] px-1 truncate flex items-center will-change-transform ${isSelected
+                        ? b.url
+                          ? "bg-orange-500/80 border-orange-400 text-white shadow-md shadow-orange-500/40 z-20 ring-2 ring-white/40"
+                          : "bg-gray-500/40 border-gray-400 border-dashed text-gray-300 z-20 ring-2 ring-white/40"
+                        : b.url
+                          ? isActive
+                            ? "bg-orange-500/70 border-orange-400 text-white shadow-sm shadow-orange-500/30 z-10"
+                            : isHovered
+                              ? "bg-orange-500/55 border-orange-400/80 text-white z-10"
+                              : "bg-orange-500/40 border-orange-400/60 text-orange-200"
+                          : "bg-gray-500/20 border-gray-500/40 border-dashed text-gray-400"
+                        } ${isDraggingThis ? "opacity-90 z-30 scale-y-110 shadow-lg ring-2 ring-orange-400" : "cursor-grab"}`}
+                      style={{
+                        left: b.startTime * pxPerSecond,
+                        width: itemWidth,
+                        height: TRACK_HEIGHT - 8,
+                        transition: isDraggingThis
+                          ? "none"
+                          : "box-shadow 0.15s, opacity 0.15s",
+                      }}
+                      onMouseDown={(ev) =>
+                        handleDragStart(
+                          ev,
+                          "broll",
+                          b.id,
+                          "move",
+                          b.startTime,
+                          b.endTime
+                        )
+                      }
+                      onTouchStart={(ev) =>
+                        handleItemTouchStart(
+                          ev,
+                          "broll",
+                          b.id,
+                          "move",
+                          b.startTime,
+                          b.endTime
+                        )
+                      }
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        handleItemClick("broll", b.id);
+                      }}
+                      onMouseEnter={() => setHoveredItem(`broll-${b.id}`)}
+                      onMouseLeave={() => setHoveredItem(null)}
+                    >
+                      <ResizeHandle
+                        side="left"
+                        isSelected={isSelected}
+                        onMouseDown={(ev) =>
+                          handleDragStart(
+                            ev,
+                            "broll",
+                            b.id,
+                            "startTime",
+                            b.startTime,
+                            b.endTime
+                          )
+                        }
+                        onTouchStart={(ev) =>
+                          handleResizeTouchStart(
+                            ev,
+                            "broll",
+                            b.id,
+                            "startTime",
+                            b.startTime,
+                            b.endTime
+                          )
+                        }
+                      />
+                      {itemWidth > 30 && (
+                        <span className="truncate mx-3 md:mx-1.5">
+                          {b.url ? "B-Roll" : "Pendente"}
+                        </span>
+                      )}
+                      <ResizeHandle
+                        side="right"
+                        isSelected={isSelected}
+                        onMouseDown={(ev) =>
+                          handleDragStart(
+                            ev,
+                            "broll",
+                            b.id,
+                            "endTime",
+                            b.startTime,
+                            b.endTime
+                          )
+                        }
+                        onTouchStart={(ev) =>
+                          handleResizeTouchStart(
+                            ev,
+                            "broll",
+                            b.id,
+                            "endTime",
+                            b.startTime,
+                            b.endTime
+                          )
+                        }
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* === EFFECTS TRACKS (by category) === */}
             {categorizedEffects.map((cat) => {
               const catHeight = Math.max(EFFECT_ROW_HEIGHT + 4, cat.rows.length * EFFECT_ROW_HEIGHT + 4);
@@ -1090,147 +1231,6 @@ export default function Timeline() {
                 </div>
               );
             })}
-
-            {/* === B-ROLL TRACK === */}
-            <div
-              className="flex items-center"
-              style={{ height: TRACK_HEIGHT }}
-            >
-              <div
-                className="shrink-0 px-2 text-[9px] text-[var(--text-secondary)] uppercase tracking-wider flex items-center h-full border-r border-[var(--border)] font-medium bg-[var(--surface)]"
-                style={{
-                  width: HEADER_WIDTH,
-                  position: "sticky",
-                  left: 0,
-                  zIndex: 5,
-                }}
-              >
-                B-Roll
-              </div>
-              <div
-                className="relative h-full"
-                style={{ width: timelineWidth }}
-              >
-                {bRollImages.map((b) => {
-                  const itemWidth = Math.max(
-                    (b.endTime - b.startTime) * pxPerSecond,
-                    8
-                  );
-                  const isActive =
-                    currentTime >= b.startTime && currentTime <= b.endTime;
-                  const isHovered = hoveredItem === `broll-${b.id}`;
-                  const isSelected =
-                    selectedItem?.type === "broll" && selectedItem.id === b.id;
-                  const isDraggingThis = activeDragId === b.id;
-
-                  return (
-                    <div
-                      key={b.id}
-                      className={`absolute top-1 rounded-md border text-[8px] px-1 truncate flex items-center will-change-transform ${isSelected
-                        ? b.url
-                          ? "bg-orange-500/80 border-orange-400 text-white shadow-md shadow-orange-500/40 z-20 ring-2 ring-white/40"
-                          : "bg-gray-500/40 border-gray-400 border-dashed text-gray-300 z-20 ring-2 ring-white/40"
-                        : b.url
-                          ? isActive
-                            ? "bg-orange-500/70 border-orange-400 text-white shadow-sm shadow-orange-500/30 z-10"
-                            : isHovered
-                              ? "bg-orange-500/55 border-orange-400/80 text-white z-10"
-                              : "bg-orange-500/40 border-orange-400/60 text-orange-200"
-                          : "bg-gray-500/20 border-gray-500/40 border-dashed text-gray-400"
-                        } ${isDraggingThis ? "opacity-90 z-30 scale-y-110 shadow-lg ring-2 ring-orange-400" : "cursor-grab"}`}
-                      style={{
-                        left: b.startTime * pxPerSecond,
-                        width: itemWidth,
-                        height: TRACK_HEIGHT - 8,
-                        transition: isDraggingThis
-                          ? "none"
-                          : "box-shadow 0.15s, opacity 0.15s",
-                      }}
-                      onMouseDown={(ev) =>
-                        handleDragStart(
-                          ev,
-                          "broll",
-                          b.id,
-                          "move",
-                          b.startTime,
-                          b.endTime
-                        )
-                      }
-                      onTouchStart={(ev) =>
-                        handleItemTouchStart(
-                          ev,
-                          "broll",
-                          b.id,
-                          "move",
-                          b.startTime,
-                          b.endTime
-                        )
-                      }
-                      onClick={(ev) => {
-                        ev.stopPropagation();
-                        handleItemClick("broll", b.id);
-                      }}
-                      onMouseEnter={() => setHoveredItem(`broll-${b.id}`)}
-                      onMouseLeave={() => setHoveredItem(null)}
-                    >
-                      <ResizeHandle
-                        side="left"
-                        isSelected={isSelected}
-                        onMouseDown={(ev) =>
-                          handleDragStart(
-                            ev,
-                            "broll",
-                            b.id,
-                            "startTime",
-                            b.startTime,
-                            b.endTime
-                          )
-                        }
-                        onTouchStart={(ev) =>
-                          handleResizeTouchStart(
-                            ev,
-                            "broll",
-                            b.id,
-                            "startTime",
-                            b.startTime,
-                            b.endTime
-                          )
-                        }
-                      />
-                      {itemWidth > 30 && (
-                        <span className="truncate mx-3 md:mx-1.5">
-                          {b.url ? "B-Roll" : "Pendente"}
-                        </span>
-                      )}
-                      <ResizeHandle
-                        side="right"
-                        isSelected={isSelected}
-                        onMouseDown={(ev) =>
-                          handleDragStart(
-                            ev,
-                            "broll",
-                            b.id,
-                            "endTime",
-                            b.startTime,
-                            b.endTime
-                          )
-                        }
-                        onTouchStart={(ev) =>
-                          handleResizeTouchStart(
-                            ev,
-                            "broll",
-                            b.id,
-                            "endTime",
-                            b.startTime,
-                            b.endTime
-                          )
-                        }
-                      />
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
 
             {/* Playhead */}
             <div

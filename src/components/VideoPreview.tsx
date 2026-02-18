@@ -179,6 +179,22 @@ export default function VideoPreview() {
         // Smooth zoom in
         scale = 1 + progress * 0.2;
         break;
+      case "pan-left":
+        // Pan from right to left
+        translateX = (1 - progress) * 4 - 2; // +2% to -2%
+        break;
+      case "pan-up":
+        // Pan from bottom to top
+        translateY = (1 - progress) * 4 - 2;
+        break;
+      case "pan-down":
+        // Pan from top to bottom
+        translateY = progress * 4 - 2;
+        break;
+      case "blur-in":
+        // Start blurred, become clear
+        scale = 1 + (1 - progress) * 0.05;
+        break;
       case "ken-burns":
       default:
         // Classic ken-burns: zoom + pan
@@ -188,6 +204,8 @@ export default function VideoPreview() {
         break;
     }
 
+    const blurAmount = animation === "blur-in" ? (1 - progress) * 8 : 0; // 8px blur → 0
+
     return {
       opacity,
       transform: `scale(${scale}) translate(${translateX}%, ${translateY}%)`,
@@ -195,7 +213,8 @@ export default function VideoPreview() {
       backgroundSize: "cover",
       backgroundPosition: "center",
       transition: "opacity 0.2s ease",
-    };
+      ...(blurAmount > 0 ? { filter: `blur(${blurAmount}px)` } : {}),
+    } as React.CSSProperties;
   }, [activeBRoll, currentTime]);
 
   // Compute transform style based on active effects

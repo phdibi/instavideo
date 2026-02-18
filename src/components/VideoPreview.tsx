@@ -347,9 +347,15 @@ export default function VideoPreview() {
   );
 
   // ── SPACEBAR PLAY/PAUSE ────────────────────────────────────────────
+  // NOTE: VideoPreview is mounted TWICE in EditorLayout (desktop + mobile).
+  // Only the *visible* instance should handle spacebar to avoid double-fire.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code !== "Space") return;
+
+      // Only handle if THIS instance is visible (not display:none from responsive CSS)
+      const container = containerRef.current;
+      if (!container || container.offsetParent === null) return;
 
       // Don't intercept if user is typing in an input, textarea, or contentEditable
       const active = document.activeElement;
@@ -361,11 +367,10 @@ export default function VideoPreview() {
         return;
       }
 
-      e.preventDefault(); // Prevent page scroll
-      e.stopPropagation(); // Prevent bubbling to other handlers
+      e.preventDefault();
+      e.stopPropagation();
 
-      // Blur any focused button to prevent the browser's native
-      // keyup → click behaviour from double-firing togglePlay
+      // Blur any focused button to prevent native keyup → click
       if (active instanceof HTMLButtonElement) {
         active.blur();
       }
@@ -373,10 +378,11 @@ export default function VideoPreview() {
       togglePlay();
     };
 
-    // Also intercept keyup for Space to prevent the native "click" on
-    // whatever button might still be focused
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.code !== "Space") return;
+      const container = containerRef.current;
+      if (!container || container.offsetParent === null) return;
+
       const active = document.activeElement;
       if (
         active instanceof HTMLInputElement ||
@@ -389,7 +395,7 @@ export default function VideoPreview() {
       e.stopPropagation();
     };
 
-    window.addEventListener("keydown", handleKeyDown, true); // capture phase
+    window.addEventListener("keydown", handleKeyDown, true);
     window.addEventListener("keyup", handleKeyUp, true);
     return () => {
       window.removeEventListener("keydown", handleKeyDown, true);

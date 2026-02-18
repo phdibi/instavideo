@@ -179,20 +179,21 @@ function buildCaptionsFromTranscription(
   }
 
   // Step 4: Build final caption objects with precise timing
-  // Use raw timestamps from transcription — no artificial offset
+  // Small reactive delay so captions feel responsive but not early
+  const REACTIVE_DELAY = 0.03; // 30ms after word starts
   const READABILITY_BUFFER = 0.1; // Keep caption visible 100ms after last word ends
   const captions: Caption[] = [];
 
   for (let i = 0; i < mergedCaptions.length; i++) {
     const cap = mergedCaptions[i];
-    const startTime = Math.max(0, cap.start);
+    const startTime = Math.max(0, cap.start + REACTIVE_DELAY);
 
     // End time logic: precise end of last word + small buffer
     let endTime = cap.end + READABILITY_BUFFER;
 
     // Ensure we don't overlap with the next caption's start time
     if (i + 1 < mergedCaptions.length) {
-      const nextStart = mergedCaptions[i + 1].start;
+      const nextStart = mergedCaptions[i + 1].start + REACTIVE_DELAY;
       endTime = Math.min(endTime, nextStart);
     }
 

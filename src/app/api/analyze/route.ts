@@ -48,8 +48,13 @@ EFFECTS INSTRUCTIONS:
 Add zoom effects SELECTIVELY — NOT on every segment. Zooms should emphasize key moments:
 - The HOOK (first 3 seconds): One zoom-in with stronger scale (1.25-1.35)
 - Key emotional/impactful moments: zoom-in or zoom-pulse
-- Topic transitions: zoom-out to "reset" framing
+- Topic transitions/Pauses: zoom-out to "reset" framing or insert transition-fade
 - Short punchy phrases (< 2 seconds, ≤ 5 words): zoom-pulse for emphasis
+
+PAUSE & TRANSITION DETECTION:
+- Look for gaps between segments (e.g. Seg 1 ends at 5.0s, Seg 2 starts at 6.0s = 1.0s pause).
+- If pause > 0.8s, SUGGEST a transition-fade or a B-roll insertion.
+- If pause is a "topic change", suggest a zoom-out effect on the next segment.
 
 IMPORTANT: Only add zooms to roughly 30-40% of segments. Leave most segments WITHOUT zoom for a clean, professional look. Too many zooms feels amateur and distracting.
 

@@ -41,6 +41,7 @@ const steps = [
 
 // ===== Deterministic caption builder using word-level timestamps =====
 // Strategy: Collect ALL words with timestamps, validate/correct timing, then group into gapless captions
+// Updated for better sync: reduced look-ahead, stricter gap handling, and smarter chunking
 function buildCaptionsFromTranscription(
   segments: TranscriptionSegment[],
   videoDuration: number
@@ -73,25 +74,27 @@ function buildCaptionsFromTranscription(
         let wEnd = w.end;
 
         // Fix: word timestamps outside segment boundaries — redistribute proportionally
-        if (wStart < segStart - 0.1 || wEnd > segEnd + 0.5 || wEnd <= wStart || wStart < 0) {
+        // BUT prioritize original timestamps if they seem plausible
+        if (wStart < segStart - 0.2 || wEnd > segEnd + 0.5 || wEnd <= wStart || wStart < 0) {
+          // Only force redistribution if drastically wrong
           wStart = segStart + (wi / wordCount) * segDuration;
           wEnd = segStart + ((wi + 1) / wordCount) * segDuration;
         }
 
-        // Ensure monotonic ordering with previous word
+        // Ensure monotonic ordering with previous word, but allow small gaps (breaths)
         if (allWords.length > 0) {
           const prev = allWords[allWords.length - 1];
-          if (wStart < prev.end) {
-            // Overlap detected — shift this word to start right after previous
-            const shift = prev.end - wStart + 0.01;
-            wStart += shift;
-            wEnd = Math.max(wEnd + shift, wStart + 0.05);
+          if (wStart < prev.end - 0.05) { // Allow tiny 50ms overlap for cross-fades
+            // Overlap detected — push start to end of previous
+            const shift = prev.end - wStart;
+            wStart = prev.end;
+            wEnd = Math.max(wEnd + shift, wStart + 0.1);
           }
         }
 
         // Clamp to video duration
         wStart = Math.max(0, Math.min(wStart, effectiveDuration));
-        wEnd = Math.max(wStart + 0.03, Math.min(wEnd, effectiveDuration));
+        wEnd = Math.max(wStart + 0.05, Math.min(wEnd, effectiveDuration));
 
         allWords.push({ word: w.word.trim(), start: wStart, end: wEnd });
       }
@@ -111,11 +114,11 @@ function buildCaptionsFromTranscription(
 
   if (allWords.length === 0) return [];
 
-  // Step 2: Group words into caption chunks (3-5 words each)
-  // Rule: max 5 words per caption, split at natural pauses (gaps > 0.3s)
-  const MAX_WORDS = 5;
-  const MIN_WORDS = 2;
-  const PAUSE_THRESHOLD = 0.3; // seconds gap between words = forced split
+  // Step 2: Group words into caption chunks (3-6 words each)
+  // Improved grouping: respects sentence endings and natural pauses more strictly
+  const MAX_WORDS = 6; // Increased slightly for better flow
+  const MIN_WORDS = 1; // Allow single words if emphatic
+  const PAUSE_THRESHOLD = 0.4; // >0.4s gap triggers new caption
 
   const rawCaptions: { words: string[]; start: number; end: number }[] = [];
   let currentChunk: { words: string[]; start: number; end: number } = {
@@ -126,11 +129,16 @@ function buildCaptionsFromTranscription(
 
   for (let i = 1; i < allWords.length; i++) {
     const w = allWords[i];
+    const prevW = allWords[i - 1];
     const gap = w.start - currentChunk.end;
+
+    // Check for sentence ending punctuation in previous word
+    const isSentenceEnd = /[.!?]$/.test(prevW.word);
+
     const chunkFull = currentChunk.words.length >= MAX_WORDS;
     const naturalPause = gap > PAUSE_THRESHOLD;
 
-    if (chunkFull || naturalPause) {
+    if (chunkFull || naturalPause || isSentenceEnd) {
       // Finish current chunk and start a new one
       rawCaptions.push({ ...currentChunk });
       currentChunk = { words: [w.word], start: w.start, end: w.end };
@@ -143,50 +151,57 @@ function buildCaptionsFromTranscription(
   // Don't forget the last chunk
   rawCaptions.push({ ...currentChunk });
 
-  // Step 3: Merge too-short captions (1 word) with the next one if possible
+  // Step 3: Merge extremely short captions with next IF no pause
   const mergedCaptions: typeof rawCaptions = [];
   for (let i = 0; i < rawCaptions.length; i++) {
     const cap = rawCaptions[i];
+
+    // Check if next caption exists and gap is small
+    const nextCap = i + 1 < rawCaptions.length ? rawCaptions[i + 1] : null;
+    const gapToNext = nextCap ? nextCap.start - cap.end : Infinity;
+
     if (
-      cap.words.length < MIN_WORDS &&
-      i + 1 < rawCaptions.length &&
-      rawCaptions[i + 1].words.length + cap.words.length <= MAX_WORDS + 1
+      cap.words.length < 2 &&
+      nextCap &&
+      gapToNext < 0.2 &&
+      !/[.!?]$/.test(cap.words[0]) // Don't merge if it's a sentence end
     ) {
       // Merge with next
       rawCaptions[i + 1] = {
-        words: [...cap.words, ...rawCaptions[i + 1].words],
+        words: [...cap.words, ...nextCap.words],
         start: cap.start,
-        end: rawCaptions[i + 1].end,
+        end: nextCap.end,
       };
     } else {
       mergedCaptions.push(cap);
     }
   }
 
-  // Step 4: Build caption objects with word-level timing + professional offsets
-  // ANTICIPATION_OFFSET: captions appear slightly BEFORE the first word is spoken,
-  // matching professional subtitle standards (viewers need ~100ms to notice text)
-  // READABILITY_BUFFER: captions stay slightly after the last word finishes
-  const ANTICIPATION_OFFSET = 0.1; // seconds before first word
-  const READABILITY_BUFFER = 0.3; // seconds after last word
+  // Step 4: Build final caption objects with improved timing offsets
+  // REDUCED ANTICIPATION: From 0.1s to 0.05s to feel "snappier"
+  const ANTICIPATION_OFFSET = 0.05;
+  const READABILITY_BUFFER = 0.2;
   const captions: Caption[] = [];
 
   for (let i = 0; i < mergedCaptions.length; i++) {
     const cap = mergedCaptions[i];
     const startTime = Math.max(0, cap.start - ANTICIPATION_OFFSET);
 
-    // Use the actual end time of the last word + small readability buffer
+    // End time logic: precise end of last word + buffer
     let endTime = cap.end + READABILITY_BUFFER;
 
-    // Ensure we don't overlap with the next caption
+    // Ensure we don't overlap with the next caption's start time
     if (i + 1 < mergedCaptions.length) {
-      endTime = Math.min(endTime, mergedCaptions[i + 1].start);
+      // If next caption starts strictly after this one ends, great.
+      // If they overlap due to buffer, cut this one short.
+      const nextStart = mergedCaptions[i + 1].start - ANTICIPATION_OFFSET;
+      endTime = Math.min(endTime, nextStart);
     }
 
     // Clamp to video duration
     endTime = Math.min(endTime, effectiveDuration);
 
-    if (endTime > startTime + 0.05) {
+    if (endTime > startTime + 0.1) {
       captions.push({
         id: uuid(),
         startTime,
@@ -199,17 +214,12 @@ function buildCaptionsFromTranscription(
     }
   }
 
-  // Final overlap fix (shouldn't be needed but safety net)
-  captions.sort((a, b) => a.startTime - b.startTime);
-  for (let i = 1; i < captions.length; i++) {
-    if (captions[i].startTime < captions[i - 1].endTime) {
-      captions[i - 1].endTime = captions[i].startTime;
-    }
-  }
-
-  return captions.filter((c) => c.endTime - c.startTime > 0.05);
+  return captions;
 }
 
+// ===== Speech-driven effect generator =====
+// Selective zooms — only on key moments, not every segment.
+// Professional approach: ~30-40% of segments get zooms.
 // ===== Speech-driven effect generator =====
 // Selective zooms — only on key moments, not every segment.
 // Professional approach: ~30-40% of segments get zooms.
@@ -303,16 +313,21 @@ function buildSpeechDrivenEffects(
     });
   }
 
-  // Step 4: Add transition-fade at major pauses
+  // Step 4: Add transition-fade at major pauses (improved detection)
+  // Look for significant pauses > 0.6s to insert transitions
   for (let i = 0; i < segments.length - 1; i++) {
-    const gap = segments[i + 1].start - segments[i].end;
-    if (gap > 0.5) {
+    const currentSeg = segments[i];
+    const nextSeg = segments[i + 1];
+    const gap = nextSeg.start - currentSeg.end;
+
+    // Only add transition if there's a meaningful gap
+    if (gap > 0.6) {
       effects.push({
         id: `effect_fade_${i}`,
         type: "transition-fade",
-        startTime: segments[i].end - 0.15,
-        endTime: segments[i].end + 0.15,
-        params: { duration: 0.3 },
+        startTime: currentSeg.end - 0.1, // Start slightly before end
+        endTime: nextSeg.start + 0.1,    // End slightly after start
+        params: { duration: Math.min(gap, 0.5) }, // Dynamic duration
       });
     }
   }
@@ -425,10 +440,25 @@ export default function ProcessingScreen() {
       // Step 1: Extract audio
       setStatus("extracting-audio");
       let audioBlob: Blob;
+
+      // Load FFmpeg and reduce noise if possible
       try {
-        audioBlob = await extractAudioFromVideo(videoFile);
-      } catch {
-        audioBlob = videoFile;
+        const { FFmpegService } = await import("@/lib/ffmpeg");
+        // We'll perform noise reduction directly on the extracted audio
+        // First extract raw audio
+        const rawAudio = await extractAudioFromVideo(videoFile);
+
+        // Then reduce noise
+        // Update status for UI feedback
+        // Note: We might want to add a specific status for this, but for now reuse extraction or add a sub-step
+        audioBlob = await FFmpegService.reduceNoise(rawAudio);
+      } catch (err) {
+        console.warn("Noise reduction failed or FFmpeg not loaded, using raw audio:", err);
+        try {
+          audioBlob = await extractAudioFromVideo(videoFile);
+        } catch {
+          audioBlob = videoFile;
+        }
       }
 
       // Step 2: Transcribe
@@ -613,10 +643,10 @@ export default function ProcessingScreen() {
               <div
                 key={step.key}
                 className={`flex items-center gap-3 p-4 rounded-xl transition-all duration-500 ${isCurrent
-                    ? "bg-[var(--accent)]/10 border border-[var(--accent)]/30"
-                    : isComplete
-                      ? "bg-[var(--success)]/5 border border-[var(--success)]/20"
-                      : "bg-[var(--surface)] border border-[var(--border)]"
+                  ? "bg-[var(--accent)]/10 border border-[var(--accent)]/30"
+                  : isComplete
+                    ? "bg-[var(--success)]/5 border border-[var(--success)]/20"
+                    : "bg-[var(--surface)] border border-[var(--border)]"
                   }`}
               >
                 {isComplete ? (
@@ -626,8 +656,8 @@ export default function ProcessingScreen() {
                 ) : (
                   <div
                     className={`w-5 h-5 rounded-full border-2 shrink-0 ${isPending
-                        ? "border-[var(--border)]"
-                        : "border-[var(--accent)]"
+                      ? "border-[var(--border)]"
+                      : "border-[var(--accent)]"
                       }`}
                   />
                 )}

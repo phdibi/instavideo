@@ -362,11 +362,39 @@ export default function VideoPreview() {
       }
 
       e.preventDefault(); // Prevent page scroll
+      e.stopPropagation(); // Prevent bubbling to other handlers
+
+      // Blur any focused button to prevent the browser's native
+      // keyup → click behaviour from double-firing togglePlay
+      if (active instanceof HTMLButtonElement) {
+        active.blur();
+      }
+
       togglePlay();
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    // Also intercept keyup for Space to prevent the native "click" on
+    // whatever button might still be focused
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code !== "Space") return;
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLInputElement ||
+        active instanceof HTMLTextAreaElement ||
+        (active instanceof HTMLElement && active.isContentEditable)
+      ) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true); // capture phase
+    window.addEventListener("keyup", handleKeyUp, true);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("keyup", handleKeyUp, true);
+    };
   }, [togglePlay]);
 
   return (

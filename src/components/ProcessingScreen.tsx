@@ -85,10 +85,11 @@ function buildCaptionsFromTranscription(
         if (allWords.length > 0) {
           const prev = allWords[allWords.length - 1];
           if (wStart < prev.end - 0.05) { // Allow tiny 50ms overlap for cross-fades
-            // Overlap detected — push start to end of previous
-            const shift = prev.end - wStart;
+            // Overlap detected — push start to end of previous, keep original duration
             wStart = prev.end;
-            wEnd = Math.max(wEnd + shift, wStart + 0.1);
+            // Keep the original word duration, don't inflate wEnd
+            const originalDuration = w.end - w.start;
+            wEnd = Math.max(wStart + Math.min(originalDuration, 0.3), wStart + 0.05);
           }
         }
 
@@ -178,22 +179,20 @@ function buildCaptionsFromTranscription(
   }
 
   // Step 4: Build final caption objects with precise timing
-  // NO anticipation — captions appear exactly when (or slightly after) speech starts
-  // Small reactive delay makes captions feel "responsive" rather than "early"
-  const REACTIVE_DELAY = 0.08; // 80ms after word starts — eliminates "ahead" feeling
+  // Use raw timestamps from transcription — no artificial offset
   const READABILITY_BUFFER = 0.1; // Keep caption visible 100ms after last word ends
   const captions: Caption[] = [];
 
   for (let i = 0; i < mergedCaptions.length; i++) {
     const cap = mergedCaptions[i];
-    const startTime = Math.max(0, cap.start + REACTIVE_DELAY);
+    const startTime = Math.max(0, cap.start);
 
     // End time logic: precise end of last word + small buffer
     let endTime = cap.end + READABILITY_BUFFER;
 
     // Ensure we don't overlap with the next caption's start time
     if (i + 1 < mergedCaptions.length) {
-      const nextStart = mergedCaptions[i + 1].start + REACTIVE_DELAY;
+      const nextStart = mergedCaptions[i + 1].start;
       endTime = Math.min(endTime, nextStart);
     }
 

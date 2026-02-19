@@ -101,7 +101,7 @@ function CaptionDisplay({
     1
   );
 
-  const theme = detectTheme(caption);
+  const theme = useMemo(() => detectTheme(caption), [caption]);
   const colors = THEME_COLORS[theme];
 
   const positionStyle = useMemo(() => {

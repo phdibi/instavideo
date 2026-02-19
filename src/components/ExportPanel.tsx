@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from "react";
 import { Download, Loader2, Film, Settings, Smartphone, Square, Monitor } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
+import { isEmberTheme, isVelocityTheme } from "@/lib/presets";
 
 type ExportFormat = "mp4" | "webm";
 type ExportQuality = "720p" | "1080p";
@@ -51,7 +52,12 @@ export default function ExportPanel() {
       canvas.height = height;
       const ctx = canvas.getContext("2d")!;
 
-      const mimeType = format === "webm" ? "video/webm;codecs=vp9" : "video/webm";
+      // Prefer MP4 for universal compatibility (iOS, Android, desktop)
+      const mimeType = MediaRecorder.isTypeSupported("video/mp4;codecs=avc1.42E01E,mp4a.40.2")
+        ? "video/mp4;codecs=avc1.42E01E,mp4a.40.2"
+        : MediaRecorder.isTypeSupported("video/mp4")
+          ? "video/mp4"
+          : format === "webm" ? "video/webm;codecs=vp9" : "video/webm";
       const stream = canvas.captureStream(30);
 
       // Add audio from original video using a hidden video element
@@ -77,10 +83,11 @@ export default function ExportPanel() {
         // Audio extraction might fail - continue without audio
       }
 
+      const actualMime = MediaRecorder.isTypeSupported(mimeType)
+        ? mimeType
+        : "video/webm";
       const recorder = new MediaRecorder(stream, {
-        mimeType: MediaRecorder.isTypeSupported(mimeType)
-          ? mimeType
-          : "video/webm",
+        mimeType: actualMime,
         videoBitsPerSecond: quality === "1080p" ? 8000000 : 4000000,
       });
 
@@ -91,7 +98,7 @@ export default function ExportPanel() {
 
       const exportDone = new Promise<Blob>((resolve) => {
         recorder.onstop = () => {
-          const blob = new Blob(chunks, { type: "video/webm" });
+          const blob = new Blob(chunks, { type: actualMime });
           resolve(blob);
         };
       });
@@ -146,47 +153,75 @@ export default function ExportPanel() {
         let tx = 0;
         let ty = 0;
 
+        // Build CSS filter string for color-grade effects
+        let cssFilter = "";
         for (const effect of activeEffects) {
           const p =
             (time - effect.startTime) / (effect.endTime - effect.startTime);
-          const params = effect.params as Record<string, number>;
+          const params = effect.params as Record<string, number | string>;
 
           switch (effect.type) {
             case "zoom-in": {
-              const targetScale = params.scale || 1.3;
+              const targetScale = (params.scale as number) || 1.3;
               const eased = 1 - Math.pow(1 - p, 3);
               scale *= 1 + (targetScale - 1) * eased;
-              const fx = (params.focusX || 0.5) - 0.5;
-              const fy = (params.focusY || 0.4) - 0.5;
+              const fx = ((params.focusX as number) || 0.5) - 0.5;
+              const fy = ((params.focusY as number) || 0.4) - 0.5;
               tx -= fx * (scale - 1) * width;
               ty -= fy * (scale - 1) * height;
               break;
             }
             case "zoom-out": {
-              const targetScale = params.scale || 1.3;
+              const targetScale = (params.scale as number) || 1.3;
               const eased = 1 - Math.pow(1 - p, 3);
               scale *= targetScale - (targetScale - 1) * eased;
               break;
             }
             case "zoom-pulse": {
-              const targetScale = params.scale || 1.2;
+              const targetScale = (params.scale as number) || 1.2;
               scale *= 1 + (targetScale - 1) * Math.sin(p * Math.PI);
               break;
             }
             case "pan-left":
-              tx -= (params.distance || 30) * p;
+              tx -= ((params.distance as number) || 30) * p;
               break;
             case "pan-right":
-              tx += (params.distance || 30) * p;
+              tx += ((params.distance as number) || 30) * p;
               break;
             case "shake": {
-              const intensity = params.intensity || 3;
-              const freq = params.frequency || 15;
+              const intensity = (params.intensity as number) || 3;
+              const freq = (params.frequency as number) || 15;
               tx += Math.sin(p * freq * Math.PI * 2) * intensity;
               ty += Math.cos(p * freq * Math.PI * 2 + 1) * intensity;
               break;
             }
+            case "color-grade": {
+              const preset = params.preset as string;
+              if (preset === "cinematic-warm")
+                cssFilter += " sepia(0.12) saturate(1.15) contrast(1.08)";
+              else if (preset === "ember-warm")
+                cssFilter += " sepia(0.2) saturate(1.1) contrast(1.06) brightness(1.02)";
+              else if (preset === "velocity-gold")
+                cssFilter += " sepia(0.15) saturate(1.25) contrast(1.12) brightness(1.04)";
+              else if (preset === "cold-thriller")
+                cssFilter += " saturate(0.8) hue-rotate(200deg) contrast(1.15)";
+              else if (preset === "vintage")
+                cssFilter += " sepia(0.3) saturate(0.9) contrast(1.05)";
+              else if (preset === "high-contrast")
+                cssFilter += " contrast(1.4) saturate(1.1)";
+              break;
+            }
+            case "flash": {
+              const flashProgress = 1 - p;
+              if (flashProgress > 0.5) cssFilter += ` brightness(${1 + flashProgress * 2})`;
+              break;
+            }
           }
+        }
+
+        // Apply color-grade CSS filter to canvas context (supported in modern browsers)
+        if (cssFilter.trim()) {
+          ctx.filter = cssFilter.trim();
         }
 
         ctx.translate(width / 2 + tx, height / 2 + ty);
@@ -223,10 +258,10 @@ export default function ExportPanel() {
             const bDuration = activeBRoll.endTime - activeBRoll.startTime;
             const bProgress = Math.min(Math.max((time - activeBRoll.startTime) / bDuration, 0), 1);
 
-            // Fade in/out at edges
-            let bOpacity = 1;
-            if (bProgress < 0.15) bOpacity = bProgress / 0.15;
-            else if (bProgress > 0.85) bOpacity = (1 - bProgress) / 0.15;
+            // Fade in/out at edges, respecting stored opacity
+            let bOpacity = activeBRoll.opacity ?? 1;
+            if (bProgress < 0.15) bOpacity *= bProgress / 0.15;
+            else if (bProgress > 0.85) bOpacity *= (1 - bProgress) / 0.15;
 
             // Ken Burns: slow zoom + slight pan
             const bScale = 1 + bProgress * 0.12;
@@ -259,14 +294,18 @@ export default function ExportPanel() {
           }
         }
 
-        // Draw vignette
-        if (activeEffects.some((e) => e.type === "vignette")) {
+        // Draw vignette — match VideoPreview CSS: ellipse at center, transparent 50%, rgba 100%
+        const vignetteEffect = activeEffects.find((e) => e.type === "vignette");
+        if (vignetteEffect) {
+          const intensity = (vignetteEffect.params.intensity as number) || 0.3;
+          // Use diagonal as reference radius to simulate CSS ellipse gradient
+          const diagonal = Math.sqrt(width * width + height * height) / 2;
           const gradient = ctx.createRadialGradient(
-            width / 2, height / 2, width * 0.3,
-            width / 2, height / 2, width * 0.8
+            width / 2, height / 2, diagonal * 0.5,  // 50% transparent
+            width / 2, height / 2, diagonal           // 100% full intensity
           );
           gradient.addColorStop(0, "transparent");
-          gradient.addColorStop(1, "rgba(0,0,0,0.4)");
+          gradient.addColorStop(1, `rgba(0,0,0,${intensity})`);
           ctx.fillStyle = gradient;
           ctx.fillRect(0, 0, width, height);
         }
@@ -296,12 +335,92 @@ export default function ExportPanel() {
           ctx.save();
           ctx.font = `${caption.style.fontWeight} ${caption.style.fontSize}px ${caption.style.fontFamily}, sans-serif`;
 
+          // Match CaptionOverlay positions: top-[8%], top-1/2, bottom-[12%]
           const y =
             caption.style.position === "top"
-              ? height * 0.12
+              ? height * 0.08
               : caption.style.position === "center"
               ? height / 2
               : height * 0.88;
+
+          // Theme-aware highlight colors matching CaptionOverlay THEME_COLORS
+          const highlightColor = isVelocityTheme()
+            ? "#FFD700"
+            : isEmberTheme()
+              ? "#D4835C"
+              : "#CCFF00";
+          const highlightGlow = isVelocityTheme()
+            ? "rgba(255,215,0,0.5)"
+            : isEmberTheme()
+              ? "rgba(212,131,92,0.4)"
+              : "rgba(204,255,0,0.4)";
+
+          // Draw keyword label (Ember/Velocity dual-layer) ABOVE subtitle
+          if (caption.keywordLabel) {
+            const kwFontSize = caption.style.fontSize * (isVelocityTheme() ? 0.6 : 0.55);
+            const kwFont = `900 ${isVelocityTheme() ? "italic " : ""}${kwFontSize}px ${caption.style.fontFamily}, sans-serif`;
+            ctx.font = kwFont;
+            ctx.textAlign = "center";
+
+            // Decorative quotes
+            if (caption.keywordQuotes) {
+              const quoteFont = `900 ${isVelocityTheme() ? "italic " : ""}${kwFontSize}px ${
+                isVelocityTheme() ? "Inter, system-ui, sans-serif" : "Georgia, 'Times New Roman', serif"
+              }`;
+              const quoteColor = isVelocityTheme() ? "#DAA520" : isEmberTheme() ? "#C8956A" : "#CCFF00";
+              ctx.font = quoteFont;
+              const quoteWidth = ctx.measureText("\u201C").width;
+              ctx.font = kwFont;
+              const kwWidth = ctx.measureText(caption.keywordLabel).width;
+              const totalKwWidth = quoteWidth * 2 + kwWidth + kwFontSize * 0.1;
+              const kwStartX = width / 2 - totalKwWidth / 2;
+              const kwY = y - caption.style.fontSize * 0.45;
+
+              // Opening quote
+              ctx.font = quoteFont;
+              ctx.fillStyle = quoteColor;
+              ctx.globalAlpha = isVelocityTheme() ? 0.9 : 0.7;
+              ctx.shadowColor = "rgba(0,0,0,0.6)";
+              ctx.shadowBlur = 6;
+              ctx.textAlign = "left";
+              ctx.fillText("\u201C", kwStartX, kwY);
+
+              // Keyword text
+              ctx.font = kwFont;
+              ctx.fillStyle = highlightColor;
+              ctx.globalAlpha = 1;
+              ctx.shadowColor = isVelocityTheme()
+                ? "rgba(0,0,0,0.8)"
+                : "rgba(0,0,0,0.7)";
+              ctx.shadowBlur = isVelocityTheme() ? 10 : 8;
+              ctx.textAlign = "left";
+              ctx.fillText(caption.keywordLabel, kwStartX + quoteWidth + kwFontSize * 0.05, kwY);
+
+              // Closing quote
+              ctx.font = quoteFont;
+              ctx.fillStyle = quoteColor;
+              ctx.globalAlpha = isVelocityTheme() ? 0.9 : 0.7;
+              ctx.textAlign = "left";
+              ctx.fillText("\u201D", kwStartX + quoteWidth + kwWidth + kwFontSize * 0.1, kwY);
+              ctx.globalAlpha = 1;
+            } else {
+              // Just keyword, no quotes
+              const kwY = y - caption.style.fontSize * 0.45;
+              ctx.fillStyle = highlightColor;
+              ctx.shadowColor = "rgba(0,0,0,0.7)";
+              ctx.shadowBlur = 8;
+              ctx.fillText(caption.keywordLabel, width / 2, kwY);
+            }
+
+            ctx.shadowColor = "transparent";
+            ctx.shadowBlur = 0;
+          }
+
+          // Skip subtitle words if keyword matches caption text (avoid duplication)
+          const keywordMatchesCaption = caption.keywordLabel
+            && caption.text.toUpperCase().trim() === caption.keywordLabel.toUpperCase().trim();
+
+          ctx.font = `${caption.style.fontWeight} ${caption.style.fontSize}px ${caption.style.fontFamily}, sans-serif`;
 
           const words = caption.text.split(" ");
           const totalWords = words.length;
@@ -324,81 +443,84 @@ export default function ExportPanel() {
             wordWidths.reduce((a, b) => a + b, 0) +
             spaceWidth * (words.length - 1);
 
-          // Draw background
-          if (caption.style.backgroundOpacity > 0) {
-            const bgPad = 16;
-            const textHeight = caption.style.fontSize;
-            ctx.fillStyle =
-              caption.style.backgroundColor +
-              Math.round(caption.style.backgroundOpacity * 255)
-                .toString(16)
-                .padStart(2, "0");
-            ctx.beginPath();
-            ctx.roundRect(
-              width / 2 - totalTextWidth / 2 - bgPad,
-              y - textHeight * 0.7 - bgPad / 2,
-              totalTextWidth + bgPad * 2,
-              textHeight + bgPad,
-              12
-            );
-            ctx.fill();
-          }
-
-          // Draw words with word-by-word highlighting
-          let currentX = width / 2 - totalTextWidth / 2;
-          ctx.textAlign = "left";
-          ctx.lineJoin = "round";
-          ctx.miterLimit = 2;
-
-          for (let wi = 0; wi < words.length; wi++) {
-            const word = words[wi];
-            const isActive = wi === currentWordIndex;
-            const isPast = wi < currentWordIndex;
-            const isEmphasis = caption.emphasis.some((e) =>
-              word.toLowerCase().replace(/[.,!?;:]/g, "").includes(e.toLowerCase())
-            );
-
-            // Determine color
-            let wordColor = caption.style.color;
-            if (isActive) {
-              wordColor = "#FFD700"; // Gold highlight for current word
-            } else if (isEmphasis) {
-              wordColor = "#FFD700";
-            } else if (!isPast) {
-              // Future words: slightly dimmed
-              wordColor = caption.style.color + "99";
+          // Draw subtitle words with background and word-by-word highlighting
+          // Skip entirely if keyword matches caption text (avoid duplication, like CaptionOverlay)
+          if (!keywordMatchesCaption) {
+            // Draw background
+            if (caption.style.backgroundOpacity > 0) {
+              const bgPad = 16;
+              const textHeight = caption.style.fontSize;
+              ctx.fillStyle =
+                caption.style.backgroundColor +
+                Math.round(caption.style.backgroundOpacity * 255)
+                  .toString(16)
+                  .padStart(2, "0");
+              ctx.beginPath();
+              ctx.roundRect(
+                width / 2 - totalTextWidth / 2 - bgPad,
+                y - textHeight * 0.7 - bgPad / 2,
+                totalTextWidth + bgPad * 2,
+                textHeight + bgPad,
+                12
+              );
+              ctx.fill();
             }
 
-            // Shadow for active word
-            if (isActive) {
-              ctx.shadowColor = "#FFD70080";
-              ctx.shadowBlur = 20;
-              ctx.shadowOffsetY = 0;
-            } else if (caption.style.shadowBlur > 0) {
-              ctx.shadowColor = caption.style.shadowColor;
-              ctx.shadowBlur = caption.style.shadowBlur;
-              ctx.shadowOffsetY = 2;
-            } else {
-              ctx.shadowColor = "transparent";
-              ctx.shadowBlur = 0;
+            let currentX = width / 2 - totalTextWidth / 2;
+            ctx.textAlign = "left";
+            ctx.lineJoin = "round";
+            ctx.miterLimit = 2;
+
+            for (let wi = 0; wi < words.length; wi++) {
+              const word = words[wi];
+              const isActive = wi === currentWordIndex;
+              const isPast = wi < currentWordIndex;
+              const isEmphasis = caption.emphasis.some((e) =>
+                word.toLowerCase().replace(/[.,!?;:]/g, "").includes(e.toLowerCase())
+              );
+
+              // Determine color — theme-aware
+              let wordColor = caption.style.color;
+              if (isActive) {
+                wordColor = highlightColor;
+              } else if (isEmphasis) {
+                wordColor = highlightColor;
+              } else if (!isPast) {
+                // Future words: slightly dimmed
+                wordColor = caption.style.color + "99";
+              }
+
+              // Shadow for active word — theme-aware glow
+              if (isActive) {
+                ctx.shadowColor = highlightGlow;
+                ctx.shadowBlur = 20;
+                ctx.shadowOffsetY = 0;
+              } else if (caption.style.shadowBlur > 0) {
+                ctx.shadowColor = caption.style.shadowColor;
+                ctx.shadowBlur = caption.style.shadowBlur;
+                ctx.shadowOffsetY = 2;
+              } else {
+                ctx.shadowColor = "transparent";
+                ctx.shadowBlur = 0;
+              }
+
+              // Set font weight
+              const fontWeight = isActive || isEmphasis ? 900 : caption.style.fontWeight;
+              ctx.font = `${fontWeight} ${caption.style.fontSize}px ${caption.style.fontFamily}, sans-serif`;
+
+              // Stroke
+              if (caption.style.strokeWidth > 0) {
+                ctx.strokeStyle = caption.style.strokeColor;
+                ctx.lineWidth = caption.style.strokeWidth * 2;
+                ctx.strokeText(word, currentX, y);
+              }
+
+              // Fill
+              ctx.fillStyle = wordColor;
+              ctx.fillText(word, currentX, y);
+
+              currentX += wordWidths[wi] + spaceWidth;
             }
-
-            // Set font weight
-            const fontWeight = isActive || isEmphasis ? 900 : caption.style.fontWeight;
-            ctx.font = `${fontWeight} ${caption.style.fontSize}px ${caption.style.fontFamily}, sans-serif`;
-
-            // Stroke
-            if (caption.style.strokeWidth > 0) {
-              ctx.strokeStyle = caption.style.strokeColor;
-              ctx.lineWidth = caption.style.strokeWidth * 2;
-              ctx.strokeText(word, currentX, y);
-            }
-
-            // Fill
-            ctx.fillStyle = wordColor;
-            ctx.fillText(word, currentX, y);
-
-            currentX += wordWidths[wi] + spaceWidth;
           }
 
           ctx.restore();
@@ -419,7 +541,8 @@ export default function ExportPanel() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `cineai-export-${aspectRatio.replace(":", "x")}.webm`;
+      const ext = blob.type.includes("mp4") ? "mp4" : "webm";
+      a.download = `cineai-export-${aspectRatio.replace(":", "x")}.${ext}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

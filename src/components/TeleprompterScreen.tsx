@@ -193,9 +193,17 @@ export default function TeleprompterScreen() {
         setPhase("recording");
 
         chunksRef.current = [];
-        const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
-          ? "video/webm;codecs=vp9,opus"
-          : "video/webm";
+        // Prefer MP4 (H.264/AAC) for universal compatibility (iOS, Android, desktop)
+        // Falls back to WebM (VP9/Opus or VP8/Vorbis) where MP4 is not supported
+        const mimeType = MediaRecorder.isTypeSupported("video/mp4;codecs=avc1.42E01E,mp4a.40.2")
+          ? "video/mp4;codecs=avc1.42E01E,mp4a.40.2"
+          : MediaRecorder.isTypeSupported("video/mp4")
+            ? "video/mp4"
+            : MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+              ? "video/webm;codecs=vp9,opus"
+              : MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
+                ? "video/webm;codecs=vp8,opus"
+                : "video/webm";
 
         const recorder = new MediaRecorder(streamRef.current!, {
           mimeType,
@@ -251,7 +259,8 @@ export default function TeleprompterScreen() {
       streamRef.current = null;
     }
 
-    const file = new File([recordedBlob], "teleprompter-recording.webm", {
+    const ext = recordedBlob.type.includes("mp4") ? "mp4" : "webm";
+    const file = new File([recordedBlob], `teleprompter-recording.${ext}`, {
       type: recordedBlob.type,
     });
 
@@ -634,7 +643,9 @@ export default function TeleprompterScreen() {
                   onClick={() => {
                     const a = document.createElement("a");
                     a.href = recordedUrl;
-                    a.download = `gravacao-teleprompter-${Date.now()}.webm`;
+                    // Use correct extension based on recorded format
+                    const ext = recordedBlob?.type?.includes("mp4") ? "mp4" : "webm";
+                    a.download = `gravacao-teleprompter-${Date.now()}.${ext}`;
                     document.body.appendChild(a);
                     a.click();
                     document.body.removeChild(a);

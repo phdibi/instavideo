@@ -288,6 +288,12 @@ export default function VideoPreview() {
           const preset = params.preset as string;
           if (preset === "cinematic-warm")
             filter += " sepia(0.12) saturate(1.15) contrast(1.08)";
+          else if (preset === "ember-warm")
+            // Ember: warmer golden/amber grade — more sepia, subtle warmth
+            filter += " sepia(0.2) saturate(1.1) contrast(1.06) brightness(1.02)";
+          else if (preset === "velocity-gold")
+            // Velocity: high-contrast golden grade with boosted saturation
+            filter += " sepia(0.15) saturate(1.25) contrast(1.12) brightness(1.04)";
           else if (preset === "cold-thriller")
             filter += " saturate(0.8) hue-rotate(200deg) contrast(1.15)";
           else if (preset === "vintage")

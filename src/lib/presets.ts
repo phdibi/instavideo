@@ -219,6 +219,10 @@ export function buildSegmentsFromTranscription(
 // These styles complement the clean, no-background, bold look from the
 // Captions app. All presets use transparent background and heavy text shadow
 // for readability over video. Sizes are tuned for short text.
+//
+// Two visual themes are supported:
+// - "volt" (default): Neon green highlights, pure white text, energetic
+// - "ember": Warm salmon highlights, cream text, editorial/cinematic
 
 const hookCaptionStyle: Partial<CaptionStyle> = {
   fontSize: 72,
@@ -277,6 +281,145 @@ const futuristicHudCaptionStyle: Partial<CaptionStyle> = {
   shadowBlur: 14,
 };
 
+// ===== Ember theme overrides =====
+// Warm salmon/terracotta palette inspired by Captions "Ember" style
+const emberHookCaptionStyle: Partial<CaptionStyle> = {
+  ...hookCaptionStyle,
+  color: "#F0E6D0", // Warm cream
+  shadowColor: "rgba(212,131,92,0.5)",
+};
+
+const emberTalkingHeadCaptionStyle: Partial<CaptionStyle> = {
+  ...talkingHeadCaptionStyle,
+  color: "#F0E6D0",
+};
+
+const emberTalkingHeadBrollCaptionStyle: Partial<CaptionStyle> = {
+  ...talkingHeadBrollCaptionStyle,
+  color: "#F0E6D0",
+};
+
+// ===== Velocity theme overrides =====
+// High-energy yellow/gold palette inspired by Captions "Velocity" style
+// Bold italic, metallic golden accents, scanline effects
+const velocityHookCaptionStyle: Partial<CaptionStyle> = {
+  ...hookCaptionStyle,
+  shadowColor: "rgba(255,215,0,0.6)", // Golden glow
+  shadowBlur: 24,
+  strokeWidth: 3,
+};
+
+const velocityTalkingHeadCaptionStyle: Partial<CaptionStyle> = {
+  ...talkingHeadCaptionStyle,
+  shadowColor: "rgba(255,215,0,0.5)",
+  shadowBlur: 12,
+};
+
+const velocityTalkingHeadBrollCaptionStyle: Partial<CaptionStyle> = {
+  ...talkingHeadBrollCaptionStyle,
+  shadowColor: "rgba(255,215,0,0.5)",
+  shadowBlur: 12,
+};
+
+// ===== Heuristic: detect if content is more editorial/lifestyle =====
+// Used to automatically choose Ember theme for appropriate content
+const EMBER_KEYWORDS = new Set([
+  "saúde", "health", "bem-estar", "wellness", "wellbeing",
+  "vida", "life", "viver", "live", "qualidade",
+  "corpo", "body", "mente", "mind", "alma", "soul",
+  "natureza", "nature", "paz", "peace", "calma",
+  "meditação", "meditation", "yoga", "respirar", "breathe",
+  "exercício", "exercise", "fitness", "treino",
+  "alimentação", "nutrition", "dieta", "diet",
+  "sono", "sleep", "descanso", "rest",
+  "longevidade", "longevity", "envelhecer", "aging",
+  "felicidade", "happiness", "gratidão", "gratitude",
+  "família", "family", "amor", "love", "relação",
+  "aprender", "learn", "educação", "education",
+  "livro", "book", "leitura", "reading",
+  "viagem", "travel", "aventura", "adventure",
+  "arte", "art", "música", "music", "criatividade",
+  "produtividade", "productivity", "hábito", "habit",
+  "rotina", "routine", "manhã", "morning",
+  "sustentável", "sustainable", "orgânico", "organic",
+]);
+
+function detectEmberContent(fullText: string): boolean {
+  const textLower = fullText.toLowerCase();
+  const words = textLower.split(/\s+/);
+  let emberScore = 0;
+  for (const word of words) {
+    const cleaned = word.replace(/[.,!?;:'"()]/g, "");
+    if (EMBER_KEYWORDS.has(cleaned)) emberScore++;
+  }
+  // If 3+ lifestyle/editorial keywords found, use Ember theme
+  return emberScore >= 3;
+}
+
+// ===== Velocity keyword detection =====
+// High-energy, motivational, business, hustle, competition content → Velocity
+const VELOCITY_KEYWORDS = new Set([
+  "dinheiro", "money", "cash", "rico", "rich",
+  "negócio", "business", "empresa", "company",
+  "empreender", "empreendedor", "entrepreneur",
+  "sucesso", "success", "vencer", "win", "ganhar",
+  "crescer", "grow", "crescimento", "growth",
+  "resultado", "result", "meta", "goal", "objetivo",
+  "lucro", "profit", "renda", "income", "faturamento",
+  "vendas", "sales", "vender", "sell",
+  "marketing", "estratégia", "strategy",
+  "liderança", "leadership", "líder", "leader",
+  "competição", "competition", "competir", "compete",
+  "poder", "power", "forte", "strong", "força",
+  "velocidade", "speed", "rápido", "fast",
+  "energia", "energy", "motivação", "motivation",
+  "disciplina", "discipline", "foco", "focus",
+  "mentalidade", "mindset", "mental",
+  "desafio", "challenge", "superar", "overcome",
+  "hustle", "grind", "scale", "escalar",
+  "investir", "invest", "patrimônio", "wealth",
+  "milionário", "millionaire", "bilionário",
+  "liberdade", "freedom", "financeiro", "financial",
+  "produtivo", "productive", "performance",
+  "atitude", "attitude", "ação", "action",
+  "transformar", "transform", "revolução", "revolution",
+  "dominar", "dominate", "conquistar", "conquer",
+  "impacto", "impact", "influência", "influence",
+]);
+
+function detectVelocityContent(fullText: string): boolean {
+  const textLower = fullText.toLowerCase();
+  const words = textLower.split(/\s+/);
+  let velocityScore = 0;
+  for (const word of words) {
+    const cleaned = word.replace(/[.,!?;:'"()]/g, "");
+    if (VELOCITY_KEYWORDS.has(cleaned)) velocityScore++;
+  }
+  // If 3+ high-energy/business keywords found, use Velocity theme
+  return velocityScore >= 3;
+}
+
+// Track which theme should be applied (set during applyAllPresets)
+// Priority: velocity > ember > volt (default)
+let useEmberTheme = false;
+let useVelocityTheme = false;
+
+export function setEmberTheme(enabled: boolean) {
+  useEmberTheme = enabled;
+}
+
+export function isEmberTheme(): boolean {
+  return useEmberTheme;
+}
+
+export function setVelocityTheme(enabled: boolean) {
+  useVelocityTheme = enabled;
+}
+
+export function isVelocityTheme(): boolean {
+  return useVelocityTheme;
+}
+
 // ===== Apply preset effects to a segment =====
 export function applyPresetToSegment(
   segment: VideoSegment,
@@ -324,13 +467,20 @@ function applyHookPreset(
   // Style captions: large bold centered with keyword highlight
   // Keep "pop" animation for 1-2 word captions (best for punchy short text)
   const topicLabel = segment.keywordHighlight?.toUpperCase() || "";
+  const captionStyle = useVelocityTheme
+    ? velocityHookCaptionStyle
+    : useEmberTheme ? emberHookCaptionStyle : hookCaptionStyle;
+  const usesDualLayer = useEmberTheme || useVelocityTheme;
   const updatedCaptions = segCaptions.map(c => ({
     ...c,
-    style: { ...c.style, ...hookCaptionStyle },
+    style: { ...c.style, ...captionStyle },
     animation: "pop" as const,
     emphasis: segment.keywordHighlight ? [segment.keywordHighlight] : c.emphasis,
     emoji: c.emoji,
-    topicLabel: topicLabel.length >= 3 ? topicLabel : undefined,
+    // Ember/Velocity: show keyword as large dual-layer label with decorative quotes
+    keywordLabel: usesDualLayer && topicLabel.length >= 3 ? topicLabel : undefined,
+    keywordQuotes: (usesDualLayer && topicLabel.length >= 3) || undefined,
+    topicLabel: !usesDualLayer && topicLabel.length >= 3 ? topicLabel : undefined,
   }));
 
   const duration = segment.endTime - segment.startTime;
@@ -382,14 +532,24 @@ function applyTalkingHeadPreset(
   newBroll: BRollImage[];
 } {
   // Keep "pop" for 1-2 word short captions; only use "karaoke" for longer ones
+  const captionStyle = useVelocityTheme
+    ? velocityTalkingHeadCaptionStyle
+    : useEmberTheme ? emberTalkingHeadCaptionStyle : talkingHeadCaptionStyle;
+  const usesDualLayer = useEmberTheme || useVelocityTheme;
   const updatedCaptions = segCaptions.map(c => {
     const wordCount = c.text.trim().split(/\s+/).length;
+    // Ember/Velocity: For 1-2 word punchy captions, show the keyword as large dual-layer
+    const isKeywordCaption = !!(usesDualLayer && wordCount <= 2
+      && segment.keywordHighlight
+      && c.text.toLowerCase().includes(segment.keywordHighlight.toLowerCase()));
     return {
       ...c,
-      style: { ...c.style, ...talkingHeadCaptionStyle },
+      style: { ...c.style, ...captionStyle },
       animation: wordCount <= 2 ? "pop" as const : "karaoke" as const,
       emphasis: segment.keywordHighlight ? [segment.keywordHighlight] : c.emphasis,
       emoji: c.emoji,
+      keywordLabel: isKeywordCaption ? segment.keywordHighlight.toUpperCase() : undefined,
+      keywordQuotes: isKeywordCaption || undefined,
     };
   });
 
@@ -436,15 +596,24 @@ function applyTalkingHeadBrollPreset(
   newBroll: BRollImage[];
 } {
   const topicLabel = segment.keywordHighlight?.toUpperCase() || "";
+  const captionStyle = useVelocityTheme
+    ? velocityTalkingHeadBrollCaptionStyle
+    : useEmberTheme ? emberTalkingHeadBrollCaptionStyle : talkingHeadBrollCaptionStyle;
+  const usesDualLayer = useEmberTheme || useVelocityTheme;
   const updatedCaptions = segCaptions.map(c => {
     const wordCount = c.text.trim().split(/\s+/).length;
+    const isKeywordCaption = !!(usesDualLayer && wordCount <= 2
+      && segment.keywordHighlight
+      && c.text.toLowerCase().includes(segment.keywordHighlight.toLowerCase()));
     return {
       ...c,
-      style: { ...c.style, ...talkingHeadBrollCaptionStyle },
+      style: { ...c.style, ...captionStyle },
       animation: wordCount <= 2 ? "pop" as const : "karaoke" as const,
       emphasis: segment.keywordHighlight ? [segment.keywordHighlight] : c.emphasis,
       emoji: c.emoji,
-      topicLabel: topicLabel.length >= 3 ? topicLabel : undefined,
+      keywordLabel: isKeywordCaption ? segment.keywordHighlight.toUpperCase() : undefined,
+      keywordQuotes: isKeywordCaption || undefined,
+      topicLabel: !usesDualLayer && topicLabel.length >= 3 ? topicLabel : undefined,
     };
   });
 
@@ -574,6 +743,12 @@ export function applyAllPresets(
   presetEffects: EditEffect[];
   presetBroll: BRollImage[];
 } {
+  // Auto-detect theme from content (priority: velocity > ember > volt)
+  const fullText = segments.map(s => s.text).join(" ");
+  useVelocityTheme = detectVelocityContent(fullText);
+  // If Velocity is detected, don't use Ember (they're mutually exclusive)
+  useEmberTheme = !useVelocityTheme && detectEmberContent(fullText);
+
   let allUpdatedCaptions = [...captions];
   const allNewEffects: EditEffect[] = [];
   const allNewBroll: BRollImage[] = [];
@@ -602,7 +777,8 @@ export function applyAllPresets(
   }
 
   // Add global effects that aren't already present
-  // Full-duration color-grade (cinematic-warm for non-HUD segments)
+  // Full-duration color-grade
+  // Ember theme uses a warmer, more golden color grade; Volt uses cinematic-warm
   const hasGlobalColorGrade = allNewEffects.some(
     e => e.type === "color-grade" && e.endTime - e.startTime > videoDuration * 0.8
   );
@@ -612,11 +788,11 @@ export function applyAllPresets(
       type: "color-grade",
       startTime: 0,
       endTime: videoDuration,
-      params: { preset: "cinematic-warm" },
+      params: { preset: useVelocityTheme ? "velocity-gold" : useEmberTheme ? "ember-warm" : "cinematic-warm" },
     });
   }
 
-  // Full-duration vignette
+  // Full-duration vignette (Ember uses slightly stronger vignette for editorial feel)
   const hasGlobalVignette = allNewEffects.some(
     e => e.type === "vignette" && e.endTime - e.startTime > videoDuration * 0.8
   );
@@ -626,7 +802,7 @@ export function applyAllPresets(
       type: "vignette",
       startTime: 0,
       endTime: videoDuration,
-      params: { intensity: 0.2 },
+      params: { intensity: useVelocityTheme ? 0.35 : useEmberTheme ? 0.28 : 0.2 },
     });
   }
 

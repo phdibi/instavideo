@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useProjectStore } from "@/store/useProjectStore";
-import type { Caption, CaptionAnimation } from "@/types";
+import type { Caption, CaptionAnimation, CaptionTheme } from "@/types";
 
 interface Props {
   currentTime: number;
@@ -37,6 +37,57 @@ export default function CaptionOverlay({ currentTime }: Props) {
   );
 }
 
+// ===== Theme color palettes =====
+const THEME_COLORS: Record<CaptionTheme, {
+  highlight: string;       // Emphasis/keyword highlight color
+  highlightGlow: string;   // Glow shadow for emphasis
+  topicLabelColor: string; // Topic label text color
+  keywordColor: string;    // Large keyword label color
+  captionColor: string;    // Default caption text color (warm/cool)
+  quoteColor: string;      // Decorative quote color
+}> = {
+  volt: {
+    highlight: "#CCFF00",
+    highlightGlow: "rgba(204,255,0,0.3)",
+    topicLabelColor: "#CCFF00",
+    keywordColor: "#CCFF00",
+    captionColor: "#FFFFFF",
+    quoteColor: "#CCFF00",
+  },
+  ember: {
+    highlight: "#D4835C",
+    highlightGlow: "rgba(212,131,92,0.35)",
+    topicLabelColor: "#D4835C",
+    keywordColor: "#D4835C",
+    captionColor: "#F0E6D0",
+    quoteColor: "#C8956A",
+  },
+  velocity: {
+    highlight: "#FFD700",
+    highlightGlow: "rgba(255,215,0,0.4)",
+    topicLabelColor: "#FFD700",
+    keywordColor: "#FFD700",
+    captionColor: "#FFFFFF",
+    quoteColor: "#DAA520",
+  },
+};
+
+// Detect theme from caption properties
+function detectTheme(caption: Caption): CaptionTheme {
+  // Velocity: golden shadow color is the signature
+  if (caption.style.shadowColor === "rgba(255,215,0,0.6)"
+    || caption.style.shadowColor === "rgba(255,215,0,0.5)") return "velocity";
+  // If caption has keywordQuotes, check for Velocity vs Ember
+  if (caption.keywordQuotes) {
+    // Velocity uses white text, Ember uses cream
+    if (caption.style.color === "#FFFFFF") return "velocity";
+    return "ember";
+  }
+  // If caption color is warm (cream/beige), it's Ember
+  if (caption.style.color === "#F0E6D0" || caption.style.color === "#D4835C") return "ember";
+  return "volt";
+}
+
 function CaptionDisplay({
   caption,
   currentTime,
@@ -49,6 +100,9 @@ function CaptionDisplay({
     Math.max((currentTime - caption.startTime) / duration, 0),
     1
   );
+
+  const theme = detectTheme(caption);
+  const colors = THEME_COLORS[theme];
 
   const positionStyle = useMemo(() => {
     switch (caption.style.position) {
@@ -82,6 +136,13 @@ function CaptionDisplay({
   // Determine if this is a "short punchy" caption (1-2 words, uppercase)
   const isShortPunchy = totalWords <= 2;
 
+  // When keywordLabel matches the caption text, hide the subtitle to avoid duplication.
+  // e.g., keyword "CAPACIDADE" + caption "CAPACIDADE" → only show large keyword
+  // But keyword "CAPACIDADE" + caption "vocês atinjam" → show both layers
+  const keywordMatchesCaption = caption.keywordLabel
+    && caption.text.toUpperCase().trim() === caption.keywordLabel.toUpperCase().trim();
+  const showSubtitle = !keywordMatchesCaption;
+
   return (
     <motion.div
       className={`absolute left-0 right-0 ${positionStyle} px-4 flex justify-center`}
@@ -92,7 +153,7 @@ function CaptionDisplay({
     >
       <div className="flex flex-col items-center">
         {/* Topic label tag (like "● LEARNING" in Captions app) */}
-        {caption.topicLabel && (
+        {caption.topicLabel && !caption.keywordLabel && (
           <motion.div
             className="mb-1.5 px-3 py-0.5 rounded-full"
             initial={{ opacity: 0, y: 6, scale: 0.8 }}
@@ -104,7 +165,7 @@ function CaptionDisplay({
               fontSize: `${Math.max(10, caption.style.fontSize * 0.18)}px`,
               fontWeight: 700,
               fontFamily: caption.style.fontFamily,
-              color: "#CCFF00",
+              color: colors.topicLabelColor,
               letterSpacing: "0.08em",
               lineHeight: 1.4,
               textShadow: "0 1px 2px rgba(0,0,0,0.5)",
@@ -114,8 +175,89 @@ function CaptionDisplay({
             {caption.topicLabel}
           </motion.div>
         )}
+
+        {/* Dual-layer: Large keyword ABOVE caption (Ember/Velocity) */}
+        {caption.keywordLabel && (
+          <motion.div
+            className="mb-2 flex items-baseline justify-center"
+            initial={{ opacity: 0, scale: theme === "velocity" ? 0.5 : 0.7, y: theme === "velocity" ? 15 : 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{
+              type: "spring",
+              damping: theme === "velocity" ? 12 : 14,
+              stiffness: theme === "velocity" ? 320 : 280,
+              delay: 0.02,
+            }}
+            style={{
+              lineHeight: 1,
+            }}
+          >
+            {/* Decorative opening quote — Velocity: bold sans-serif gold, Ember: curly serif */}
+            {caption.keywordQuotes && (
+              <span
+                style={{
+                  fontSize: `${caption.style.fontSize * (theme === "velocity" ? 0.6 : 0.55)}px`,
+                  fontWeight: 900,
+                  color: colors.quoteColor,
+                  opacity: theme === "velocity" ? 0.9 : 0.7,
+                  marginRight: "0.05em",
+                  fontFamily: theme === "velocity"
+                    ? "Inter, system-ui, sans-serif"
+                    : "Georgia, 'Times New Roman', serif",
+                  fontStyle: theme === "velocity" ? "italic" : "normal",
+                  lineHeight: 1,
+                  textShadow: theme === "velocity"
+                    ? `0 2px 8px rgba(0,0,0,0.8), 0 0 12px rgba(255,215,0,0.3)`
+                    : `0 2px 6px rgba(0,0,0,0.6)`,
+                }}
+              >
+                {"\u201C"}
+              </span>
+            )}
+            <span
+              style={{
+                fontFamily: caption.style.fontFamily,
+                fontSize: `${caption.style.fontSize * (theme === "velocity" ? 0.6 : 0.55)}px`,
+                fontWeight: 900,
+                fontStyle: theme === "velocity" ? "italic" : "normal",
+                color: colors.keywordColor,
+                letterSpacing: theme === "velocity" ? "-0.03em" : "-0.02em",
+                textShadow: theme === "velocity"
+                  ? `0 3px 10px rgba(0,0,0,0.8), 0 0 25px ${colors.highlightGlow}, 0 0 50px rgba(255,215,0,0.15)`
+                  : `0 2px 8px rgba(0,0,0,0.7), 0 0 20px ${colors.highlightGlow}`,
+                lineHeight: 1,
+                textTransform: "uppercase",
+              }}
+            >
+              {caption.keywordLabel}
+            </span>
+            {/* Decorative closing quote */}
+            {caption.keywordQuotes && (
+              <span
+                style={{
+                  fontSize: `${caption.style.fontSize * (theme === "velocity" ? 0.6 : 0.55)}px`,
+                  fontWeight: 900,
+                  color: colors.quoteColor,
+                  opacity: theme === "velocity" ? 0.9 : 0.7,
+                  marginLeft: "0.05em",
+                  fontFamily: theme === "velocity"
+                    ? "Inter, system-ui, sans-serif"
+                    : "Georgia, 'Times New Roman', serif",
+                  fontStyle: theme === "velocity" ? "italic" : "normal",
+                  lineHeight: 1,
+                  textShadow: theme === "velocity"
+                    ? `0 2px 8px rgba(0,0,0,0.8), 0 0 12px rgba(255,215,0,0.3)`
+                    : `0 2px 6px rgba(0,0,0,0.6)`,
+                }}
+              >
+                {"\u201D"}
+              </span>
+            )}
+          </motion.div>
+        )}
+
         {/* Emoji floating above the caption */}
-        {caption.emoji && (
+        {caption.emoji && !caption.keywordLabel && (
           <motion.div
             className="mb-1"
             initial={{ opacity: 0, scale: 0.3, y: 8 }}
@@ -135,7 +277,8 @@ function CaptionDisplay({
             {caption.emoji}
           </motion.div>
         )}
-        <div
+        {/* Subtitle words — hidden when keyword matches caption text (avoid duplication) */}
+        {showSubtitle && <div
           className="inline-flex flex-wrap justify-center gap-x-[0.3em] gap-y-1 max-w-[92%] px-3 py-2 rounded-xl"
           style={{
             backgroundColor:
@@ -163,16 +306,18 @@ function CaptionDisplay({
             const isAllActive = isShortPunchy;
 
             // Determine font size — bigger for short captions
+            // When keywordLabel is present, the subtitle is smaller (Ember dual-layer)
             const baseFontSize = caption.style.fontSize * 0.5;
-            const fontSize = isShortPunchy
-              ? baseFontSize * 1.15 // Slightly bigger for 1-2 word captions
-              : baseFontSize;
+            const fontSize = caption.keywordLabel
+              ? baseFontSize * 0.85 // Smaller subtitle below keyword
+              : isShortPunchy
+                ? baseFontSize * 1.15 // Slightly bigger for 1-2 word captions
+                : baseFontSize;
 
-            // Determine color — emphasis words get NEON GREEN like Captions app Volt
-            const NEON_HIGHLIGHT = "#CCFF00"; // Volt-style neon yellow-green
+            // Determine color — theme-aware emphasis colors
             let color = caption.style.color;
             if (wordState.isEmphasis) {
-              color = NEON_HIGHLIGHT;
+              color = colors.highlight;
             } else if (!isAllActive) {
               if (wordState.isActive) {
                 color = wordState.activeColor;
@@ -181,10 +326,16 @@ function CaptionDisplay({
               }
             }
 
-            // Emphasis words get italic + slightly larger (like Captions Volt)
+            // Emphasis words get italic + slightly larger
             const isEmphasized = wordState.isEmphasis;
-            const emphasisScale = isEmphasized ? 1.12 : 1;
-            const emphasisFontStyle = isEmphasized ? "italic" : "normal";
+            // Ember style: emphasis is bold but NOT italic (editorial/clean)
+            // Velocity style: ultra-bold italic with stronger scale
+            const emphasisScale = isEmphasized
+              ? (theme === "velocity" ? 1.15 : theme === "ember" ? 1.08 : 1.12)
+              : 1;
+            const emphasisFontStyle = isEmphasized
+              ? (theme === "ember" ? "normal" : "italic")
+              : (theme === "velocity" ? "italic" : "normal");
 
             return (
               <motion.span
@@ -208,7 +359,7 @@ function CaptionDisplay({
                     ? `${caption.style.strokeWidth * 0.5}px ${caption.style.strokeColor}`
                     : undefined,
                   textShadow: isEmphasized
-                    ? `0 2px ${caption.style.shadowBlur}px ${caption.style.shadowColor}, 0 0 ${caption.style.shadowBlur * 3}px rgba(204,255,0,0.3)`
+                    ? `0 2px ${caption.style.shadowBlur}px ${caption.style.shadowColor}, 0 0 ${caption.style.shadowBlur * 3}px ${colors.highlightGlow}`
                     : caption.style.shadowBlur
                       ? `0 2px ${caption.style.shadowBlur}px ${caption.style.shadowColor}, 0 0 ${caption.style.shadowBlur * 2}px ${caption.style.shadowColor}`
                       : undefined,
@@ -220,7 +371,7 @@ function CaptionDisplay({
               </motion.span>
             );
           })}
-        </div>
+        </div>}
       </div>
     </motion.div>
   );

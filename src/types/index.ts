@@ -8,7 +8,15 @@ export interface Caption {
   emphasis: string[];
   emoji?: string; // Emoji displayed above the caption (e.g., 🧠 above "CÉREBRO")
   topicLabel?: string; // Topic label shown above caption (e.g., "LEARNING STRATEGY")
+  keywordLabel?: string; // Large keyword displayed ABOVE the caption (Ember-style dual-layer)
+  keywordQuotes?: boolean; // Whether to wrap the keywordLabel in decorative quotes ("KEYWORD")
 }
+
+// ===== Caption Visual Theme =====
+// Determines the color palette used for emphasis, highlights, and decorative elements.
+// "volt" = neon yellow-green (#CCFF00), energetic/tech
+// "ember" = warm salmon/terracotta (#D4835C), editorial/cinematic
+export type CaptionTheme = "volt" | "ember" | "velocity";
 
 export interface CaptionStyle {
   fontFamily: string;

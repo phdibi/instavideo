@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useProjectStore } from "@/store/useProjectStore";
+import { isEmberTheme, isVelocityTheme } from "@/lib/presets";
 
 interface Props {
   currentTime: number;
@@ -14,6 +15,8 @@ interface Props {
  * and creates a visually striking background effect.
  *
  * Uses the AI preset segment's keywordHighlight to determine what text to show.
+ * NOTE: This is a Volt-specific feature. Ember theme uses a cleaner editorial
+ * style without background decorative text.
  */
 export default function DecorativeTextOverlay({ currentTime }: Props) {
   const { segments } = useProjectStore();
@@ -28,8 +31,11 @@ export default function DecorativeTextOverlay({ currentTime }: Props) {
   }, [segments, currentTime]);
 
   // Only show decorative text for hook and futuristic-hud presets,
-  // or when there's a strong keyword highlight
+  // or when there's a strong keyword highlight.
+  // NEVER show for Ember theme (editorial/clean style doesn't use cascading text).
   const shouldShow = useMemo(() => {
+    if (isEmberTheme()) return false; // Ember: no decorative background text
+    if (isVelocityTheme()) return false; // Velocity: uses 3D ribbons, not cascading text
     if (!activeSegment) return false;
     if (!activeSegment.keywordHighlight) return false;
     if (activeSegment.keywordHighlight.length < 3) return false;

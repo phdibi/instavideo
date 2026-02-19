@@ -335,12 +335,13 @@ export default function ExportPanel() {
           ctx.save();
           ctx.font = `${caption.style.fontWeight} ${caption.style.fontSize}px ${caption.style.fontFamily}, sans-serif`;
 
-          // Match CaptionOverlay positions: top-[8%], top-1/2, bottom-[12%]
+          // Match CaptionOverlay positions: top-[8%], center (or 18% for hook with keyword), bottom-[12%]
+          const isHookWithKeyword = caption.style.position === "center" && caption.keywordLabel;
           const y =
             caption.style.position === "top"
               ? height * 0.08
               : caption.style.position === "center"
-              ? height / 2
+              ? (isHookWithKeyword ? height * 0.18 : height / 2)
               : height * 0.88;
 
           // Theme-aware highlight colors matching CaptionOverlay THEME_COLORS
@@ -357,60 +358,57 @@ export default function ExportPanel() {
 
           // Draw keyword label (Ember/Velocity dual-layer) ABOVE subtitle
           if (caption.keywordLabel) {
-            const kwFontSize = caption.style.fontSize * (isVelocityTheme() ? 0.6 : 0.55);
+            const isHookKw = caption.style.position === "center";
+            // Hook keywords: much larger (like Captions app); non-hook: moderate
+            const kwFontSize = isHookKw
+              ? caption.style.fontSize * (isVelocityTheme() ? 0.85 : 0.75)
+              : caption.style.fontSize * (isVelocityTheme() ? 0.55 : 0.5);
             const kwFont = `900 ${isVelocityTheme() ? "italic " : ""}${kwFontSize}px ${caption.style.fontFamily}, sans-serif`;
             ctx.font = kwFont;
             ctx.textAlign = "center";
 
-            // Decorative quotes
+            const kwY = y + kwFontSize * 0.35;
+
+            // Decorative quote above keyword (centered)
             if (caption.keywordQuotes) {
-              const quoteFont = `900 ${isVelocityTheme() ? "italic " : ""}${kwFontSize}px ${
+              const quoteFontSize = caption.style.fontSize * (isVelocityTheme() ? 0.5 : 0.45);
+              const quoteFont = `900 ${isVelocityTheme() ? "italic " : ""}${quoteFontSize}px ${
                 isVelocityTheme() ? "Inter, system-ui, sans-serif" : "Georgia, 'Times New Roman', serif"
               }`;
               const quoteColor = isVelocityTheme() ? "#DAA520" : isEmberTheme() ? "#C8956A" : "#CCFF00";
               ctx.font = quoteFont;
-              const quoteWidth = ctx.measureText("\u201C").width;
-              ctx.font = kwFont;
-              const kwWidth = ctx.measureText(caption.keywordLabel).width;
-              const totalKwWidth = quoteWidth * 2 + kwWidth + kwFontSize * 0.1;
-              const kwStartX = width / 2 - totalKwWidth / 2;
-              const kwY = y - caption.style.fontSize * 0.45;
-
-              // Opening quote
-              ctx.font = quoteFont;
               ctx.fillStyle = quoteColor;
-              ctx.globalAlpha = isVelocityTheme() ? 0.9 : 0.7;
+              ctx.globalAlpha = isVelocityTheme() ? 0.85 : 0.7;
               ctx.shadowColor = "rgba(0,0,0,0.6)";
               ctx.shadowBlur = 6;
-              ctx.textAlign = "left";
-              ctx.fillText("\u201C", kwStartX, kwY);
-
-              // Keyword text
-              ctx.font = kwFont;
-              ctx.fillStyle = highlightColor;
+              ctx.textAlign = "center";
+              ctx.fillText("\u201C", width / 2, kwY - kwFontSize * 0.9);
               ctx.globalAlpha = 1;
-              ctx.shadowColor = isVelocityTheme()
-                ? "rgba(0,0,0,0.8)"
-                : "rgba(0,0,0,0.7)";
-              ctx.shadowBlur = isVelocityTheme() ? 10 : 8;
-              ctx.textAlign = "left";
-              ctx.fillText(caption.keywordLabel, kwStartX + quoteWidth + kwFontSize * 0.05, kwY);
-
-              // Closing quote
-              ctx.font = quoteFont;
-              ctx.fillStyle = quoteColor;
-              ctx.globalAlpha = isVelocityTheme() ? 0.9 : 0.7;
-              ctx.textAlign = "left";
-              ctx.fillText("\u201D", kwStartX + quoteWidth + kwWidth + kwFontSize * 0.1, kwY);
-              ctx.globalAlpha = 1;
-            } else {
-              // Just keyword, no quotes
-              const kwY = y - caption.style.fontSize * 0.45;
-              ctx.fillStyle = highlightColor;
-              ctx.shadowColor = "rgba(0,0,0,0.7)";
-              ctx.shadowBlur = 8;
-              ctx.fillText(caption.keywordLabel, width / 2, kwY);
             }
+
+            // For hook keywords, draw dual-layer (white outline behind + colored fill)
+            if (isHookKw) {
+              ctx.font = kwFont;
+              ctx.textAlign = "center";
+              // Back layer: white outline
+              ctx.strokeStyle = "rgba(255,255,255,0.6)";
+              ctx.lineWidth = 3;
+              ctx.lineJoin = "round";
+              ctx.shadowColor = "transparent";
+              ctx.shadowBlur = 0;
+              const offsetY = kwFontSize * 0.04;
+              ctx.strokeText(caption.keywordLabel, width / 2, kwY + offsetY);
+            }
+
+            // Front layer: colored fill
+            ctx.font = kwFont;
+            ctx.textAlign = "center";
+            ctx.fillStyle = highlightColor;
+            ctx.shadowColor = isVelocityTheme()
+              ? "rgba(0,0,0,0.8)"
+              : "rgba(0,0,0,0.7)";
+            ctx.shadowBlur = isVelocityTheme() ? 10 : 8;
+            ctx.fillText(caption.keywordLabel, width / 2, kwY);
 
             ctx.shadowColor = "transparent";
             ctx.shadowBlur = 0;

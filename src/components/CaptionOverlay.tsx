@@ -109,12 +109,15 @@ function CaptionDisplay({
       case "top":
         return "top-[8%]";
       case "center":
-        return "top-1/2 -translate-y-1/2";
+        // Hook with keyword: position higher (like Captions app)
+        return caption.keywordLabel
+          ? "top-[18%]"
+          : "top-1/2 -translate-y-1/2";
       case "bottom":
       default:
         return "bottom-[12%]";
     }
-  }, [caption.style.position]);
+  }, [caption.style.position, caption.keywordLabel]);
 
   const animVariants = getAnimationVariants(caption.animation);
   const words = caption.text.split(" ");
@@ -179,7 +182,7 @@ function CaptionDisplay({
         {/* Dual-layer: Large keyword ABOVE caption (Ember/Velocity) */}
         {caption.keywordLabel && (
           <motion.div
-            className="mb-2 flex items-baseline justify-center"
+            className="mb-2 flex flex-col items-center justify-center"
             initial={{ opacity: 0, scale: theme === "velocity" ? 0.5 : 0.7, y: theme === "velocity" ? 15 : 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             transition={{
@@ -192,20 +195,20 @@ function CaptionDisplay({
               lineHeight: 1,
             }}
           >
-            {/* Decorative opening quote — Velocity: bold sans-serif gold, Ember: curly serif */}
+            {/* Decorative opening quote — large, centered above keyword */}
             {caption.keywordQuotes && (
               <span
                 style={{
-                  fontSize: `${caption.style.fontSize * (theme === "velocity" ? 0.6 : 0.55)}px`,
+                  fontSize: `${caption.style.fontSize * (theme === "velocity" ? 0.5 : 0.45)}px`,
                   fontWeight: 900,
                   color: colors.quoteColor,
-                  opacity: theme === "velocity" ? 0.9 : 0.7,
-                  marginRight: "0.05em",
+                  opacity: theme === "velocity" ? 0.85 : 0.7,
                   fontFamily: theme === "velocity"
                     ? "Inter, system-ui, sans-serif"
                     : "Georgia, 'Times New Roman', serif",
                   fontStyle: theme === "velocity" ? "italic" : "normal",
                   lineHeight: 1,
+                  marginBottom: "0.05em",
                   textShadow: theme === "velocity"
                     ? `0 2px 8px rgba(0,0,0,0.8), 0 0 12px rgba(255,215,0,0.3)`
                     : `0 2px 6px rgba(0,0,0,0.6)`,
@@ -214,44 +217,73 @@ function CaptionDisplay({
                 {"\u201C"}
               </span>
             )}
-            <span
-              style={{
-                fontFamily: caption.style.fontFamily,
-                fontSize: `${caption.style.fontSize * (theme === "velocity" ? 0.6 : 0.55)}px`,
-                fontWeight: 900,
-                fontStyle: theme === "velocity" ? "italic" : "normal",
-                color: colors.keywordColor,
-                letterSpacing: theme === "velocity" ? "-0.03em" : "-0.02em",
-                textShadow: theme === "velocity"
-                  ? `0 3px 10px rgba(0,0,0,0.8), 0 0 25px ${colors.highlightGlow}, 0 0 50px rgba(255,215,0,0.15)`
-                  : `0 2px 8px rgba(0,0,0,0.7), 0 0 20px ${colors.highlightGlow}`,
-                lineHeight: 1,
-                textTransform: "uppercase",
-              }}
-            >
-              {caption.keywordLabel}
-            </span>
-            {/* Decorative closing quote */}
-            {caption.keywordQuotes && (
-              <span
-                style={{
-                  fontSize: `${caption.style.fontSize * (theme === "velocity" ? 0.6 : 0.55)}px`,
-                  fontWeight: 900,
-                  color: colors.quoteColor,
-                  opacity: theme === "velocity" ? 0.9 : 0.7,
-                  marginLeft: "0.05em",
-                  fontFamily: theme === "velocity"
-                    ? "Inter, system-ui, sans-serif"
-                    : "Georgia, 'Times New Roman', serif",
-                  fontStyle: theme === "velocity" ? "italic" : "normal",
-                  lineHeight: 1,
-                  textShadow: theme === "velocity"
-                    ? `0 2px 8px rgba(0,0,0,0.8), 0 0 12px rgba(255,215,0,0.3)`
-                    : `0 2px 6px rgba(0,0,0,0.6)`,
-                }}
-              >
-                {"\u201D"}
-              </span>
+
+            {/* Hook keyword: dual-layer (white outline behind + colored fill in front) */}
+            {caption.style.position === "center" ? (
+              <div className="relative" style={{ lineHeight: 1 }}>
+                {/* Back layer: white outline (stroke only) — creates 3D offset effect */}
+                <span
+                  style={{
+                    fontFamily: caption.style.fontFamily,
+                    fontSize: `${caption.style.fontSize * (theme === "velocity" ? 0.85 : 0.75)}px`,
+                    fontWeight: 900,
+                    fontStyle: theme === "velocity" ? "italic" : "normal",
+                    color: "transparent",
+                    WebkitTextStroke: `2px rgba(255,255,255,0.6)`,
+                    letterSpacing: theme === "velocity" ? "-0.03em" : "-0.02em",
+                    lineHeight: 1,
+                    textTransform: "uppercase",
+                    position: "absolute",
+                    top: "0.06em",
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {caption.keywordLabel}
+                </span>
+                {/* Front layer: colored fill */}
+                <span
+                  style={{
+                    fontFamily: caption.style.fontFamily,
+                    fontSize: `${caption.style.fontSize * (theme === "velocity" ? 0.85 : 0.75)}px`,
+                    fontWeight: 900,
+                    fontStyle: theme === "velocity" ? "italic" : "normal",
+                    color: colors.keywordColor,
+                    letterSpacing: theme === "velocity" ? "-0.03em" : "-0.02em",
+                    textShadow: theme === "velocity"
+                      ? `0 3px 10px rgba(0,0,0,0.8), 0 0 25px ${colors.highlightGlow}, 0 0 50px rgba(255,215,0,0.15)`
+                      : `0 2px 8px rgba(0,0,0,0.7), 0 0 20px ${colors.highlightGlow}`,
+                    lineHeight: 1,
+                    textTransform: "uppercase",
+                    position: "relative",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {caption.keywordLabel}
+                </span>
+              </div>
+            ) : (
+              /* Non-hook keyword label (talking-head / broll) — smaller, single layer */
+              <div className="flex items-baseline justify-center">
+                <span
+                  style={{
+                    fontFamily: caption.style.fontFamily,
+                    fontSize: `${caption.style.fontSize * (theme === "velocity" ? 0.55 : 0.5)}px`,
+                    fontWeight: 900,
+                    fontStyle: theme === "velocity" ? "italic" : "normal",
+                    color: colors.keywordColor,
+                    letterSpacing: theme === "velocity" ? "-0.03em" : "-0.02em",
+                    textShadow: theme === "velocity"
+                      ? `0 3px 10px rgba(0,0,0,0.8), 0 0 25px ${colors.highlightGlow}`
+                      : `0 2px 8px rgba(0,0,0,0.7), 0 0 20px ${colors.highlightGlow}`,
+                    lineHeight: 1,
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {caption.keywordLabel}
+                </span>
+              </div>
             )}
           </motion.div>
         )}
@@ -306,10 +338,13 @@ function CaptionDisplay({
             const isAllActive = isShortPunchy;
 
             // Determine font size — bigger for short captions
-            // When keywordLabel is present, the subtitle is smaller (Ember dual-layer)
+            // When keywordLabel is present (Ember/Velocity dual-layer), subtitle is smaller
+            // but still readable. For hook captions with keyword, use slightly smaller subtitle.
             const baseFontSize = caption.style.fontSize * 0.5;
             const fontSize = caption.keywordLabel
-              ? baseFontSize * 0.85 // Smaller subtitle below keyword
+              ? (caption.style.position === "center"
+                ? baseFontSize * 0.72 // Hook subtitle: smaller under big keyword
+                : baseFontSize * 0.9) // Talking head: moderate subtitle
               : isShortPunchy
                 ? baseFontSize * 1.15 // Slightly bigger for 1-2 word captions
                 : baseFontSize;

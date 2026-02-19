@@ -20,18 +20,19 @@ export default function CaptionOverlay({ currentTime }: Props) {
     return active.length > 0 ? active[0] : null;
   }, [captions, currentTime]);
 
-  const captionKey = activeCaption ? activeCaption.id : null;
+  // No active caption → render nothing (avoids AnimatePresence stale exit bug)
+  if (!activeCaption) {
+    return <div className="absolute inset-0 pointer-events-none" />;
+  }
 
   return (
     <div className="absolute inset-0 pointer-events-none">
       <AnimatePresence mode="wait">
-        {activeCaption && captionKey && (
-          <CaptionDisplay
-            key={captionKey}
-            caption={activeCaption}
-            currentTime={currentTime}
-          />
-        )}
+        <CaptionDisplay
+          key={activeCaption.id}
+          caption={activeCaption}
+          currentTime={currentTime}
+        />
       </AnimatePresence>
     </div>
   );
@@ -104,20 +105,23 @@ function CaptionDisplay({
   const theme = useMemo(() => detectTheme(caption), [caption]);
   const colors = THEME_COLORS[theme];
 
+  // Sanitize keyword label: replace underscores with spaces
+  const keywordLabel = caption.keywordLabel?.replace(/_/g, " ") ?? null;
+
   const positionStyle = useMemo(() => {
     switch (caption.style.position) {
       case "top":
         return "top-[8%]";
       case "center":
         // Hook with keyword: position higher (like Captions app)
-        return caption.keywordLabel
+        return keywordLabel
           ? "top-[18%]"
           : "top-1/2 -translate-y-1/2";
       case "bottom":
       default:
         return "bottom-[12%]";
     }
-  }, [caption.style.position, caption.keywordLabel]);
+  }, [caption.style.position, keywordLabel]);
 
   const animVariants = getAnimationVariants(caption.animation);
   const words = caption.text.split(" ");
@@ -142,8 +146,8 @@ function CaptionDisplay({
   // When keywordLabel matches the caption text, hide the subtitle to avoid duplication.
   // e.g., keyword "CAPACIDADE" + caption "CAPACIDADE" → only show large keyword
   // But keyword "CAPACIDADE" + caption "vocês atinjam" → show both layers
-  const keywordMatchesCaption = caption.keywordLabel
-    && caption.text.toUpperCase().trim() === caption.keywordLabel.toUpperCase().trim();
+  const keywordMatchesCaption = keywordLabel
+    && caption.text.toUpperCase().trim() === keywordLabel.toUpperCase().trim();
   const showSubtitle = !keywordMatchesCaption;
 
   return (
@@ -156,7 +160,7 @@ function CaptionDisplay({
     >
       <div className="flex flex-col items-center">
         {/* Topic label tag (like "● LEARNING" in Captions app) */}
-        {caption.topicLabel && !caption.keywordLabel && (
+        {caption.topicLabel && !keywordLabel && (
           <motion.div
             className="mb-1.5 px-3 py-0.5 rounded-full"
             initial={{ opacity: 0, y: 6, scale: 0.8 }}
@@ -180,7 +184,7 @@ function CaptionDisplay({
         )}
 
         {/* Dual-layer: Large keyword ABOVE caption (Ember/Velocity) */}
-        {caption.keywordLabel && (
+        {keywordLabel && (
           <motion.div
             className="mb-2 flex flex-col items-center justify-center"
             initial={{ opacity: 0, scale: theme === "velocity" ? 0.5 : 0.7, y: theme === "velocity" ? 15 : 10 }}
@@ -240,7 +244,7 @@ function CaptionDisplay({
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {caption.keywordLabel}
+                  {keywordLabel}
                 </span>
                 {/* Front layer: colored fill */}
                 <span
@@ -260,7 +264,7 @@ function CaptionDisplay({
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {caption.keywordLabel}
+                  {keywordLabel}
                 </span>
               </div>
             ) : (
@@ -281,7 +285,7 @@ function CaptionDisplay({
                     textTransform: "uppercase",
                   }}
                 >
-                  {caption.keywordLabel}
+                  {keywordLabel}
                 </span>
               </div>
             )}
@@ -289,7 +293,7 @@ function CaptionDisplay({
         )}
 
         {/* Emoji floating above the caption */}
-        {caption.emoji && !caption.keywordLabel && (
+        {caption.emoji && !keywordLabel && (
           <motion.div
             className="mb-1"
             initial={{ opacity: 0, scale: 0.3, y: 8 }}
@@ -341,7 +345,7 @@ function CaptionDisplay({
             // When keywordLabel is present (Ember/Velocity dual-layer), subtitle is smaller
             // but still readable. For hook captions with keyword, use slightly smaller subtitle.
             const baseFontSize = caption.style.fontSize * 0.5;
-            const fontSize = caption.keywordLabel
+            const fontSize = keywordLabel
               ? (caption.style.position === "center"
                 ? baseFontSize * 0.72 // Hook subtitle: smaller under big keyword
                 : baseFontSize * 0.9) // Talking head: moderate subtitle

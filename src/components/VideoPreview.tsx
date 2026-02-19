@@ -5,6 +5,7 @@ import { Play, Pause, RotateCcw, Volume2, VolumeX, Download } from "lucide-react
 import { useProjectStore } from "@/store/useProjectStore";
 import { formatTime } from "@/lib/formatTime";
 import CaptionOverlay from "./CaptionOverlay";
+import DecorativeTextOverlay from "./DecorativeTextOverlay";
 import { useState } from "react";
 
 export default function VideoPreview() {
@@ -525,6 +526,11 @@ export default function VideoPreview() {
           className="absolute inset-0 z-40 cursor-pointer"
           onClick={togglePlay}
         />
+
+        {/* Decorative text overlay - z-35, behind captions but above video */}
+        <div className="absolute inset-0 z-[35] pointer-events-none">
+          <DecorativeTextOverlay currentTime={currentTime} />
+        </div>
 
         {/* Caption overlay - z-50, MUST be after click handler to render on top */}
         <div className="absolute inset-0 z-50 pointer-events-none">

@@ -7,6 +7,7 @@ export interface Caption {
   animation: CaptionAnimation;
   emphasis: string[];
   emoji?: string; // Emoji displayed above the caption (e.g., 🧠 above "CÉREBRO")
+  topicLabel?: string; // Topic label shown above caption (e.g., "LEARNING STRATEGY")
 }
 
 export interface CaptionStyle {

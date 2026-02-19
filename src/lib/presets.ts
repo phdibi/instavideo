@@ -323,27 +323,29 @@ function applyHookPreset(
 } {
   // Style captions: large bold centered with keyword highlight
   // Keep "pop" animation for 1-2 word captions (best for punchy short text)
+  const topicLabel = segment.keywordHighlight?.toUpperCase() || "";
   const updatedCaptions = segCaptions.map(c => ({
     ...c,
     style: { ...c.style, ...hookCaptionStyle },
     animation: "pop" as const,
     emphasis: segment.keywordHighlight ? [segment.keywordHighlight] : c.emphasis,
-    emoji: c.emoji, // Preserve emoji from caption builder
+    emoji: c.emoji,
+    topicLabel: topicLabel.length >= 3 ? topicLabel : undefined,
   }));
 
   const duration = segment.endTime - segment.startTime;
   const newEffects: EditEffect[] = [];
 
-  // Dramatic zoom-in on presenter face
+  // Dramatic zoom-in on presenter face (aggressive like Captions app)
   newEffects.push({
     id: `preset_hook_zoom_${segment.id}`,
     type: "zoom-in",
     startTime: segment.startTime,
     endTime: segment.endTime,
     params: {
-      scale: 1.35,
+      scale: 1.55,
       focusX: 0.5,
-      focusY: 0.35,
+      focusY: 0.3,
     },
   });
 
@@ -407,7 +409,7 @@ function applyTalkingHeadPreset(
         type: i % 2 === 0 ? "zoom-in" : "zoom-out",
         startTime: pulseStart,
         endTime: pulseEnd,
-        params: { scale: 1.08, focusX: 0.5, focusY: 0.4 },
+        params: { scale: 1.18, focusX: 0.5, focusY: 0.35 },
       });
     }
   } else {
@@ -433,6 +435,7 @@ function applyTalkingHeadBrollPreset(
   newEffects: EditEffect[];
   newBroll: BRollImage[];
 } {
+  const topicLabel = segment.keywordHighlight?.toUpperCase() || "";
   const updatedCaptions = segCaptions.map(c => {
     const wordCount = c.text.trim().split(/\s+/).length;
     return {
@@ -441,6 +444,7 @@ function applyTalkingHeadBrollPreset(
       animation: wordCount <= 2 ? "pop" as const : "karaoke" as const,
       emphasis: segment.keywordHighlight ? [segment.keywordHighlight] : c.emphasis,
       emoji: c.emoji,
+      topicLabel: topicLabel.length >= 3 ? topicLabel : undefined,
     };
   });
 
@@ -487,6 +491,7 @@ function applyFuturisticHudPreset(
   newEffects: EditEffect[];
   newBroll: BRollImage[];
 } {
+  const topicLabel = segment.keywordHighlight?.toUpperCase() || "";
   const updatedCaptions = segCaptions.map(c => {
     const wordCount = c.text.trim().split(/\s+/).length;
     return {
@@ -495,6 +500,7 @@ function applyFuturisticHudPreset(
       animation: wordCount <= 2 ? "pop" as const : "glow" as const,
       emphasis: segment.keywordHighlight ? [segment.keywordHighlight] : c.emphasis,
       emoji: c.emoji,
+      topicLabel: topicLabel.length >= 3 ? topicLabel : undefined,
     };
   });
 

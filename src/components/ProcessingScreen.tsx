@@ -385,23 +385,23 @@ function buildSpeechDrivenEffects(
     switch (zoomType) {
       case "zoom-in":
         params = {
-          scale: isHookZone ? 1.30 : isShortPunchy ? 1.20 : 1.12,
+          scale: isHookZone ? 1.50 : isShortPunchy ? 1.30 : 1.20,
           focusX: 0.5,
-          focusY: 0.35,
+          focusY: 0.30,
         };
         break;
       case "zoom-out":
         params = {
-          scale: isHookZone ? 1.20 : 1.12,
+          scale: isHookZone ? 1.35 : 1.20,
         };
         break;
       case "zoom-pulse":
         params = {
-          scale: isShortPunchy ? 1.10 : 1.06,
+          scale: isShortPunchy ? 1.18 : 1.12,
         };
         break;
       default:
-        params = { scale: 1.10 };
+        params = { scale: 1.15 };
     }
 
     effects.push({

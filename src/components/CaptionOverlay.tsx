@@ -91,6 +91,29 @@ function CaptionDisplay({
       transition={animVariants.transition || { duration: 0.12 }}
     >
       <div className="flex flex-col items-center">
+        {/* Topic label tag (like "● LEARNING" in Captions app) */}
+        {caption.topicLabel && (
+          <motion.div
+            className="mb-1.5 px-3 py-0.5 rounded-full"
+            initial={{ opacity: 0, y: 6, scale: 0.8 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.2, delay: 0.05 }}
+            style={{
+              backgroundColor: "rgba(0,0,0,0.5)",
+              backdropFilter: "blur(4px)",
+              fontSize: `${Math.max(10, caption.style.fontSize * 0.18)}px`,
+              fontWeight: 700,
+              fontFamily: caption.style.fontFamily,
+              color: "#CCFF00",
+              letterSpacing: "0.08em",
+              lineHeight: 1.4,
+              textShadow: "0 1px 2px rgba(0,0,0,0.5)",
+            }}
+          >
+            <span style={{ marginRight: "0.3em" }}>●</span>
+            {caption.topicLabel}
+          </motion.div>
+        )}
         {/* Emoji floating above the caption */}
         {caption.emoji && (
           <motion.div
@@ -145,10 +168,11 @@ function CaptionDisplay({
               ? baseFontSize * 1.15 // Slightly bigger for 1-2 word captions
               : baseFontSize;
 
-            // Determine color
+            // Determine color — emphasis words get NEON GREEN like Captions app Volt
+            const NEON_HIGHLIGHT = "#CCFF00"; // Volt-style neon yellow-green
             let color = caption.style.color;
             if (wordState.isEmphasis) {
-              color = "#FFD700"; // Gold for emphasis words
+              color = NEON_HIGHLIGHT;
             } else if (!isAllActive) {
               if (wordState.isActive) {
                 color = wordState.activeColor;
@@ -157,27 +181,37 @@ function CaptionDisplay({
               }
             }
 
+            // Emphasis words get italic + slightly larger (like Captions Volt)
+            const isEmphasized = wordState.isEmphasis;
+            const emphasisScale = isEmphasized ? 1.12 : 1;
+            const emphasisFontStyle = isEmphasized ? "italic" : "normal";
+
             return (
               <motion.span
                 key={`${caption.id}-word-${i}`}
                 className="inline-block whitespace-nowrap"
                 initial={false}
                 animate={{
-                  scale: wordState.isActive && !isAllActive ? 1.1 : 1,
+                  scale: isEmphasized
+                    ? emphasisScale
+                    : wordState.isActive && !isAllActive ? 1.1 : 1,
                   y: wordState.isActive && !isAllActive ? -2 : 0,
                 }}
                 transition={{ duration: 0.1, ease: "easeOut" }}
                 style={{
                   fontFamily: caption.style.fontFamily,
                   fontSize: `${fontSize}px`,
-                  fontWeight: caption.style.fontWeight,
+                  fontWeight: isEmphasized ? 900 : caption.style.fontWeight,
+                  fontStyle: emphasisFontStyle,
                   color,
                   WebkitTextStroke: caption.style.strokeWidth
                     ? `${caption.style.strokeWidth * 0.5}px ${caption.style.strokeColor}`
                     : undefined,
-                  textShadow: caption.style.shadowBlur
-                    ? `0 2px ${caption.style.shadowBlur}px ${caption.style.shadowColor}, 0 0 ${caption.style.shadowBlur * 2}px ${caption.style.shadowColor}`
-                    : undefined,
+                  textShadow: isEmphasized
+                    ? `0 2px ${caption.style.shadowBlur}px ${caption.style.shadowColor}, 0 0 ${caption.style.shadowBlur * 3}px rgba(204,255,0,0.3)`
+                    : caption.style.shadowBlur
+                      ? `0 2px ${caption.style.shadowBlur}px ${caption.style.shadowColor}, 0 0 ${caption.style.shadowBlur * 2}px ${caption.style.shadowColor}`
+                      : undefined,
                   lineHeight: 1.1,
                   letterSpacing: isShortPunchy ? "-0.02em" : undefined,
                 }}

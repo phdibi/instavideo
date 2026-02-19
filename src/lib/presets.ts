@@ -215,6 +215,11 @@ export function buildSegmentsFromTranscription(
 
 // ===== Caption style presets per segment type =====
 
+// ===== Caption style presets — designed for 1-2 word punchy captions =====
+// These styles complement the clean, no-background, bold look from the
+// Captions app. All presets use transparent background and heavy text shadow
+// for readability over video. Sizes are tuned for short text.
+
 const hookCaptionStyle: Partial<CaptionStyle> = {
   fontSize: 72,
   fontWeight: 900,
@@ -230,46 +235,46 @@ const hookCaptionStyle: Partial<CaptionStyle> = {
 };
 
 const talkingHeadCaptionStyle: Partial<CaptionStyle> = {
-  fontSize: 48,
-  fontWeight: 800,
+  fontSize: 64,
+  fontWeight: 900,
   color: "#FFFFFF",
-  backgroundColor: "#000000",
-  backgroundOpacity: 0.5,
+  backgroundColor: "transparent",
+  backgroundOpacity: 0,
   position: "bottom",
   textAlign: "center",
   strokeColor: "#000000",
-  strokeWidth: 2,
-  shadowColor: "rgba(0,0,0,0.8)",
-  shadowBlur: 6,
+  strokeWidth: 3,
+  shadowColor: "rgba(0,0,0,0.9)",
+  shadowBlur: 8,
 };
 
 const talkingHeadBrollCaptionStyle: Partial<CaptionStyle> = {
-  fontSize: 48,
-  fontWeight: 800,
+  fontSize: 64,
+  fontWeight: 900,
   color: "#FFFFFF",
-  backgroundColor: "#000000",
-  backgroundOpacity: 0.6,
+  backgroundColor: "transparent",
+  backgroundOpacity: 0,
   position: "bottom",
   textAlign: "center",
   strokeColor: "#000000",
-  strokeWidth: 2,
-  shadowColor: "rgba(0,0,0,0.8)",
-  shadowBlur: 6,
+  strokeWidth: 3,
+  shadowColor: "rgba(0,0,0,0.9)",
+  shadowBlur: 10,
 };
 
 const futuristicHudCaptionStyle: Partial<CaptionStyle> = {
   fontFamily: "JetBrains Mono, Fira Code, monospace",
-  fontSize: 44,
-  fontWeight: 700,
+  fontSize: 58,
+  fontWeight: 800,
   color: "#00FFFF",
-  backgroundColor: "#000000",
-  backgroundOpacity: 0.7,
+  backgroundColor: "transparent",
+  backgroundOpacity: 0,
   position: "bottom",
   textAlign: "center",
   strokeColor: "#000000",
-  strokeWidth: 1,
+  strokeWidth: 2,
   shadowColor: "rgba(0,255,255,0.5)",
-  shadowBlur: 12,
+  shadowBlur: 14,
 };
 
 // ===== Apply preset effects to a segment =====
@@ -283,8 +288,11 @@ export function applyPresetToSegment(
   newEffects: EditEffect[];
   newBroll: BRollImage[];
 } {
+  // Match captions that START within this segment's time range.
+  // With gapless 1-2 word captions, a caption may end slightly past the segment
+  // boundary (extending until the next caption starts), so we match by startTime.
   const segCaptions = captions.filter(
-    c => c.startTime >= segment.startTime - 0.05 && c.endTime <= segment.endTime + 0.05
+    c => c.startTime >= segment.startTime - 0.05 && c.startTime < segment.endTime + 0.05
   );
 
   const newEffects: EditEffect[] = [];
@@ -314,11 +322,13 @@ function applyHookPreset(
   newBroll: BRollImage[];
 } {
   // Style captions: large bold centered with keyword highlight
+  // Keep "pop" animation for 1-2 word captions (best for punchy short text)
   const updatedCaptions = segCaptions.map(c => ({
     ...c,
     style: { ...c.style, ...hookCaptionStyle },
     animation: "pop" as const,
     emphasis: segment.keywordHighlight ? [segment.keywordHighlight] : c.emphasis,
+    emoji: c.emoji, // Preserve emoji from caption builder
   }));
 
   const duration = segment.endTime - segment.startTime;
@@ -369,12 +379,17 @@ function applyTalkingHeadPreset(
   newEffects: EditEffect[];
   newBroll: BRollImage[];
 } {
-  const updatedCaptions = segCaptions.map(c => ({
-    ...c,
-    style: { ...c.style, ...talkingHeadCaptionStyle },
-    animation: "karaoke" as const,
-    emphasis: segment.keywordHighlight ? [segment.keywordHighlight] : c.emphasis,
-  }));
+  // Keep "pop" for 1-2 word short captions; only use "karaoke" for longer ones
+  const updatedCaptions = segCaptions.map(c => {
+    const wordCount = c.text.trim().split(/\s+/).length;
+    return {
+      ...c,
+      style: { ...c.style, ...talkingHeadCaptionStyle },
+      animation: wordCount <= 2 ? "pop" as const : "karaoke" as const,
+      emphasis: segment.keywordHighlight ? [segment.keywordHighlight] : c.emphasis,
+      emoji: c.emoji,
+    };
+  });
 
   const newEffects: EditEffect[] = [];
   const duration = segment.endTime - segment.startTime;
@@ -418,12 +433,16 @@ function applyTalkingHeadBrollPreset(
   newEffects: EditEffect[];
   newBroll: BRollImage[];
 } {
-  const updatedCaptions = segCaptions.map(c => ({
-    ...c,
-    style: { ...c.style, ...talkingHeadBrollCaptionStyle },
-    animation: "karaoke" as const,
-    emphasis: segment.keywordHighlight ? [segment.keywordHighlight] : c.emphasis,
-  }));
+  const updatedCaptions = segCaptions.map(c => {
+    const wordCount = c.text.trim().split(/\s+/).length;
+    return {
+      ...c,
+      style: { ...c.style, ...talkingHeadBrollCaptionStyle },
+      animation: wordCount <= 2 ? "pop" as const : "karaoke" as const,
+      emphasis: segment.keywordHighlight ? [segment.keywordHighlight] : c.emphasis,
+      emoji: c.emoji,
+    };
+  });
 
   const newEffects: EditEffect[] = [];
   const newBroll: BRollImage[] = [];
@@ -468,12 +487,16 @@ function applyFuturisticHudPreset(
   newEffects: EditEffect[];
   newBroll: BRollImage[];
 } {
-  const updatedCaptions = segCaptions.map(c => ({
-    ...c,
-    style: { ...c.style, ...futuristicHudCaptionStyle },
-    animation: "glow" as const,
-    emphasis: segment.keywordHighlight ? [segment.keywordHighlight] : c.emphasis,
-  }));
+  const updatedCaptions = segCaptions.map(c => {
+    const wordCount = c.text.trim().split(/\s+/).length;
+    return {
+      ...c,
+      style: { ...c.style, ...futuristicHudCaptionStyle },
+      animation: wordCount <= 2 ? "pop" as const : "glow" as const,
+      emphasis: segment.keywordHighlight ? [segment.keywordHighlight] : c.emphasis,
+      emoji: c.emoji,
+    };
+  });
 
   const newEffects: EditEffect[] = [];
   const newBroll: BRollImage[] = [];

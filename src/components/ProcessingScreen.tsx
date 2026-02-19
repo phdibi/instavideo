@@ -20,17 +20,17 @@ import { buildSegmentsFromTranscription, applyAllPresets } from "@/lib/presets";
 
 const defaultCaptionStyle: CaptionStyle = {
   fontFamily: "Inter",
-  fontSize: 48,
-  fontWeight: 800,
+  fontSize: 64,
+  fontWeight: 900,
   color: "#FFFFFF",
-  backgroundColor: "#000000",
-  backgroundOpacity: 0.5,
+  backgroundColor: "transparent",
+  backgroundOpacity: 0,
   position: "bottom",
   textAlign: "center",
   strokeColor: "#000000",
-  strokeWidth: 2,
-  shadowColor: "rgba(0,0,0,0.8)",
-  shadowBlur: 6,
+  strokeWidth: 3,
+  shadowColor: "rgba(0,0,0,0.9)",
+  shadowBlur: 8,
 };
 
 const steps = [
@@ -42,9 +42,104 @@ const steps = [
   { key: "ready", label: "Pronto!" },
 ];
 
+// ===== Keyword → Emoji mapping for visual impact =====
+// Maps common PT-BR and EN content words to relevant emojis.
+// Only trigger on "important" words — not fillers, not every word.
+const KEYWORD_EMOJI_MAP: Record<string, string> = {
+  // Brain / Intelligence / Mind
+  cérebro: "🧠", cerebro: "🧠", mente: "🧠", pensar: "🧠", pensamento: "🧠",
+  inteligência: "🧠", inteligencia: "🧠", inteligente: "🧠",
+  brain: "🧠", mind: "🧠", think: "🧠", thinking: "🧠", intelligence: "🧠", smart: "🧠",
+  // Money / Business / Economy
+  dinheiro: "💰", grana: "💰", lucro: "💰", receita: "💰", renda: "💰",
+  faturamento: "💰", faturar: "💰", ganhar: "💰", ganhos: "💰",
+  money: "💰", profit: "💰", revenue: "💰", income: "💰", cash: "💰",
+  economizar: "💵", economia: "💵", economizando: "💵",
+  save: "💵", saving: "💵", savings: "💵",
+  investir: "📈", investimento: "📈", invest: "📈", investment: "📈",
+  crescer: "📈", crescimento: "📈", growth: "📈", growing: "📈",
+  negócio: "💼", negócios: "💼", empresa: "💼", business: "💼", company: "💼",
+  // Technology
+  máquina: "⚙️", maquina: "⚙️", machine: "⚙️", robô: "🤖", robo: "🤖", robot: "🤖",
+  tecnologia: "🔧", technology: "🔧", tech: "🔧",
+  inteligência_artificial: "🤖", ia: "🤖", ai: "🤖",
+  código: "💻", codigo: "💻", programar: "💻", code: "💻", coding: "💻",
+  app: "📱", aplicativo: "📱", celular: "📱", phone: "📱",
+  // Fire / Energy / Power
+  fogo: "🔥", quente: "🔥", fervendo: "🔥",
+  fire: "🔥", hot: "🔥", lit: "🔥", bomb: "💣", bomba: "💣",
+  energia: "⚡", poder: "⚡", poderoso: "⚡", potência: "⚡",
+  energy: "⚡", power: "⚡", powerful: "⚡", force: "⚡",
+  // Success / Victory
+  sucesso: "🏆", vencer: "🏆", vitória: "🏆", campeão: "🏆",
+  success: "🏆", win: "🏆", winner: "🏆", victory: "🏆", champion: "🏆",
+  meta: "🎯", objetivo: "🎯", alvo: "🎯", foco: "🎯",
+  goal: "🎯", target: "🎯", focus: "🎯",
+  // Danger / Warning / Stop
+  perigo: "⚠️", cuidado: "⚠️", atenção: "⚠️", atencao: "⚠️",
+  danger: "⚠️", warning: "⚠️", attention: "⚠️", stop: "🛑",
+  erro: "❌", errado: "❌", error: "❌", wrong: "❌", mistake: "❌",
+  // Love / Heart / Emotion
+  amor: "❤️", amar: "❤️", coração: "❤️", love: "❤️", heart: "❤️",
+  // World / Global
+  mundo: "🌍", mundial: "🌍", global: "🌍", world: "🌍", planeta: "🌍", planet: "🌍",
+  // Time
+  tempo: "⏰", hora: "⏰", relógio: "⏰", time: "⏰", clock: "⏰",
+  rápido: "⚡", rapido: "⚡", fast: "⚡", quick: "⚡", speed: "⚡",
+  // People / Social
+  pessoa: "👤", pessoas: "👥", gente: "👥", people: "👥", team: "👥", equipe: "👥",
+  família: "👨‍👩‍👧‍👦", familia: "👨‍👩‍👧‍👦", family: "👨‍👩‍👧‍👦",
+  // Food
+  comida: "🍽️", comer: "🍽️", food: "🍽️", eat: "🍽️",
+  café: "☕", coffee: "☕",
+  // Numbers / Stats
+  milhão: "💎", milhões: "💎", bilhão: "💎", million: "💎", billion: "💎",
+  // Music / Sound
+  música: "🎵", musica: "🎵", music: "🎵", som: "🎵", sound: "🎵",
+  // Education
+  aprender: "📚", estudar: "📚", estudo: "📚", learn: "📚", study: "📚", education: "📚",
+  segredo: "🔑", secret: "🔑", chave: "🔑", key: "🔑",
+  ideia: "💡", idea: "💡", insight: "💡", inspiração: "💡",
+  // Marketing / Viral
+  viral: "🚀", lançar: "🚀", lançamento: "🚀", launch: "🚀", rocket: "🚀",
+  estratégia: "♟️", estrategia: "♟️", strategy: "♟️",
+  marca: "🏷️", brand: "🏷️", marketing: "📣",
+  // Nature
+  sol: "☀️", sun: "☀️", água: "💧", water: "💧",
+  // Emotion intensifiers
+  incrível: "🤯", incrivel: "🤯", absurdo: "🤯", impressionante: "🤯",
+  incredible: "🤯", amazing: "🤯", insane: "🤯", mind_blowing: "🤯",
+  // Health / Body
+  saúde: "💪", saude: "💪", treino: "💪", exercício: "💪",
+  health: "💪", workout: "💪", exercise: "💪", gym: "💪", fitness: "💪",
+};
+
+// Look up emoji for a caption's text. Returns emoji string or undefined.
+function getEmojiForCaption(text: string): string | undefined {
+  // Normalize: lowercase, remove punctuation
+  const normalized = text.toLowerCase().replace(/[.,!?;:'"()]/g, "").trim();
+  const words = normalized.split(/\s+/);
+
+  // Check each word in the caption against the map
+  for (const word of words) {
+    if (KEYWORD_EMOJI_MAP[word]) {
+      return KEYWORD_EMOJI_MAP[word];
+    }
+  }
+
+  // Check multi-word phrases (join words and try)
+  const joined = words.join("_");
+  if (KEYWORD_EMOJI_MAP[joined]) {
+    return KEYWORD_EMOJI_MAP[joined];
+  }
+
+  return undefined;
+}
+
 // ===== Deterministic caption builder using word-level timestamps =====
-// Strategy: Collect ALL words with timestamps, validate/correct timing, then group into gapless captions
-// Updated for better sync: reduced look-ahead, stricter gap handling, and smarter chunking
+// Strategy: Short, punchy captions (1-2 words) perfectly synced to speech.
+// Inspired by Captions app: each caption shows only 1-2 words at a time,
+// appearing EXACTLY when spoken for a professional "stop-scroll" effect.
 function buildCaptionsFromTranscription(
   segments: TranscriptionSegment[],
   videoDuration: number
@@ -63,7 +158,6 @@ function buildCaptionsFromTranscription(
     if (!seg.text || seg.text.trim().length === 0) continue;
 
     if (seg.words && seg.words.length > 0) {
-      // Validate word timestamps against segment boundaries
       const segStart = seg.start;
       const segEnd = seg.end;
       const segDuration = segEnd - segStart;
@@ -76,15 +170,12 @@ function buildCaptionsFromTranscription(
         let wStart = w.start;
         let wEnd = w.end;
 
-        // Only redistribute if timestamps are completely broken (negative, reversed, or absurd)
-        // Trust API timestamps when they're even roughly correct — they're better than proportional
+        // Only redistribute if timestamps are completely broken
         if (wEnd <= wStart || wStart < 0 || wStart > effectiveDuration || wEnd < 0) {
           wStart = segStart + (wi / wordCount) * segDuration;
           wEnd = segStart + ((wi + 1) / wordCount) * segDuration;
         }
 
-        // Clamp to video duration — don't try to fix overlaps, trust the API timestamps
-        // Word-level overlaps are harmless since we group into captions at Step 2
         wStart = Math.max(0, Math.min(wStart, effectiveDuration));
         wEnd = Math.max(wStart + 0.05, Math.min(wEnd, effectiveDuration));
 
@@ -106,74 +197,119 @@ function buildCaptionsFromTranscription(
 
   if (allWords.length === 0) return [];
 
-  // Step 2: Group words into caption chunks (2-3 words for tight sync)
-  const MAX_WORDS = 3; // Smaller chunks = tighter sync with speech
-  const PAUSE_THRESHOLD = 0.3; // >0.3s gap triggers new caption
+  // Step 2: Group into SHORT captions (1-2 words) for punchy, scroll-stopping effect.
+  // Rules:
+  // - Max 2 words per caption (like Captions app)
+  // - Single important/long words get their own caption
+  // - Short filler words ("de", "a", "o", "e") pair with the NEXT word
+  // - Natural pauses always trigger a new caption
+  const MAX_WORDS = 2;
+  const PAUSE_THRESHOLD = 0.25; // 250ms gap = new caption
+  const SHORT_FILLERS = new Set([
+    "a", "o", "e", "é", "de", "do", "da", "em", "no", "na",
+    "um", "os", "as", "se", "ou", "que", "por", "ao", "dos",
+    "das", "nos", "nas", "com", "sem", "mas", "nem",
+    "the", "a", "an", "to", "of", "in", "on", "is", "it",
+    "at", "or", "so", "as", "if", "be",
+  ]);
 
   const rawCaptions: { words: string[]; start: number; end: number }[] = [];
-  let currentChunk: { words: string[]; start: number; end: number } = {
-    words: [allWords[0].word],
-    start: allWords[0].start,
-    end: allWords[0].end,
-  };
+  let i = 0;
 
-  for (let i = 1; i < allWords.length; i++) {
+  while (i < allWords.length) {
     const w = allWords[i];
-    const prevW = allWords[i - 1];
-    const gap = w.start - currentChunk.end;
+    const wordLower = w.word.toLowerCase().replace(/[.,!?;:'"()]/g, "");
 
-    // Check for sentence ending punctuation in previous word
-    const isSentenceEnd = /[.!?]$/.test(prevW.word);
+    // Check if this is a short filler word that should pair with the next
+    const isShortFiller = SHORT_FILLERS.has(wordLower) || wordLower.length <= 2;
+    const hasNextWord = i + 1 < allWords.length;
+    const nextGap = hasNextWord ? allWords[i + 1].start - w.end : 999;
+    const shouldPairForward = isShortFiller && hasNextWord && nextGap < PAUSE_THRESHOLD;
 
-    const chunkFull = currentChunk.words.length >= MAX_WORDS;
-    const naturalPause = gap > PAUSE_THRESHOLD;
+    if (shouldPairForward) {
+      // Pair this filler with the next word
+      const next = allWords[i + 1];
+      rawCaptions.push({
+        words: [w.word, next.word],
+        start: w.start,
+        end: next.end,
+      });
+      i += 2;
+    } else if (!isShortFiller && hasNextWord && nextGap < PAUSE_THRESHOLD) {
+      // Check if next word is a short filler that should pair with this one
+      const next = allWords[i + 1];
+      const nextLower = next.word.toLowerCase().replace(/[.,!?;:'"()]/g, "");
+      const nextIsShortFiller = SHORT_FILLERS.has(nextLower) || nextLower.length <= 2;
 
-    if (chunkFull || naturalPause || isSentenceEnd) {
-      // Finish current chunk and start a new one
-      rawCaptions.push({ ...currentChunk });
-      currentChunk = { words: [w.word], start: w.start, end: w.end };
+      if (nextIsShortFiller) {
+        // Pair this content word with the following filler
+        rawCaptions.push({
+          words: [w.word, next.word],
+          start: w.start,
+          end: next.end,
+        });
+        i += 2;
+      } else {
+        // Important word stands alone
+        rawCaptions.push({
+          words: [w.word],
+          start: w.start,
+          end: w.end,
+        });
+        i += 1;
+      }
     } else {
-      // Add word to current chunk
-      currentChunk.words.push(w.word);
-      currentChunk.end = w.end;
+      // Single word caption
+      rawCaptions.push({
+        words: [w.word],
+        start: w.start,
+        end: w.end,
+      });
+      i += 1;
     }
   }
-  // Don't forget the last chunk
-  rawCaptions.push({ ...currentChunk });
 
-  // Step 3: Use raw captions directly (no merging — we want tight small chunks)
-  const mergedCaptions = rawCaptions;
-
-  // Step 4: Build final caption objects with precise timing
-  // No artificial delay — the 50ms audio compensation in VideoPreview handles sync
-  const READABILITY_BUFFER = 0.05; // Keep caption visible 50ms after last word ends
+  // Step 3: Build final caption objects with gapless timing
+  // Each caption ends exactly when the next one starts — no dead frames
   const captions: Caption[] = [];
 
-  for (let i = 0; i < mergedCaptions.length; i++) {
-    const cap = mergedCaptions[i];
+  for (let ci = 0; ci < rawCaptions.length; ci++) {
+    const cap = rawCaptions[ci];
     const startTime = Math.max(0, cap.start);
 
-    // End time logic: precise end of last word + small buffer
-    let endTime = cap.end + READABILITY_BUFFER;
+    // End time: extend to the start of the NEXT caption, so there's no gap.
+    // This keeps a caption visible until the next one replaces it.
+    let endTime = cap.end;
 
-    // Ensure we don't overlap with the next caption's start time
-    if (i + 1 < mergedCaptions.length) {
-      const nextStart = mergedCaptions[i + 1].start;
-      endTime = Math.min(endTime, nextStart);
+    if (ci + 1 < rawCaptions.length) {
+      const nextStart = rawCaptions[ci + 1].start;
+      // If next caption starts within 0.4s, extend this one to fill the gap
+      if (nextStart - endTime < 0.4) {
+        endTime = nextStart;
+      } else {
+        // Big pause — add small buffer but don't fill the entire gap
+        endTime = endTime + 0.08;
+      }
+    } else {
+      // Last caption — small buffer
+      endTime = endTime + 0.1;
     }
 
-    // Clamp to video duration
     endTime = Math.min(endTime, effectiveDuration);
 
-    if (endTime > startTime + 0.1) {
+    if (endTime > startTime + 0.05) {
+      const text = cap.words.join(" ").toUpperCase(); // Uppercase for impact
+      const emoji = getEmojiForCaption(cap.words.join(" "));
+
       captions.push({
         id: uuid(),
         startTime,
         endTime,
-        text: cap.words.join(" "),
+        text,
         style: { ...defaultCaptionStyle },
-        animation: "karaoke",
+        animation: "pop",
         emphasis: [],
+        emoji,
       });
     }
   }

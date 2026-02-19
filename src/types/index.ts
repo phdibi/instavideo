@@ -6,6 +6,7 @@ export interface Caption {
   style: CaptionStyle;
   animation: CaptionAnimation;
   emphasis: string[];
+  emoji?: string; // Emoji displayed above the caption (e.g., 🧠 above "CÉREBRO")
 }
 
 export interface CaptionStyle {

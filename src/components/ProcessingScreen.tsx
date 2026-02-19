@@ -689,8 +689,16 @@ export default function ProcessingScreen() {
       const presetResult = applyAllPresets(videoSegments, captions, effectiveDuration);
 
       // Merge preset effects with AI/speech-driven effects
+      // Remove AI-generated global color-grade/vignette since presets provide themed versions
+      const nonPresetEffects = effects.filter(e => {
+        if (e.id.startsWith("preset_")) return false;
+        // Remove AI global color-grade/vignette (> 80% of duration) — presets replace them
+        if ((e.type === "color-grade" || e.type === "vignette") &&
+            e.endTime - e.startTime > effectiveDuration * 0.8) return false;
+        return true;
+      });
       const mergedEffects = [
-        ...effects.filter(e => !e.id.startsWith("preset_")),
+        ...nonPresetEffects,
         ...presetResult.presetEffects,
       ].sort((a, b) => a.startTime - b.startTime);
 

@@ -213,10 +213,14 @@ export default function PresetPanel() {
     setIsApplying(true);
     setStatusMessage("Aplicando presets...");
 
-    // Remove previously applied preset effects
-    const nonPresetEffects = effects.filter(
-      e => !e.id.startsWith("preset_")
-    );
+    // Remove previously applied preset effects and AI global color-grade/vignette
+    const nonPresetEffects = effects.filter(e => {
+      if (e.id.startsWith("preset_")) return false;
+      // Remove AI global color-grade/vignette (> 80% of duration) — presets replace them
+      if ((e.type === "color-grade" || e.type === "vignette") &&
+          e.endTime - e.startTime > videoDuration * 0.8) return false;
+      return true;
+    });
     const nonPresetBroll = bRollImages.filter(
       b => !b.id.startsWith("preset_")
     );

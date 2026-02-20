@@ -90,9 +90,16 @@ TIMESTAMP RULES (CRITICAL — each word will be displayed as an individual subti
    a) First word doesn't start at 0.0 unless speaker truly starts immediately
    b) No word has duration > 1.2s (likely a merge error)
    c) No word has duration < 50ms (likely missing)
-   d) Total transcription time roughly matches audio length
+   d) The LAST word's end time must be very close to the actual end of speech in the audio. Do NOT let timestamps compress or expand relative to the audio timeline.
+   e) Timestamps at the 50% mark of the audio should correspond to roughly the 50% mark of actual speech. If your timestamps are ahead of where the speaker actually is, you are drifting.
 
-10. Detect language automatically. Transcribe in original language. Keep natural punctuation.`,
+10. CRITICAL ANTI-DRIFT RULE: A common failure mode is producing timestamps that progressively drift ahead of the actual audio. At second 5 the timestamp might be accurate, but by second 30 timestamps are 1-2 seconds ahead. To prevent this:
+   - Anchor your timestamps to the ACTUAL audio waveform, not estimated speech rate
+   - Re-listen to the audio at multiple points (beginning, middle, end) to verify alignment
+   - If you notice timestamps getting ahead, slow them down to match reality
+   - The last segment's end time should match where speech actually ends in the audio
+
+11. Detect language automatically. Transcribe in original language. Keep natural punctuation.`,
             },
           ],
         },

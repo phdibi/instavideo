@@ -73,7 +73,18 @@ export class FFmpegService {
             ]);
 
             const data = await ffmpeg.readFile(outputName);
-            return new Blob([data as any], { type: "audio/wav" });
+            const wavBlob = new Blob([data as any], { type: "audio/wav" });
+
+            // Calculate and log the WAV duration from the PCM header for debugging.
+            // WAV PCM: duration = (fileSize - 44) / (sampleRate * channels * bytesPerSample)
+            // With -ar 16000 -ac 1 -c:a pcm_s16le: 16000 * 1 * 2 = 32000 bytes/sec
+            const wavDuration = (wavBlob.size - 44) / 32000;
+            console.log(
+              `[CineAI] Audio extracted: WAV size=${wavBlob.size} bytes, ` +
+              `duration=${wavDuration.toFixed(3)}s`
+            );
+
+            return wavBlob;
         } finally {
             try {
                 await ffmpeg.deleteFile(inputName);

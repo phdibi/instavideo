@@ -680,7 +680,13 @@ export default function ProcessingScreen() {
           for (let i = 0; i < videoSegments.length && i < aiSegments.length; i++) {
             const aiSeg = aiSegments.find((a: { index: number }) => a.index === i);
             if (aiSeg) {
-              videoSegments[i].preset = aiSeg.preset as PresetType;
+              // Only the FIRST segment (index 0) can be "hook".
+              // The AI sometimes assigns "hook" to multiple early segments — prevent that.
+              let preset = aiSeg.preset as PresetType;
+              if (preset === "hook" && i !== 0) {
+                preset = "talking-head";
+              }
+              videoSegments[i].preset = preset;
               videoSegments[i].keywordHighlight = aiSeg.keywordHighlight || videoSegments[i].keywordHighlight;
               videoSegments[i].brollQuery = aiSeg.brollQuery || videoSegments[i].brollQuery;
               videoSegments[i].confidence = aiSeg.confidence || 0.9;

@@ -14,7 +14,7 @@ const LONG_PRESS_MS = 150;
 const MOVE_THRESHOLD = 6; // px — lower = more responsive drag detection
 
 interface DragState {
-  type: "caption" | "effect" | "broll" | "playhead";
+  type: "caption" | "effect" | "broll" | "segment" | "playhead";
   id: string;
   field: "startTime" | "endTime" | "move";
   initialX: number;
@@ -23,7 +23,7 @@ interface DragState {
 }
 
 interface PendingTouch {
-  type: "caption" | "effect" | "broll";
+  type: "caption" | "effect" | "broll" | "segment";
   id: string;
   field: "startTime" | "endTime" | "move";
   startTime: number;
@@ -70,6 +70,7 @@ export default function Timeline() {
     updateCaption,
     updateEffect,
     updateBRollImage,
+    updateSegment,
   } = useProjectStore();
 
   // Helper: compute effect row map from current effects (same algo as effectRows memo)
@@ -173,8 +174,11 @@ export default function Timeline() {
       case "broll":
         updateBRollImage(pending.id, pending.updates);
         break;
+      case "segment":
+        updateSegment(pending.id, pending.updates);
+        break;
     }
-  }, [updateCaption, updateEffect, updateBRollImage]);
+  }, [updateCaption, updateEffect, updateBRollImage, updateSegment]);
 
   // Only seek the playhead when clicking on the RULER area (top time bar),
   // NOT when clicking on the track items area below it
@@ -189,7 +193,7 @@ export default function Timeline() {
   );
 
   const handleItemClick = useCallback(
-    (type: "caption" | "effect" | "broll", id: string) => {
+    (type: "caption" | "effect" | "broll" | "segment", id: string) => {
       setSelectedItem({ type, id });
     },
     [setSelectedItem]
@@ -325,6 +329,9 @@ export default function Timeline() {
         case "broll":
           updateBRollImage(id, updates);
           break;
+        case "segment":
+          updateSegment(id, updates);
+          break;
       }
     },
     [
@@ -338,6 +345,7 @@ export default function Timeline() {
       updateCaption,
       updateEffect,
       updateBRollImage,
+      updateSegment,
     ]
   );
 
@@ -363,7 +371,7 @@ export default function Timeline() {
   const handleItemTouchStart = useCallback(
     (
       e: React.TouchEvent,
-      type: "caption" | "effect" | "broll",
+      type: "caption" | "effect" | "broll" | "segment",
       id: string,
       field: DragState["field"],
       startTime: number,
@@ -415,7 +423,7 @@ export default function Timeline() {
   const handleResizeTouchStart = useCallback(
     (
       e: React.TouchEvent,
-      type: "caption" | "effect" | "broll",
+      type: "caption" | "effect" | "broll" | "segment",
       id: string,
       field: "startTime" | "endTime",
       startTime: number,
@@ -833,11 +841,31 @@ export default function Timeline() {
                       (seg.endTime - seg.startTime) * pxPerSecond,
                       20
                     );
-                    const presetColors: Record<string, string> = {
-                      "hook": "bg-red-500/40 border-red-400/60 text-red-200",
-                      "talking-head": "bg-blue-500/30 border-blue-400/50 text-blue-200",
-                      "talking-head-broll": "bg-orange-500/35 border-orange-400/55 text-orange-200",
-                      "futuristic-hud": "bg-cyan-500/35 border-cyan-400/55 text-cyan-200",
+                    const presetColors: Record<string, { base: string; active: string; selected: string; hovered: string }> = {
+                      "hook": {
+                        base: "bg-red-500/40 border-red-400/60 text-red-200",
+                        active: "bg-red-500/60 border-red-400 text-white shadow-sm shadow-red-500/30 z-10",
+                        selected: "bg-red-500/70 border-red-400 text-white shadow-md shadow-red-500/40 z-20 ring-2 ring-white/40",
+                        hovered: "bg-red-500/50 border-red-400/80 text-white z-10",
+                      },
+                      "talking-head": {
+                        base: "bg-blue-500/30 border-blue-400/50 text-blue-200",
+                        active: "bg-blue-500/50 border-blue-400 text-white shadow-sm shadow-blue-500/30 z-10",
+                        selected: "bg-blue-500/70 border-blue-400 text-white shadow-md shadow-blue-500/40 z-20 ring-2 ring-white/40",
+                        hovered: "bg-blue-500/40 border-blue-400/80 text-white z-10",
+                      },
+                      "talking-head-broll": {
+                        base: "bg-orange-500/35 border-orange-400/55 text-orange-200",
+                        active: "bg-orange-500/55 border-orange-400 text-white shadow-sm shadow-orange-500/30 z-10",
+                        selected: "bg-orange-500/70 border-orange-400 text-white shadow-md shadow-orange-500/40 z-20 ring-2 ring-white/40",
+                        hovered: "bg-orange-500/45 border-orange-400/80 text-white z-10",
+                      },
+                      "futuristic-hud": {
+                        base: "bg-cyan-500/35 border-cyan-400/55 text-cyan-200",
+                        active: "bg-cyan-500/55 border-cyan-400 text-white shadow-sm shadow-cyan-500/30 z-10",
+                        selected: "bg-cyan-500/70 border-cyan-400 text-white shadow-md shadow-cyan-500/40 z-20 ring-2 ring-white/40",
+                        hovered: "bg-cyan-500/45 border-cyan-400/80 text-white z-10",
+                      },
                     };
                     const presetLabels: Record<string, string> = {
                       "hook": "Hook",
@@ -845,24 +873,64 @@ export default function Timeline() {
                       "talking-head-broll": "TH+BR",
                       "futuristic-hud": "HUD",
                     };
-                    const color = presetColors[seg.preset] || "bg-gray-500/30 border-gray-400/50 text-gray-200";
+                    const isActive = currentTime >= seg.startTime && currentTime < seg.endTime;
+                    const isHovered = hoveredItem === `segment-${seg.id}`;
+                    const isSelected = selectedItem?.type === "segment" && selectedItem.id === seg.id;
+                    const isDraggingThis = activeDragId === seg.id;
+                    const colors = presetColors[seg.preset] || {
+                      base: "bg-gray-500/30 border-gray-400/50 text-gray-200",
+                      active: "bg-gray-500/50 border-gray-400 text-white z-10",
+                      selected: "bg-gray-500/70 border-gray-400 text-white z-20 ring-2 ring-white/40",
+                      hovered: "bg-gray-500/40 border-gray-400/80 text-white z-10",
+                    };
+                    const colorClass = isSelected ? colors.selected : isActive ? colors.active : isHovered ? colors.hovered : colors.base;
 
                     return (
                       <div
                         key={seg.id}
-                        className={`absolute top-0.5 rounded border text-[7px] font-medium px-1 truncate flex items-center ${color}`}
+                        className={`absolute top-0.5 rounded-md border text-[7px] font-medium px-1 truncate flex items-center will-change-transform ${colorClass} ${isDraggingThis ? "opacity-90 z-30 scale-y-110 shadow-lg" : "cursor-grab"}`}
                         style={{
                           left: seg.startTime * pxPerSecond,
                           width: itemWidth,
                           height: PRESET_TRACK_HEIGHT - 4,
+                          transition: isDraggingThis ? "none" : "box-shadow 0.15s, opacity 0.15s",
                         }}
                         title={`AI Edit: ${seg.preset} — "${seg.text.slice(0, 40)}..."`}
+                        onMouseDown={(e) =>
+                          handleDragStart(e, "segment", seg.id, "move", seg.startTime, seg.endTime)
+                        }
+                        onTouchStart={(e) =>
+                          handleItemTouchStart(e, "segment", seg.id, "move", seg.startTime, seg.endTime)
+                        }
+                        onClick={(e) => { e.stopPropagation(); handleItemClick("segment", seg.id); }}
+                        onMouseEnter={() => setHoveredItem(`segment-${seg.id}`)}
+                        onMouseLeave={() => setHoveredItem(null)}
                       >
+                        <ResizeHandle
+                          side="left"
+                          isSelected={isSelected}
+                          onMouseDown={(e) =>
+                            handleDragStart(e, "segment", seg.id, "startTime", seg.startTime, seg.endTime)
+                          }
+                          onTouchStart={(e) =>
+                            handleResizeTouchStart(e, "segment", seg.id, "startTime", seg.startTime, seg.endTime)
+                          }
+                        />
                         {itemWidth > 25 && (
-                          <span className="truncate">
+                          <span className="truncate mx-3 md:mx-2">
                             {presetLabels[seg.preset] || seg.preset}
                           </span>
                         )}
+                        <ResizeHandle
+                          side="right"
+                          isSelected={isSelected}
+                          onMouseDown={(e) =>
+                            handleDragStart(e, "segment", seg.id, "endTime", seg.startTime, seg.endTime)
+                          }
+                          onTouchStart={(e) =>
+                            handleResizeTouchStart(e, "segment", seg.id, "endTime", seg.startTime, seg.endTime)
+                          }
+                        />
                       </div>
                     );
                   })}

@@ -22,7 +22,7 @@ interface ProjectStore {
   currentTime: number;
   isPlaying: boolean;
   segments: VideoSegment[];
-  selectedItem: { type: "caption" | "effect" | "broll"; id: string } | null;
+  selectedItem: { type: "caption" | "effect" | "broll" | "segment"; id: string } | null;
   teleprompterSettings: TeleprompterSettings;
 
   setSegments: (segments: VideoSegment[]) => void;
@@ -43,7 +43,7 @@ interface ProjectStore {
   setEditPlan: (plan: EditPlan) => void;
   setCurrentTime: (time: number) => void;
   setIsPlaying: (playing: boolean) => void;
-  setSelectedItem: (item: { type: "caption" | "effect" | "broll"; id: string } | null) => void;
+  setSelectedItem: (item: { type: "caption" | "effect" | "broll" | "segment"; id: string } | null) => void;
   setTeleprompterSettings: (settings: Partial<TeleprompterSettings>) => void;
   reset: () => void;
 }

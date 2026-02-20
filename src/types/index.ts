@@ -10,6 +10,7 @@ export interface Caption {
   topicLabel?: string; // Topic label shown above caption (e.g., "LEARNING STRATEGY")
   keywordLabel?: string; // Large keyword displayed ABOVE the caption (Ember-style dual-layer)
   keywordQuotes?: boolean; // Whether to wrap the keywordLabel in decorative quotes ("KEYWORD")
+  wordTimings?: { start: number; end: number }[]; // Per-word timestamps for precise karaoke sync
 }
 
 // ===== Caption Visual Theme =====

@@ -137,9 +137,9 @@ function getEmojiForCaption(text: string): string | undefined {
 }
 
 // ===== Deterministic caption builder using word-level timestamps =====
-// Strategy: Short, punchy captions (1-2 words) perfectly synced to speech.
-// Inspired by Captions app: each caption shows only 1-2 words at a time,
-// appearing EXACTLY when spoken for a professional "stop-scroll" effect.
+// Strategy: Groups of 3-5 words with real karaoke highlighting.
+// Each word lights up exactly when spoken. Cards stay visible until the
+// next card replaces them — ZERO empty frames throughout the video.
 function buildCaptionsFromTranscription(
   segments: TranscriptionSegment[],
   videoDuration: number
@@ -151,7 +151,7 @@ function buildCaptionsFromTranscription(
         ? segments[segments.length - 1].end + 0.5
         : 30;
 
-  // Step 1: Collect all words with precise timestamps into a flat list
+  // ── Step 1: Flatten all words with precise timestamps ──
   const allWords: { word: string; start: number; end: number }[] = [];
 
   for (const seg of segments) {
@@ -185,11 +185,11 @@ function buildCaptionsFromTranscription(
       // Fallback: split segment text proportionally
       const segWords = seg.text.trim().split(/\s+/);
       const segDuration = seg.end - seg.start;
-      for (let i = 0; i < segWords.length; i++) {
-        const wStart = seg.start + (i / segWords.length) * segDuration;
-        const wEnd = seg.start + ((i + 1) / segWords.length) * segDuration;
-        if (segWords[i].trim().length > 0) {
-          allWords.push({ word: segWords[i].trim(), start: wStart, end: wEnd });
+      for (let idx = 0; idx < segWords.length; idx++) {
+        const wStart = seg.start + (idx / segWords.length) * segDuration;
+        const wEnd = seg.start + ((idx + 1) / segWords.length) * segDuration;
+        if (segWords[idx].trim().length > 0) {
+          allWords.push({ word: segWords[idx].trim(), start: wStart, end: wEnd });
         }
       }
     }
@@ -197,14 +197,14 @@ function buildCaptionsFromTranscription(
 
   if (allWords.length === 0) return [];
 
-  // Step 2: Group into SHORT captions (1-2 words) for punchy, scroll-stopping effect.
+  // ── Step 2: Group words into 3-5 word cards ──
   // Rules:
-  // - Max 2 words per caption (like Captions app)
-  // - Single important/long words get their own caption
-  // - Short filler words ("de", "a", "o", "e") pair with the NEXT word
-  // - Natural pauses always trigger a new caption
-  const MAX_WORDS = 2;
-  const PAUSE_THRESHOLD = 0.25; // 250ms gap = new caption
+  //  • Target 3-5 words per card for readability
+  //  • Pause > 0.4s between words ALWAYS triggers a new card
+  //  • Never exceed 5 words per card
+  //  • A trailing filler word won't start a new card alone — attach to previous
+  const MAX_WORDS = 5;
+  const PAUSE_THRESHOLD = 0.4; // 400ms gap = forced new card
   const SHORT_FILLERS = new Set([
     "a", "o", "e", "é", "de", "do", "da", "em", "no", "na",
     "um", "os", "as", "se", "ou", "que", "por", "ao", "dos",
@@ -213,107 +213,97 @@ function buildCaptionsFromTranscription(
     "at", "or", "so", "as", "if", "be",
   ]);
 
-  const rawCaptions: { words: string[]; start: number; end: number }[] = [];
-  let i = 0;
-
-  while (i < allWords.length) {
-    const w = allWords[i];
-    const wordLower = w.word.toLowerCase().replace(/[.,!?;:'"()]/g, "");
-
-    // Check if this is a short filler word that should pair with the next
-    const isShortFiller = SHORT_FILLERS.has(wordLower) || wordLower.length <= 2;
-    const hasNextWord = i + 1 < allWords.length;
-    const nextGap = hasNextWord ? allWords[i + 1].start - w.end : 999;
-    const shouldPairForward = isShortFiller && hasNextWord && nextGap < PAUSE_THRESHOLD;
-
-    if (shouldPairForward) {
-      // Pair this filler with the next word
-      const next = allWords[i + 1];
-      rawCaptions.push({
-        words: [w.word, next.word],
-        start: w.start,
-        end: next.end,
-      });
-      i += 2;
-    } else if (!isShortFiller && hasNextWord && nextGap < PAUSE_THRESHOLD) {
-      // Check if next word is a short filler that should pair with this one
-      const next = allWords[i + 1];
-      const nextLower = next.word.toLowerCase().replace(/[.,!?;:'"()]/g, "");
-      const nextIsShortFiller = SHORT_FILLERS.has(nextLower) || nextLower.length <= 2;
-
-      if (nextIsShortFiller) {
-        // Pair this content word with the following filler
-        rawCaptions.push({
-          words: [w.word, next.word],
-          start: w.start,
-          end: next.end,
-        });
-        i += 2;
-      } else {
-        // Important word stands alone
-        rawCaptions.push({
-          words: [w.word],
-          start: w.start,
-          end: w.end,
-        });
-        i += 1;
-      }
-    } else {
-      // Single word caption
-      rawCaptions.push({
-        words: [w.word],
-        start: w.start,
-        end: w.end,
-      });
-      i += 1;
-    }
+  interface RawCaption {
+    wordIndices: number[]; // indices into allWords
+    start: number;
+    end: number;
   }
 
-  // Step 3: Build final caption objects with gapless timing
-  // Each caption ends exactly when the next one starts — no dead frames
+  const rawCaptions: RawCaption[] = [];
+  let current: RawCaption | null = null;
+
+  for (let i = 0; i < allWords.length; i++) {
+    const w = allWords[i];
+
+    // Should we start a new card?
+    let breakHere = false;
+    if (!current) {
+      breakHere = true;
+    } else {
+      const gap = w.start - current.end;
+      if (gap >= PAUSE_THRESHOLD) breakHere = true;         // natural pause
+      if (current.wordIndices.length >= MAX_WORDS) breakHere = true; // card full
+    }
+
+    // Avoid leaving a lone trailing filler as its own card — attach to previous
+    if (breakHere && current && current.wordIndices.length < MAX_WORDS) {
+      const wordLower = w.word.toLowerCase().replace(/[.,!?;:'"()]/g, "");
+      const isFiller = SHORT_FILLERS.has(wordLower) || wordLower.length <= 2;
+      const isLastWord = i === allWords.length - 1;
+      const nextHasPause = !isLastWord && (allWords[i + 1].start - w.end) >= PAUSE_THRESHOLD;
+
+      // Filler that would end up alone (last word or followed by a pause): attach to previous card
+      if (isFiller && (isLastWord || nextHasPause)) {
+        breakHere = false;
+      }
+    }
+
+    if (breakHere) {
+      if (current) rawCaptions.push(current);
+      current = { wordIndices: [i], start: w.start, end: w.end };
+    } else {
+      current!.wordIndices.push(i);
+      current!.end = w.end;
+    }
+  }
+  if (current) rawCaptions.push(current);
+
+  // ── Step 3: Build gapless Caption objects with per-word timings ──
+  // Rule: EVERY caption extends to the start of the NEXT caption.
+  // The LAST caption extends to effectiveDuration. ZERO empty frames.
+  const MIN_DURATION = 0.3; // minimum seconds any caption stays visible
   const captions: Caption[] = [];
 
   for (let ci = 0; ci < rawCaptions.length; ci++) {
     const cap = rawCaptions[ci];
     const startTime = Math.max(0, cap.start);
 
-    // End time: extend to the start of the NEXT caption, so there's no gap.
-    // This keeps a caption visible until the next one replaces it.
-    let endTime = cap.end;
-
+    // Gapless: extend to start of next card, or to video end for the last card
+    let endTime: number;
     if (ci + 1 < rawCaptions.length) {
-      const nextStart = rawCaptions[ci + 1].start;
-      const gap = nextStart - endTime;
-      if (gap < 0.4) {
-        // Small gap — extend seamlessly to next caption
-        endTime = nextStart;
-      } else {
-        // Big pause — keep caption visible through most of the gap
-        // so it doesn't flash on/off. Cap at 2s to avoid stale text.
-        endTime = endTime + Math.min(gap * 0.85, 2.0);
-      }
+      endTime = rawCaptions[ci + 1].start; // seamless handoff — no gap ever
     } else {
-      // Last caption — keep visible a bit longer
-      endTime = endTime + 0.5;
+      endTime = effectiveDuration; // last card stays until video ends
+    }
+
+    // Enforce minimum duration
+    if (endTime - startTime < MIN_DURATION) {
+      endTime = startTime + MIN_DURATION;
     }
 
     endTime = Math.min(endTime, effectiveDuration);
+    if (endTime <= startTime + 0.02) continue; // skip degenerate
 
-    if (endTime > startTime + 0.05) {
-      const text = cap.words.join(" ").toUpperCase(); // Uppercase for impact
-      const emoji = getEmojiForCaption(cap.words.join(" "));
+    // Build per-word timing array (for karaoke highlighting in the overlay)
+    const wordTimings: { start: number; end: number }[] = cap.wordIndices.map(
+      (wi) => ({ start: allWords[wi].start, end: allWords[wi].end })
+    );
 
-      captions.push({
-        id: uuid(),
-        startTime,
-        endTime,
-        text,
-        style: { ...defaultCaptionStyle },
-        animation: "pop",
-        emphasis: [],
-        emoji,
-      });
-    }
+    const wordTexts = cap.wordIndices.map((wi) => allWords[wi].word);
+    const text = wordTexts.join(" ").toUpperCase();
+    const emoji = getEmojiForCaption(wordTexts.join(" "));
+
+    captions.push({
+      id: uuid(),
+      startTime,
+      endTime,
+      text,
+      style: { ...defaultCaptionStyle },
+      animation: "karaoke",
+      emphasis: [],
+      emoji,
+      wordTimings,
+    });
   }
 
   return captions;

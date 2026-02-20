@@ -127,9 +127,22 @@ function CaptionDisplay({
   const words = caption.text.split(" ");
   const totalWords = words.length;
 
-  // For short captions (1-2 words), calculate which word is active
+  // Karaoke: determine which word is currently being spoken.
+  // Uses real per-word timestamps (wordTimings) when available;
+  // falls back to proportional char-length estimate otherwise.
   const currentWordIndex = useMemo(() => {
     if (totalWords <= 1) return 0;
+
+    // Prefer real timestamps from wordTimings
+    const timings = caption.wordTimings;
+    if (timings && timings.length === totalWords) {
+      for (let i = totalWords - 1; i >= 0; i--) {
+        if (currentTime >= timings[i].start) return i;
+      }
+      return 0;
+    }
+
+    // Fallback: proportional distribution by character length
     const charLengths = words.map((w) => Math.max(w.length, 1));
     const totalChars = charLengths.reduce((a, b) => a + b, 0);
     let cumulative = 0;
@@ -138,9 +151,9 @@ function CaptionDisplay({
       if (progress < cumulative) return i;
     }
     return totalWords - 1;
-  }, [words, totalWords, progress]);
+  }, [words, totalWords, progress, currentTime, caption.wordTimings]);
 
-  // Determine if this is a "short punchy" caption (1-2 words, uppercase)
+  // Short punchy captions (1-2 words) show all words fully active (no karaoke dimming)
   const isShortPunchy = totalWords <= 2;
 
   // When keywordLabel matches the caption text, hide the subtitle to avoid duplication.

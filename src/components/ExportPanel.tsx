@@ -422,15 +422,24 @@ export default function ExportPanel() {
 
           const words = caption.text.split(" ");
           const totalWords = words.length;
-          // Weight each word by character length for more natural karaoke timing
+          // Karaoke: determine which word is currently being spoken.
+          // Prefer real per-word timestamps; fall back to proportional estimate.
           let currentWordIndex = totalWords - 1;
           if (totalWords > 1) {
-            const charLengths = words.map((w) => Math.max(w.length, 1));
-            const totalChars = charLengths.reduce((a, b) => a + b, 0);
-            let cumulative = 0;
-            for (let i = 0; i < totalWords; i++) {
-              cumulative += charLengths[i] / totalChars;
-              if (captionProgress < cumulative) { currentWordIndex = i; break; }
+            const timings = caption.wordTimings;
+            if (timings && timings.length === totalWords) {
+              currentWordIndex = 0;
+              for (let i = totalWords - 1; i >= 0; i--) {
+                if (time >= timings[i].start) { currentWordIndex = i; break; }
+              }
+            } else {
+              const charLengths = words.map((w) => Math.max(w.length, 1));
+              const totalChars = charLengths.reduce((a, b) => a + b, 0);
+              let cumulative = 0;
+              for (let i = 0; i < totalWords; i++) {
+                cumulative += charLengths[i] / totalChars;
+                if (captionProgress < cumulative) { currentWordIndex = i; break; }
+              }
             }
           }
 

@@ -75,16 +75,9 @@ export default function VideoPreview() {
   // Reads vid.currentTime → writes to the store EVERY animation frame.
   // This is the ONLY writer of currentTime during playback.
   //
-  // DISPLAY-LAG COMPENSATION:
-  // The browser's video.currentTime reflects what the *decoder* has processed,
-  // which is typically 1-2 frames AHEAD of what's actually shown on screen.
-  // On top of that, Zustand→React re-render adds ~1 frame of latency.
-  // Combined, captions would appear ~50ms early (visibly ahead of audio).
-  // We subtract a small offset to align overlays with the displayed frame.
-  const DISPLAY_LAG_OFFSET = 0.05; // 50ms — compensates decoder-ahead + React render lag
-
-  // Use a ref for videoDuration so updateTime doesn't need it as a dep
-  // (avoids callback identity change when WebM blobs update their duration)
+  // No artificial offset is applied here. Timing accuracy is handled at
+  // the source: FFmpeg audio extraction preserves the exact video timeline,
+  // and timestamp calibration corrects any API drift after transcription.
   const videoDurationRef = useRef(videoDuration);
   videoDurationRef.current = videoDuration;
   // Ref to store the last written value — avoids redundant Zustand writes
@@ -102,12 +95,9 @@ export default function VideoPreview() {
     if (!vid) return;
 
     const dur = videoDurationRef.current;
-    const decoded = (dur && dur > 0 && Number.isFinite(dur))
+    const raw = (dur && dur > 0 && Number.isFinite(dur))
       ? Math.min(vid.currentTime, dur)
       : vid.currentTime;
-
-    // Compensate for display lag: decoder is ahead of what the user sees
-    const raw = Math.max(0, decoded - DISPLAY_LAG_OFFSET);
 
     // Only write to store if value actually changed (avoids unnecessary re-renders)
     if (Math.abs(raw - lastWrittenTimeRef.current) > 0.001) {

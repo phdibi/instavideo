@@ -30,7 +30,7 @@ export default function CaptionOverlay({ currentTime }: Props) {
 
   return (
     <div className="absolute inset-0 pointer-events-none">
-      <AnimatePresence mode="wait">
+      <AnimatePresence mode="popLayout">
         <CaptionDisplay
           key={activeCaption.id}
           caption={activeCaption}

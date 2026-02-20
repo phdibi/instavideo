@@ -543,23 +543,19 @@ export default function ProcessingScreen() {
         }
       }
 
-      // Step 1: Extract audio
+      // Step 1: Extract audio using FFmpeg (preserves exact video timeline)
+      // CRITICAL: We use FFmpeg instead of AudioContext because AudioContext
+      // resamples to the system sample rate, which can shift timestamps and
+      // cause progressive drift between captions and video.
       setStatus("extracting-audio");
       let audioBlob: Blob;
 
-      // Load FFmpeg and reduce noise if possible
       try {
         const { FFmpegService } = await import("@/lib/ffmpeg");
-        // We'll perform noise reduction directly on the extracted audio
-        // First extract raw audio
-        const rawAudio = await extractAudioFromVideo(videoFile);
-
-        // Then reduce noise
-        // Update status for UI feedback
-        // Note: We might want to add a specific status for this, but for now reuse extraction or add a sub-step
-        audioBlob = await FFmpegService.reduceNoise(rawAudio);
+        // Single-pass: extract + clean (highpass filter only, no time-stretching)
+        audioBlob = await FFmpegService.extractAndCleanAudio(videoFile);
       } catch (err) {
-        console.warn("Noise reduction failed or FFmpeg not loaded, using raw audio:", err);
+        console.warn("FFmpeg extraction failed, falling back to AudioContext:", err);
         try {
           audioBlob = await extractAudioFromVideo(videoFile);
         } catch {
@@ -602,6 +598,49 @@ export default function ProcessingScreen() {
       // If we resolved duration from segments, update the store
       if ((!currentVideoDuration || !isFinite(currentVideoDuration) || currentVideoDuration <= 0) && effectiveDuration > 0) {
         useProjectStore.getState().setVideoDuration(effectiveDuration);
+      }
+
+      // Step 2b: Calibrate transcription timestamps to match video duration.
+      // The transcription API returns timestamps relative to the AUDIO it received.
+      // If the audio extraction changed duration slightly (resampling, filtering),
+      // timestamps can drift progressively. We apply a linear scale correction.
+      if (segments.length > 0 && effectiveDuration > 0) {
+        // Find the last spoken moment in the transcription
+        let lastTranscriptionTime = 0;
+        for (const seg of segments) {
+          if (seg.end > lastTranscriptionTime) lastTranscriptionTime = seg.end;
+          if (seg.words) {
+            for (const w of seg.words) {
+              if (w.end > lastTranscriptionTime) lastTranscriptionTime = w.end;
+            }
+          }
+        }
+
+        // Only calibrate if the transcription covers a significant portion of the video
+        // and there's a meaningful difference (> 0.5% drift)
+        if (lastTranscriptionTime > effectiveDuration * 0.5) {
+          const scaleFactor = effectiveDuration / lastTranscriptionTime;
+          const driftPercent = Math.abs(1 - scaleFactor) * 100;
+
+          if (driftPercent > 0.5 && driftPercent < 20) {
+            // Apply linear correction to all timestamps
+            console.log(
+              `[CineAI] Calibrating timestamps: transcription=${lastTranscriptionTime.toFixed(2)}s, ` +
+              `video=${effectiveDuration.toFixed(2)}s, scale=${scaleFactor.toFixed(4)} (${driftPercent.toFixed(1)}% drift)`
+            );
+
+            for (const seg of segments) {
+              seg.start *= scaleFactor;
+              seg.end *= scaleFactor;
+              if (seg.words) {
+                for (const w of seg.words) {
+                  w.start *= scaleFactor;
+                  w.end *= scaleFactor;
+                }
+              }
+            }
+          }
+        }
       }
 
       // Step 3: Build captions deterministically from transcription segments

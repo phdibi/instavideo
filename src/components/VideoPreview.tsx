@@ -93,15 +93,10 @@ export default function VideoPreview() {
     const now = performance.now();
     if (now - lastUpdateRef.current >= 33) {
       const dur = videoDurationRef.current;
-      // Compensate for browser audio decode buffering:
-      // vid.currentTime reports the decoded position, which is slightly
-      // ahead of the audio that's actually being heard (~50ms).
-      const AUDIO_SYNC_COMPENSATION = 0.05; // 50ms
       const raw = (dur && dur > 0 && Number.isFinite(dur))
         ? Math.min(vid.currentTime, dur)
         : vid.currentTime;
-      const t = Math.max(0, raw - AUDIO_SYNC_COMPENSATION);
-      setCurrentTime(t);
+      setCurrentTime(raw);
       lastUpdateRef.current = now;
     }
 

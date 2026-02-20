@@ -408,6 +408,17 @@ function buildSpeechDrivenEffects(
     });
   }
 
+  // Extend the last zoom effect to cover the silent tail of the video.
+  // When speech ends before the video does, the last zoom should hold
+  // until videoDuration so the timeline doesn't look truncated.
+  const zoomEffects = effects.filter(e => e.type.startsWith("zoom"));
+  if (zoomEffects.length > 0 && effectiveDuration > 0) {
+    const lastZoom = zoomEffects[zoomEffects.length - 1];
+    if (lastZoom.endTime < effectiveDuration - 0.5) {
+      lastZoom.endTime = effectiveDuration;
+    }
+  }
+
   // Step 4: Add transition-fade at major pauses (improved detection)
   // Look for significant pauses > 0.6s to insert transitions
   for (let i = 0; i < segments.length - 1; i++) {

@@ -210,6 +210,17 @@ export function buildSegmentsFromTranscription(
     });
   }
 
+  // Extend the LAST segment to cover the full video duration.
+  // After the speaker finishes, there may be several seconds of silence
+  // before the video ends. Without this, that tail has no segment → no
+  // preset, no effects, and the timeline looks "compressed" at the end.
+  if (segments.length > 0 && videoDuration > 0) {
+    const lastSeg = segments[segments.length - 1];
+    if (lastSeg.endTime < videoDuration - 0.1) {
+      lastSeg.endTime = videoDuration;
+    }
+  }
+
   return segments;
 }
 

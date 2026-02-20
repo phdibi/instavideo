@@ -283,16 +283,18 @@ function buildCaptionsFromTranscription(
 
     if (ci + 1 < rawCaptions.length) {
       const nextStart = rawCaptions[ci + 1].start;
-      // If next caption starts within 0.4s, extend this one to fill the gap
-      if (nextStart - endTime < 0.4) {
+      const gap = nextStart - endTime;
+      if (gap < 0.4) {
+        // Small gap — extend seamlessly to next caption
         endTime = nextStart;
       } else {
-        // Big pause — add small buffer but don't fill the entire gap
-        endTime = endTime + 0.08;
+        // Big pause — keep caption visible through most of the gap
+        // so it doesn't flash on/off. Cap at 2s to avoid stale text.
+        endTime = endTime + Math.min(gap * 0.85, 2.0);
       }
     } else {
-      // Last caption — small buffer
-      endTime = endTime + 0.1;
+      // Last caption — keep visible a bit longer
+      endTime = endTime + 0.5;
     }
 
     endTime = Math.min(endTime, effectiveDuration);

@@ -72,13 +72,17 @@ export default function VideoPreview() {
   }, [currentTime]); // Intentionally omit isPlaying — we use the ref instead
 
   // ── RAF PLAYBACK LOOP ───────────────────────────────────────────────
-  // Reads vid.currentTime → writes to the store at ~30fps.
+  // Reads vid.currentTime → writes to the store EVERY animation frame.
   // This is the ONLY writer of currentTime during playback.
-  const lastUpdateRef = useRef(0);
+  // No throttle — we update every frame (~60fps) so captions, effects,
+  // and b-roll stay perfectly in sync with the video.
   // Use a ref for videoDuration so updateTime doesn't need it as a dep
   // (avoids callback identity change when WebM blobs update their duration)
   const videoDurationRef = useRef(videoDuration);
   videoDurationRef.current = videoDuration;
+  // Ref to store the last written value — avoids redundant Zustand writes
+  // when video.currentTime hasn't changed between frames.
+  const lastWrittenTimeRef = useRef(-1);
 
   const updateTime = useCallback(() => {
     if (!isPlayingRef.current) return;
@@ -90,14 +94,15 @@ export default function VideoPreview() {
     const vid = videoRef.current;
     if (!vid) return;
 
-    const now = performance.now();
-    if (now - lastUpdateRef.current >= 33) {
-      const dur = videoDurationRef.current;
-      const raw = (dur && dur > 0 && Number.isFinite(dur))
-        ? Math.min(vid.currentTime, dur)
-        : vid.currentTime;
+    const dur = videoDurationRef.current;
+    const raw = (dur && dur > 0 && Number.isFinite(dur))
+      ? Math.min(vid.currentTime, dur)
+      : vid.currentTime;
+
+    // Only write to store if value actually changed (avoids unnecessary re-renders)
+    if (Math.abs(raw - lastWrittenTimeRef.current) > 0.001) {
       setCurrentTime(raw);
-      lastUpdateRef.current = now;
+      lastWrittenTimeRef.current = raw;
     }
 
     animFrameRef.current = requestAnimationFrame(updateTime);
@@ -109,7 +114,7 @@ export default function VideoPreview() {
     if (!container || container.offsetParent === null) return;
 
     if (isPlaying) {
-      lastUpdateRef.current = 0; // Force immediate first update
+      lastWrittenTimeRef.current = -1; // Force immediate first update
       animFrameRef.current = requestAnimationFrame(updateTime);
     }
     return () => {

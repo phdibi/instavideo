@@ -259,14 +259,15 @@ function buildCaptionsFromTranscription(
   if (current) rawCaptions.push(current);
 
   // ── Step 3: Build gapless Caption objects with per-word timings ──
-  // Rule: EVERY caption extends to the start of the NEXT caption.
+  // Rule: EVERY caption extends EXACTLY to the start of the NEXT caption.
   // The LAST caption extends to effectiveDuration. ZERO empty frames.
+  // CRITICAL: endTime NEVER exceeds the next caption's startTime — no overlaps.
   const MIN_DURATION = 0.3; // minimum seconds any caption stays visible
   const captions: Caption[] = [];
 
   for (let ci = 0; ci < rawCaptions.length; ci++) {
     const cap = rawCaptions[ci];
-    const startTime = Math.max(0, cap.start);
+    let startTime = Math.max(0, cap.start);
 
     // Gapless: extend to start of next card, or to video end for the last card
     let endTime: number;
@@ -276,9 +277,11 @@ function buildCaptionsFromTranscription(
       endTime = effectiveDuration; // last card stays until video ends
     }
 
-    // Enforce minimum duration
+    // Enforce minimum duration WITHOUT creating overlap:
+    // Pull startTime backwards (show caption earlier) instead of pushing
+    // endTime forward (which would overlap with the next caption).
     if (endTime - startTime < MIN_DURATION) {
-      endTime = startTime + MIN_DURATION;
+      startTime = Math.max(0, endTime - MIN_DURATION);
     }
 
     endTime = Math.min(endTime, effectiveDuration);

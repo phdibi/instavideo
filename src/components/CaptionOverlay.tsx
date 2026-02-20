@@ -12,11 +12,14 @@ interface Props {
 export default function CaptionOverlay({ currentTime }: Props) {
   const { captions } = useProjectStore();
 
-  // Find the SINGLE most relevant caption at this time
+  // Find the SINGLE most relevant caption at this time.
+  // When multiple captions overlap, pick the one that started MOST RECENTLY
+  // (latest startTime). This prevents an old caption from blocking the new one
+  // and keeps the display in sync with the speaker's current words.
   const activeCaption = useMemo(() => {
     const active = captions
       .filter((c) => currentTime >= c.startTime && currentTime < c.endTime)
-      .sort((a, b) => a.startTime - b.startTime);
+      .sort((a, b) => b.startTime - a.startTime); // latest-start wins
     return active.length > 0 ? active[0] : null;
   }, [captions, currentTime]);
 

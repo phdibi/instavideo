@@ -76,10 +76,10 @@ const THEME_COLORS: Record<CaptionTheme, {
   },
   authority: {
     highlight: "#00D4AA",
-    highlightGlow: "rgba(0,212,170,0.35)",
+    highlightGlow: "rgba(0,212,170,0.25)", // Subtler glow for professional look
     topicLabelColor: "#00D4AA",
     keywordColor: "#00D4AA",
-    captionColor: "#FFFFFF",
+    captionColor: "#F0F0F0",  // Slightly warm white matching caption styles
     quoteColor: "#00D4AA",
   },
 };
@@ -392,15 +392,16 @@ function CaptionDisplay({
               }
             }
 
-            // Emphasis words get italic + slightly larger
+            // Emphasis words get scale + optional italic
             const isEmphasized = wordState.isEmphasis;
             // Ember style: emphasis is bold but NOT italic (editorial/clean)
             // Velocity style: ultra-bold italic with stronger scale
+            // Authority style: NO italic, subtle scale — confident, not flashy
             const emphasisScale = isEmphasized
-              ? (theme === "velocity" ? 1.15 : theme === "ember" ? 1.08 : 1.12)
+              ? (theme === "velocity" ? 1.15 : theme === "authority" ? 1.05 : theme === "ember" ? 1.08 : 1.12)
               : 1;
             const emphasisFontStyle = isEmphasized
-              ? (theme === "ember" ? "normal" : "italic")
+              ? (theme === "ember" || theme === "authority" ? "normal" : "italic")
               : (theme === "velocity" ? "italic" : "normal");
 
             return (
@@ -411,8 +412,12 @@ function CaptionDisplay({
                 animate={{
                   scale: isEmphasized
                     ? emphasisScale
-                    : wordState.isActive && !isAllActive ? 1.1 : 1,
-                  y: wordState.isActive && !isAllActive ? -2 : 0,
+                    : wordState.isActive && !isAllActive
+                      ? (theme === "authority" ? 1.04 : 1.1) // Authority: subtle word pop
+                      : 1,
+                  y: wordState.isActive && !isAllActive
+                    ? (theme === "authority" ? -1 : -2) // Authority: minimal lift
+                    : 0,
                 }}
                 transition={{ duration: 0.1, ease: "easeOut" }}
                 style={{
@@ -430,7 +435,7 @@ function CaptionDisplay({
                       ? `0 2px ${caption.style.shadowBlur}px ${caption.style.shadowColor}, 0 0 ${caption.style.shadowBlur * 2}px ${caption.style.shadowColor}`
                       : undefined,
                   lineHeight: 1.1,
-                  letterSpacing: isShortPunchy ? "-0.02em" : undefined,
+                  letterSpacing: caption.style.letterSpacing || (isShortPunchy ? "-0.02em" : undefined),
                 }}
               >
                 {word}

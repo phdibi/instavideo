@@ -32,6 +32,7 @@ export interface CaptionStyle {
   strokeWidth: number;
   shadowColor: string;
   shadowBlur: number;
+  letterSpacing?: string;
 }
 
 export type CaptionAnimation =

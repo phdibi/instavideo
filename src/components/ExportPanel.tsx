@@ -337,6 +337,10 @@ export default function ExportPanel() {
 
           ctx.save();
           ctx.font = `${caption.style.fontWeight} ${caption.style.fontSize}px ${caption.style.fontFamily}, sans-serif`;
+          // Apply letter-spacing if set (authority theme uses tracking for professional look)
+          if (caption.style.letterSpacing && "letterSpacing" in ctx) {
+            (ctx as unknown as Record<string, string>).letterSpacing = caption.style.letterSpacing;
+          }
 
           // Match CaptionOverlay positions: top-[8%], center (or 18% for hook with keyword), bottom-[12%]
           const isHookWithKeyword = caption.style.position === "center" && caption.keywordLabel;

@@ -693,18 +693,44 @@ export default function ProcessingScreen() {
             const T = lastTranscriptionTime;
             const V = effectiveDuration;
 
-            // Curvature: scale with drift severity, cap at reasonable level
-            // The factor 0.15 means at 10% drift we apply 1.5% quadratic bend
-            const driftDirection = globalScale > 1 ? 1 : -1; // +1 = captions ahead
-            const curvatureStrength = Math.min(driftPercent * 0.015, 0.12);
-            const a = driftDirection * curvatureStrength * (V / (T * T));
-            const b = (V - a * T * T) / T;
+            // Piecewise-linear remapping using segment boundaries as anchor points.
+            // Instead of a single quadratic curve (which over-distorts mid-video),
+            // we build a set of anchor points from segment boundaries and linearly
+            // interpolate between them. This distributes the correction evenly and
+            // prevents captions from drifting in the middle of the video.
+            const anchors: { src: number; dst: number }[] = [{ src: 0, dst: 0 }];
+
+            // Use segment boundaries as natural anchor points
+            for (const seg of segments) {
+              if (seg.end > 0 && seg.end < T) {
+                anchors.push({ src: seg.end, dst: seg.end * globalScale });
+              }
+            }
+            anchors.push({ src: T, dst: V });
+
+            // Sort and deduplicate anchors
+            anchors.sort((x, y) => x.src - y.src);
+            const uniqueAnchors: typeof anchors = [anchors[0]];
+            for (let i = 1; i < anchors.length; i++) {
+              if (anchors[i].src - uniqueAnchors[uniqueAnchors.length - 1].src > 0.05) {
+                uniqueAnchors.push(anchors[i]);
+              }
+            }
 
             const remap = (t: number): number => {
               if (t <= 0) return 0;
               if (t >= T) return V;
-              const remapped = a * t * t + b * t;
-              return Math.max(0, Math.min(remapped, V));
+              // Find the two anchor points that bracket t
+              for (let i = 0; i < uniqueAnchors.length - 1; i++) {
+                const a0 = uniqueAnchors[i];
+                const a1 = uniqueAnchors[i + 1];
+                if (t >= a0.src && t <= a1.src) {
+                  const frac = (t - a0.src) / (a1.src - a0.src);
+                  return a0.dst + frac * (a1.dst - a0.dst);
+                }
+              }
+              // Fallback: simple linear
+              return t * globalScale;
             };
 
             // Apply remapping to all timestamps
@@ -719,13 +745,12 @@ export default function ProcessingScreen() {
               }
             }
 
-            // Log the mid-point correction for debugging
+            // Log the correction for debugging
             const midOld = T / 2;
             const midNew = remap(midOld);
-            const midLinear = midOld * globalScale;
             console.log(
-              `[CineAI] Quadratic remap: mid-point ${midOld.toFixed(2)}s → ${midNew.toFixed(2)}s ` +
-              `(linear would be ${midLinear.toFixed(2)}s, diff=${((midNew - midLinear) * 1000).toFixed(0)}ms)`
+              `[CineAI] Piecewise remap (${uniqueAnchors.length} anchors): mid-point ${midOld.toFixed(2)}s → ${midNew.toFixed(2)}s ` +
+              `(scale=${globalScale.toFixed(4)}, drift=${driftPercent.toFixed(1)}%)`
             );
           }
         }

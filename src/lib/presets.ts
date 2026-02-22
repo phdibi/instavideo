@@ -405,32 +405,50 @@ const velocityTalkingHeadBrollCaptionStyle: Partial<CaptionStyle> = {
 
 // ===== Authority theme overrides =====
 // Professional deep palette: teal (#00D4AA) for AI, amber (#E8A838) for psychology
+// Design: clean, confident, refined — conveys expertise without being flashy.
+// Uses Inter for clean sans-serif readability, slightly reduced sizes for elegance,
+// weight 800 (not 900) for refined boldness, subtle shadow instead of neon glow,
+// and letter-spacing for professional look.
 const AUTHORITY_TEAL = "#00D4AA";
 const AUTHORITY_AMBER = "#E8A838";
 
 const authorityHookCaptionStyle: Partial<CaptionStyle> = {
   ...hookCaptionStyle,
-  fontSize: 78,
-  color: "#FFFFFF",
-  strokeWidth: 4,
-  shadowColor: "rgba(0,212,170,0.5)",
-  shadowBlur: 22,
+  fontFamily: "Inter, system-ui, sans-serif",
+  fontSize: 70,          // Slightly smaller than default 72 — confident, not shouting
+  fontWeight: 800,       // Extra-bold (refined, not ultra-black 900)
+  color: "#F8F8F8",      // Slightly warm white — softer, more professional
+  strokeWidth: 2.5,      // Thinner stroke — cleaner look
+  strokeColor: "rgba(0,0,0,0.85)",
+  shadowColor: "rgba(0,212,170,0.3)", // Subtle teal glow (not neon)
+  shadowBlur: 12,        // Tighter shadow — sharper text
+  letterSpacing: "0.02em",
 };
 
 const authorityTalkingHeadCaptionStyle: Partial<CaptionStyle> = {
   ...talkingHeadCaptionStyle,
-  color: "#FFFFFF",
-  strokeWidth: 3,
-  shadowColor: "rgba(0,212,170,0.4)",
-  shadowBlur: 10,
+  fontFamily: "Inter, system-ui, sans-serif",
+  fontSize: 58,          // Slightly smaller — refined reading
+  fontWeight: 700,       // Bold (not ultra-bold — professional subtlety)
+  color: "#F0F0F0",
+  strokeWidth: 2,
+  strokeColor: "rgba(0,0,0,0.8)",
+  shadowColor: "rgba(0,212,170,0.25)", // Very subtle teal depth
+  shadowBlur: 6,         // Tight, clean
+  letterSpacing: "0.01em",
 };
 
 const authorityTalkingHeadBrollCaptionStyle: Partial<CaptionStyle> = {
   ...talkingHeadBrollCaptionStyle,
-  color: "#FFFFFF",
-  strokeWidth: 3,
-  shadowColor: "rgba(0,212,170,0.4)",
-  shadowBlur: 12,
+  fontFamily: "Inter, system-ui, sans-serif",
+  fontSize: 58,
+  fontWeight: 700,
+  color: "#F0F0F0",
+  strokeWidth: 2,
+  strokeColor: "rgba(0,0,0,0.8)",
+  shadowColor: "rgba(0,212,170,0.25)",
+  shadowBlur: 8,
+  letterSpacing: "0.01em",
 };
 
 // ===== Heuristic: detect if content is more editorial/lifestyle =====
@@ -690,10 +708,12 @@ function applyHookPreset(
       ? velocityHookCaptionStyle
       : useEmberTheme ? emberHookCaptionStyle : hookCaptionStyle;
   const usesDualLayer = useEmberTheme || useVelocityTheme || useAuthorityTheme;
+  // Authority: "slide-up" for a controlled, confident entrance (not bouncy "pop")
+  const hookAnimation = useAuthorityTheme ? "slide-up" as const : "pop" as const;
   const updatedCaptions = segCaptions.map(c => ({
     ...c,
     style: { ...c.style, ...captionStyle },
-    animation: "pop" as const,
+    animation: hookAnimation,
     emphasis: segment.keywordHighlight ? [segment.keywordHighlight] : c.emphasis,
     emoji: c.emoji,
     // Ember/Velocity: show keyword as large dual-layer label with decorative quotes
@@ -705,29 +725,22 @@ function applyHookPreset(
   const duration = segment.endTime - segment.startTime;
   const newEffects: EditEffect[] = [];
 
-  // Dramatic zoom-in on presenter face (aggressive like Captions app)
+  // Zoom-in on presenter face
+  // Authority: gentler zoom — confident, not aggressive (1.25 vs 1.55)
   newEffects.push({
     id: `preset_hook_zoom_${segment.id}`,
     type: "zoom-in",
     startTime: segment.startTime,
     endTime: segment.endTime,
     params: {
-      scale: useAuthorityTheme ? 1.60 : 1.55,
+      scale: useAuthorityTheme ? 1.25 : 1.55,
       focusX: 0.5,
-      focusY: 0.3,
+      focusY: useAuthorityTheme ? 0.35 : 0.3,
     },
   });
 
-  // Authority: visual interrupt flash at video start
-  if (useAuthorityTheme && segment.startTime < 0.5) {
-    newEffects.push({
-      id: `preset_hook_flash_${segment.id}`,
-      type: "flash",
-      startTime: 0,
-      endTime: 0.2,
-      params: { intensity: 0.8 },
-    });
-  }
+  // Authority: NO flash effect — too aggressive for professional content
+  // Other themes: no flash either (was only authority before)
 
   // Fade-in at beginning
   if (segment.startTime < 0.5) {
@@ -774,10 +787,15 @@ function applyTalkingHeadPreset(
     const isKeywordCaption = !!(usesDualLayer && wordCount <= 2
       && segment.keywordHighlight
       && c.text.toLowerCase().includes(segment.keywordHighlight.toLowerCase()));
+    // Authority: "slide-up" for longer captions (clean entry, no bounce),
+    // "fade" for short punchy (subtle presence)
+    const animation = useAuthorityTheme
+      ? (wordCount <= 2 ? "fade" as const : "slide-up" as const)
+      : (wordCount <= 2 ? "pop" as const : "karaoke" as const);
     return {
       ...c,
       style: { ...c.style, ...captionStyle },
-      animation: wordCount <= 2 ? "pop" as const : "karaoke" as const,
+      animation,
       emphasis: segment.keywordHighlight ? [segment.keywordHighlight] : c.emphasis,
       emoji: c.emoji,
       keywordLabel: isKeywordCaption ? segment.keywordHighlight.toUpperCase() : undefined,
@@ -788,8 +806,22 @@ function applyTalkingHeadPreset(
   const newEffects: EditEffect[] = [];
   const duration = segment.endTime - segment.startTime;
 
-  // Slow zoom-pulse synchronized with speech rhythm (every 2-4 seconds)
-  if (duration > 2) {
+  // Slow zoom-pulse synchronized with speech rhythm
+  // Authority: much calmer — every 6s with subtle scale, no alternating
+  // Other themes: every 3s with stronger scale, alternating in/out
+  if (useAuthorityTheme) {
+    // Authority: single gentle zoom-in per segment (max one), very subtle
+    if (duration > 3) {
+      newEffects.push({
+        id: `preset_th_zoom_${segment.id}`,
+        type: "zoom-in",
+        startTime: segment.startTime,
+        endTime: segment.endTime,
+        params: { scale: 1.06, focusX: 0.5, focusY: 0.38 },
+      });
+    }
+    // Short authority segments: no zoom at all (keep steady, natural)
+  } else if (duration > 2) {
     const pulseCount = Math.floor(duration / 3);
     for (let i = 0; i < Math.max(1, pulseCount); i++) {
       const pulseStart = segment.startTime + i * 3;
@@ -839,10 +871,14 @@ function applyTalkingHeadBrollPreset(
     const isKeywordCaption = !!(usesDualLayer && wordCount <= 2
       && segment.keywordHighlight
       && c.text.toLowerCase().includes(segment.keywordHighlight.toLowerCase()));
+    // Authority: cleaner animations (fade/slide-up)
+    const animation = useAuthorityTheme
+      ? (wordCount <= 2 ? "fade" as const : "slide-up" as const)
+      : (wordCount <= 2 ? "pop" as const : "karaoke" as const);
     return {
       ...c,
       style: { ...c.style, ...captionStyle },
-      animation: wordCount <= 2 ? "pop" as const : "karaoke" as const,
+      animation,
       emphasis: segment.keywordHighlight ? [segment.keywordHighlight] : c.emphasis,
       emoji: c.emoji,
       keywordLabel: isKeywordCaption ? segment.keywordHighlight.toUpperCase() : undefined,
@@ -873,12 +909,13 @@ function applyTalkingHeadBrollPreset(
     });
 
     // Zoom-in on B-Roll for professional camera movement
+    // Authority: barely perceptible zoom — let the image speak
     newEffects.push({
       id: `preset_thbr_zoom_${segment.id}`,
       type: "zoom-in",
       startTime: brollStart,
       endTime: brollEnd,
-      params: { scale: 1.12, focusX: 0.5, focusY: 0.5 },
+      params: { scale: useAuthorityTheme ? 1.05 : 1.12, focusX: 0.5, focusY: 0.5 },
     });
   }
 
@@ -1048,7 +1085,7 @@ export function applyAllPresets(
       type: "vignette",
       startTime: 0,
       endTime: videoDuration,
-      params: { intensity: useAuthorityTheme ? 0.30 : useVelocityTheme ? 0.35 : useEmberTheme ? 0.28 : 0.2 },
+      params: { intensity: useAuthorityTheme ? 0.22 : useVelocityTheme ? 0.35 : useEmberTheme ? 0.28 : 0.2 },
     });
   }
 

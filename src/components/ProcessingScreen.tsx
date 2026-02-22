@@ -177,7 +177,8 @@ function buildCaptionsFromTranscription(
         }
 
         wStart = Math.max(0, Math.min(wStart, effectiveDuration));
-        wEnd = Math.max(wStart + 0.05, Math.min(wEnd, effectiveDuration));
+        // Min 20ms per word (was 50ms — 50ms compounds and creates progressive delay)
+        wEnd = Math.max(wStart + 0.02, Math.min(wEnd, effectiveDuration));
 
         allWords.push({ word: w.word.trim(), start: wStart, end: wEnd });
       }
@@ -555,10 +556,24 @@ export default function ProcessingScreen() {
         const { FFmpegService } = await import("@/lib/ffmpeg");
         // Single-pass: extract + clean (highpass filter only, no time-stretching)
         audioBlob = await FFmpegService.extractAndCleanAudio(videoFile);
-        // Calculate WAV duration from PCM size: (size - 44) / (sampleRate * channels * bytesPerSample)
-        // With -ar 16000 -ac 1 -c:a pcm_s16le: 16000 * 1 * 2 = 32000 bytes/sec
-        if (audioBlob.type === "audio/wav" || audioBlob.size > 44) {
-          audioDurationFromWav = (audioBlob.size - 44) / 32000;
+
+        // PRECISE duration: decode with AudioContext instead of byte-math.
+        // The old formula (size - 44) / 32000 assumed exactly 44-byte WAV headers,
+        // but FFmpeg can produce headers of varying sizes (44, 46, 58+ bytes).
+        // Even a few bytes off causes progressive drift over the entire video.
+        try {
+          const audioCtx = new AudioContext({ sampleRate: 16000 });
+          const arrayBuffer = await audioBlob.arrayBuffer();
+          const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+          audioDurationFromWav = audioBuffer.duration;
+          audioCtx.close();
+          console.log(`[CineAI] Precise audio duration from AudioContext: ${audioDurationFromWav.toFixed(4)}s`);
+        } catch {
+          // Fallback to byte-math if AudioContext fails
+          if (audioBlob.type === "audio/wav" || audioBlob.size > 44) {
+            audioDurationFromWav = (audioBlob.size - 44) / 32000;
+            console.log(`[CineAI] Fallback byte-math audio duration: ${audioDurationFromWav.toFixed(4)}s`);
+          }
         }
       } catch (err) {
         console.warn("FFmpeg extraction failed, falling back to AudioContext:", err);
@@ -639,25 +654,14 @@ export default function ProcessingScreen() {
         }
       }
 
-      // LAYER 2: Quadratic correction for Gemini's non-linear timestamp drift.
-      // After WAV-to-video correction, any remaining drift is from the Gemini
-      // model itself producing timestamps that are ahead/behind real speech timing.
-      // The Gemini API returns timestamps that drift progressively from real
-      // video time. Crucially, this drift is NON-LINEAR — it's small in the
-      // first ~10-15s and accelerates afterward. A simple linear scale factor
-      // corrects the endpoint but leaves the middle drifted.
+      // LAYER 2: Endpoint alignment — simple linear rescale if transcription
+      // endpoint doesn't match video duration. This catches any residual drift
+      // that Layer 1 didn't fix (e.g., Gemini timestamps ending before or after
+      // the actual video end).
       //
-      // Solution: QUADRATIC time remapping.
-      //   remap(t) = a*t² + b*t
-      // where a and b are chosen so that:
-      //   remap(0) = 0                      (start matches)
-      //   remap(T_trans) = T_video           (end matches)
-      //   remap(T_trans/2) ≈ T_video/2 - δ  (mid-point biased to slow down early)
-      //
-      // Since Gemini timestamps are typically AHEAD of real time (captions appear
-      // too early), the quadratic curve "slows down" time mapping in the first
-      // half and "catches up" in the second half. This counteracts the progressive
-      // acceleration pattern.
+      // With precise AudioContext duration in Layer 1, this layer should rarely
+      // need to apply significant correction. Only a simple linear scale is used
+      // (no quadratic/piecewise — those introduced mid-video distortion).
       if (segments.length > 1 && effectiveDuration > 0) {
         const lastTranscriptionTime = Math.max(
           ...segments.map(s => s.end),
@@ -665,93 +669,27 @@ export default function ProcessingScreen() {
         );
 
         if (lastTranscriptionTime > effectiveDuration * 0.3) {
-          const globalScale = effectiveDuration / lastTranscriptionTime;
-          const driftPercent = Math.abs(1 - globalScale) * 100;
+          const residualScale = effectiveDuration / lastTranscriptionTime;
+          const residualDrift = Math.abs(1 - residualScale) * 100;
 
           console.log(
-            `[CineAI] Calibrating timestamps: transcription=${lastTranscriptionTime.toFixed(2)}s, ` +
-            `video=${effectiveDuration.toFixed(2)}s, globalScale=${globalScale.toFixed(4)} (${driftPercent.toFixed(1)}% drift)`
+            `[CineAI] Residual drift after Layer 1: transcription=${lastTranscriptionTime.toFixed(2)}s, ` +
+            `video=${effectiveDuration.toFixed(2)}s, residualScale=${residualScale.toFixed(4)} (${residualDrift.toFixed(1)}%)`
           );
 
-          if (driftPercent > 0.3 && driftPercent < 25) {
-            // T = lastTranscriptionTime, V = effectiveDuration
-            // We need remap(t) such that remap(0)=0, remap(T)=V
-            //
-            // For quadratic: remap(t) = a*t² + b*t
-            //   remap(T) = a*T² + b*T = V  →  b = (V - a*T²) / T = V/T - a*T
-            //
-            // The parameter 'a' controls curvature:
-            //   a = 0: linear (same as before)
-            //   a > 0: slows down early, speeds up late (what we want when captions are ahead)
-            //   a < 0: speeds up early, slows down late
-            //
-            // We choose 'a' based on the observed drift direction:
-            // If globalScale > 1 → transcription is shorter than video → timestamps too early → need a > 0
-            // If globalScale < 1 → transcription is longer than video → timestamps too late → need a < 0
-            //
-            // Magnitude: proportional to drift, capped to avoid distortion
-            const T = lastTranscriptionTime;
-            const V = effectiveDuration;
-
-            // Piecewise-linear remapping using segment boundaries as anchor points.
-            // Instead of a single quadratic curve (which over-distorts mid-video),
-            // we build a set of anchor points from segment boundaries and linearly
-            // interpolate between them. This distributes the correction evenly and
-            // prevents captions from drifting in the middle of the video.
-            const anchors: { src: number; dst: number }[] = [{ src: 0, dst: 0 }];
-
-            // Use segment boundaries as natural anchor points
+          // Only apply if residual drift is > 0.5% (with precise Layer 1, it should be small)
+          if (residualDrift > 0.5 && residualDrift < 25) {
             for (const seg of segments) {
-              if (seg.end > 0 && seg.end < T) {
-                anchors.push({ src: seg.end, dst: seg.end * globalScale });
-              }
-            }
-            anchors.push({ src: T, dst: V });
-
-            // Sort and deduplicate anchors
-            anchors.sort((x, y) => x.src - y.src);
-            const uniqueAnchors: typeof anchors = [anchors[0]];
-            for (let i = 1; i < anchors.length; i++) {
-              if (anchors[i].src - uniqueAnchors[uniqueAnchors.length - 1].src > 0.05) {
-                uniqueAnchors.push(anchors[i]);
-              }
-            }
-
-            const remap = (t: number): number => {
-              if (t <= 0) return 0;
-              if (t >= T) return V;
-              // Find the two anchor points that bracket t
-              for (let i = 0; i < uniqueAnchors.length - 1; i++) {
-                const a0 = uniqueAnchors[i];
-                const a1 = uniqueAnchors[i + 1];
-                if (t >= a0.src && t <= a1.src) {
-                  const frac = (t - a0.src) / (a1.src - a0.src);
-                  return a0.dst + frac * (a1.dst - a0.dst);
-                }
-              }
-              // Fallback: simple linear
-              return t * globalScale;
-            };
-
-            // Apply remapping to all timestamps
-            for (const seg of segments) {
-              seg.start = remap(seg.start);
-              seg.end = remap(seg.end);
+              seg.start *= residualScale;
+              seg.end *= residualScale;
               if (seg.words) {
                 for (const w of seg.words) {
-                  w.start = remap(w.start);
-                  w.end = remap(w.end);
+                  w.start *= residualScale;
+                  w.end *= residualScale;
                 }
               }
             }
-
-            // Log the correction for debugging
-            const midOld = T / 2;
-            const midNew = remap(midOld);
-            console.log(
-              `[CineAI] Piecewise remap (${uniqueAnchors.length} anchors): mid-point ${midOld.toFixed(2)}s → ${midNew.toFixed(2)}s ` +
-              `(scale=${globalScale.toFixed(4)}, drift=${driftPercent.toFixed(1)}%)`
-            );
+            console.log(`[CineAI] Applied residual linear correction: ×${residualScale.toFixed(4)}`);
           }
         }
       }

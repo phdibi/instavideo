@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useProjectStore } from "@/store/useProjectStore";
 import type { Caption, CaptionAnimation, CaptionTheme } from "@/types";
@@ -10,7 +10,7 @@ interface Props {
 }
 
 export default function CaptionOverlay({ currentTime }: Props) {
-  const { captions } = useProjectStore();
+  const { captions, brandingConfig, videoDuration } = useProjectStore();
 
   // Find the SINGLE most relevant caption at this time.
   // When multiple captions overlap, pick the one that started MOST RECENTLY
@@ -28,6 +28,18 @@ export default function CaptionOverlay({ currentTime }: Props) {
     return <div className="absolute inset-0 pointer-events-none" />;
   }
 
+  // Hide bottom-positioned captions when CTA overlay is showing (last 3s)
+  // to prevent text overlap. CTA takes priority as the final call-to-action.
+  const ctaIsShowing = brandingConfig?.showCTA && videoDuration >= 6 && currentTime >= (videoDuration - 3);
+  if (ctaIsShowing && activeCaption.style.position === "bottom") {
+    return <div className="absolute inset-0 pointer-events-none" />;
+  }
+
+  // Track the keyword label to give it a stable key across caption changes.
+  // This prevents the hook keyword from flashing/re-animating when the subtitle
+  // underneath changes but the keyword stays the same.
+  const stableKeyword = activeCaption.keywordLabel || null;
+
   return (
     <div className="absolute inset-0 pointer-events-none">
       <AnimatePresence mode="popLayout">
@@ -35,6 +47,7 @@ export default function CaptionOverlay({ currentTime }: Props) {
           key={activeCaption.id}
           caption={activeCaption}
           currentTime={currentTime}
+          stableKeywordKey={stableKeyword}
         />
       </AnimatePresence>
     </div>
@@ -106,10 +119,18 @@ function detectTheme(caption: Caption): CaptionTheme {
 function CaptionDisplay({
   caption,
   currentTime,
+  stableKeywordKey,
 }: {
   caption: Caption;
   currentTime: number;
+  stableKeywordKey: string | null;
 }) {
+  // Track if the keyword was already shown (same text) to skip re-animation
+  const prevKeywordRef = useRef<string | null>(null);
+  const keywordAlreadyShown = stableKeywordKey !== null && prevKeywordRef.current === stableKeywordKey;
+  if (stableKeywordKey !== prevKeywordRef.current) {
+    prevKeywordRef.current = stableKeywordKey;
+  }
   const duration = caption.endTime - caption.startTime;
   const progress = Math.min(
     Math.max((currentTime - caption.startTime) / duration, 0),
@@ -210,18 +231,23 @@ function CaptionDisplay({
           </motion.div>
         )}
 
-        {/* Dual-layer: Large keyword ABOVE caption (Ember/Velocity) */}
+        {/* Dual-layer: Large keyword ABOVE caption (Ember/Velocity/Authority) */}
+        {/* Uses keywordAlreadyShown to skip re-animation when only subtitle changes */}
         {keywordLabel && (
           <motion.div
             className="mb-2 flex flex-col items-center justify-center"
-            initial={{ opacity: 0, scale: theme === "velocity" ? 0.5 : 0.7, y: theme === "velocity" ? 15 : 10 }}
+            initial={keywordAlreadyShown ? false : { opacity: 0, scale: theme === "velocity" ? 0.5 : (theme === "authority" ? 0.85 : 0.7), y: theme === "velocity" ? 15 : (theme === "authority" ? 6 : 10) }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{
-              type: "spring",
-              damping: theme === "velocity" ? 12 : 14,
-              stiffness: theme === "velocity" ? 320 : 280,
-              delay: 0.02,
-            }}
+            transition={keywordAlreadyShown
+              ? { duration: 0 }
+              : {
+                  type: theme === "authority" ? "tween" as const : "spring" as const,
+                  ...(theme === "authority"
+                    ? { duration: 0.25, ease: "easeOut" as const }
+                    : { damping: theme === "velocity" ? 12 : 14, stiffness: theme === "velocity" ? 320 : 280 }),
+                  delay: 0.02,
+                }
+            }
             style={{
               lineHeight: 1,
             }}

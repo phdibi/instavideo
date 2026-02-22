@@ -326,7 +326,13 @@ export default function ExportPanel() {
           .filter((c) => time >= c.startTime && time < c.endTime)
           .sort((a, b) => a.startTime - b.startTime);
 
-        const caption = activeCaptions.length > 0 ? activeCaptions[0] : null;
+        let caption = activeCaptions.length > 0 ? activeCaptions[0] : null;
+
+        // Hide bottom captions during CTA (last 3 seconds) to prevent overlap
+        const ctaShowing = brandingConfig.showCTA && videoDuration >= 6 && time >= (videoDuration - 3);
+        if (ctaShowing && caption?.style.position === "bottom") {
+          caption = null;
+        }
 
         if (caption) {
           const captionDuration = caption.endTime - caption.startTime;

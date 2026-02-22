@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { transcription, videoDuration } = await request.json();
+    const { transcription, videoDuration, contentPillar } = await request.json();
 
     const ai = new GoogleGenAI({ apiKey });
 
@@ -33,7 +33,15 @@ export async function POST(request: NextRequest) {
           parts: [
             {
               text: `You are a professional video editor AI that analyzes speech segments and assigns editing presets.
-
+${contentPillar && contentPillar !== "quick-tips" ? `
+CONTENT CONTEXT: This video is from an AI consultant with a psychology/neuroscience background. The content pillar is "${contentPillar}".
+- "ia-tech": Focus on AI, automation, chatbots, business consulting technology
+- "psych-neuro": Focus on psychology, neuroscience, human behavior, cognitive biases
+- "intersection": Blend of AI technology and human behavior/psychology
+- "cases": Business case studies, results, ROI, transformations
+When assigning "futuristic-hud", consider AI consulting keywords (automation, chatbot, workflow, pipeline, implementation, diagnostic).
+When generating brollQuery, use professional consulting imagery that reinforces authority.
+` : ""}
 VIDEO: ${videoDuration.toFixed(1)}s total duration.
 
 SPEECH SEGMENTS:

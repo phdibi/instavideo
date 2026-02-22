@@ -74,10 +74,21 @@ const THEME_COLORS: Record<CaptionTheme, {
     captionColor: "#FFFFFF",
     quoteColor: "#DAA520",
   },
+  authority: {
+    highlight: "#00D4AA",
+    highlightGlow: "rgba(0,212,170,0.35)",
+    topicLabelColor: "#00D4AA",
+    keywordColor: "#00D4AA",
+    captionColor: "#FFFFFF",
+    quoteColor: "#00D4AA",
+  },
 };
 
 // Detect theme from caption properties
 function detectTheme(caption: Caption): CaptionTheme {
+  // Authority: teal or amber shadow color
+  if (caption.style.shadowColor?.includes("0,212,170") ||
+      caption.style.shadowColor?.includes("232,168,56")) return "authority";
   // Velocity: golden shadow color is the signature
   if (caption.style.shadowColor === "rgba(255,215,0,0.6)"
     || caption.style.shadowColor === "rgba(255,215,0,0.5)") return "velocity";

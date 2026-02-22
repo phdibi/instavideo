@@ -17,7 +17,7 @@ export interface Caption {
 // Determines the color palette used for emphasis, highlights, and decorative elements.
 // "volt" = neon yellow-green (#CCFF00), energetic/tech
 // "ember" = warm salmon/terracotta (#D4835C), editorial/cinematic
-export type CaptionTheme = "volt" | "ember" | "velocity";
+export type CaptionTheme = "volt" | "ember" | "velocity" | "authority";
 
 export interface CaptionStyle {
   fontFamily: string;
@@ -195,4 +195,30 @@ export interface TranscriptionWord {
   start: number;
   end: number;
   confidence: number;
+}
+
+// ===== Content Pillar System =====
+export type ContentPillar =
+  | "ia-tech"           // IA & Tecnologia
+  | "psych-neuro"       // Psicologia & Neurociências
+  | "intersection"      // IA + Comportamento Humano
+  | "cases"             // Cases & Resultados
+  | "quick-tips";       // Dicas Rápidas
+
+// ===== CTA System =====
+export type CTATemplate =
+  | "siga"              // "Siga para mais conteúdo"
+  | "salve"             // "Salve para consultar depois"
+  | "comente"           // "Comente [X]"
+  | "compartilhe";      // "Compartilhe com alguém que precisa"
+
+// ===== Personal Branding =====
+export interface BrandingConfig {
+  name: string;
+  title: string;
+  showWatermark: boolean;
+  showCTA: boolean;
+  ctaTemplate: CTATemplate;
+  ctaCustomText?: string;
+  contentPillar: ContentPillar;
 }

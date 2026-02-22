@@ -7,6 +7,7 @@ import type {
   ProjectStatus,
   TeleprompterSettings,
   VideoSegment,
+  BrandingConfig,
 } from "@/types";
 
 interface ProjectStore {
@@ -24,6 +25,7 @@ interface ProjectStore {
   segments: VideoSegment[];
   selectedItem: { type: "caption" | "effect" | "broll" | "segment"; id: string } | null;
   teleprompterSettings: TeleprompterSettings;
+  brandingConfig: BrandingConfig;
 
   setSegments: (segments: VideoSegment[]) => void;
   updateSegment: (id: string, updates: Partial<VideoSegment>) => void;
@@ -45,6 +47,7 @@ interface ProjectStore {
   setIsPlaying: (playing: boolean) => void;
   setSelectedItem: (item: { type: "caption" | "effect" | "broll" | "segment"; id: string } | null) => void;
   setTeleprompterSettings: (settings: Partial<TeleprompterSettings>) => void;
+  setBrandingConfig: (config: Partial<BrandingConfig>) => void;
   reset: () => void;
 }
 
@@ -63,6 +66,15 @@ const defaultTeleprompterSettings: TeleprompterSettings = {
   cueLinePosition: 35,
 };
 
+const defaultBrandingConfig: BrandingConfig = {
+  name: process.env.NEXT_PUBLIC_BRAND_NAME || "Seu Nome",
+  title: process.env.NEXT_PUBLIC_BRAND_TITLE || "Consultor de IA | Psicólogo",
+  showWatermark: true,
+  showCTA: true,
+  ctaTemplate: "siga",
+  contentPillar: "ia-tech",
+};
+
 const initialState = {
   videoFile: null,
   videoUrl: "",
@@ -78,6 +90,7 @@ const initialState = {
   isPlaying: false,
   selectedItem: null,
   teleprompterSettings: { ...defaultTeleprompterSettings },
+  brandingConfig: { ...defaultBrandingConfig },
 };
 
 export const useProjectStore = create<ProjectStore>((set) => ({
@@ -140,6 +153,10 @@ export const useProjectStore = create<ProjectStore>((set) => ({
   setTeleprompterSettings: (settings) =>
     set((state) => ({
       teleprompterSettings: { ...state.teleprompterSettings, ...settings },
+    })),
+  setBrandingConfig: (config) =>
+    set((state) => ({
+      brandingConfig: { ...state.brandingConfig, ...config },
     })),
   reset: () => set(initialState),
 }));

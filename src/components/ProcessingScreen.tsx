@@ -16,7 +16,7 @@ import type {
   VideoSegment,
   PresetType,
 } from "@/types";
-import { buildSegmentsFromTranscription, applyAllPresets } from "@/lib/presets";
+import { buildSegmentsFromTranscription, applyAllPresets, forceThemeFromPillar, isAuthorityTheme, getAuthorityLean } from "@/lib/presets";
 
 const defaultCaptionStyle: CaptionStyle = {
   fontFamily: "Inter",
@@ -792,12 +792,15 @@ export default function ProcessingScreen() {
         bRollTimings
       );
 
+      // Get branding config early for API calls and theme forcing
+      const brandingConfig = useProjectStore.getState().brandingConfig;
+
       // Try to enhance with AI preset detection
       try {
         const presetRes = await fetch("/api/segment-presets", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ transcription, videoDuration: effectiveDuration }),
+          body: JSON.stringify({ transcription, videoDuration: effectiveDuration, contentPillar: brandingConfig.contentPillar }),
         });
 
         if (presetRes.ok) {
@@ -822,6 +825,11 @@ export default function ProcessingScreen() {
         }
       } catch (err) {
         console.warn("AI preset detection failed, using heuristic presets:", err);
+      }
+
+      // Force theme from content pillar if selected
+      if (brandingConfig.contentPillar && brandingConfig.contentPillar !== "quick-tips") {
+        forceThemeFromPillar(brandingConfig.contentPillar);
       }
 
       // Apply presets to captions and generate preset-specific effects
@@ -872,10 +880,13 @@ export default function ProcessingScreen() {
           await Promise.allSettled(
             batch.map(async (item) => {
               try {
+                const brollStyle = isAuthorityTheme()
+                  ? `authority-${getAuthorityLean()}`
+                  : undefined;
                 const brollRes = await fetch("/api/generate-broll", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ prompt: item.prompt }),
+                  body: JSON.stringify({ prompt: item.prompt, style: brollStyle }),
                 });
                 if (brollRes.ok) {
                   const data = await brollRes.json();

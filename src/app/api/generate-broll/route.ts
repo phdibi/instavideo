@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { prompt } = await request.json();
+    const { prompt, style } = await request.json();
 
     if (!prompt) {
       return NextResponse.json({ error: "No prompt provided" }, { status: 400 });
@@ -21,9 +21,19 @@ export async function POST(request: NextRequest) {
 
     const ai = new GoogleGenAI({ apiKey });
 
+    // Build enhanced prompt based on authority style
+    let enhancedPrompt = prompt;
+    if (style === "authority-teal") {
+      enhancedPrompt = `Professional corporate setting, futuristic technology, clean modern aesthetic, teal and dark tones, executive consulting environment: ${prompt}`;
+    } else if (style === "authority-amber") {
+      enhancedPrompt = `Warm professional atmosphere, psychology and neuroscience aesthetic, amber warm lighting, sophisticated consulting environment: ${prompt}`;
+    } else if (style === "authority-blended") {
+      enhancedPrompt = `Professional consulting environment, blend of technology and human connection, modern and warm tones, executive setting: ${prompt}`;
+    }
+
     const response = await ai.models.generateImages({
       model: "imagen-4.0-generate-001",
-      prompt: `Cinematic, high quality, 16:9 aspect ratio, professional photography style: ${prompt}`,
+      prompt: `Cinematic, high quality, 16:9 aspect ratio, professional photography style: ${enhancedPrompt}`,
       config: {
         numberOfImages: 1,
         aspectRatio: "16:9",

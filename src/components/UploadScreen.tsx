@@ -1,14 +1,24 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { Upload, Film, Sparkles, Zap, Type, Wand2, MonitorPlay } from "lucide-react";
+import { Upload, Film, Sparkles, Zap, Type, Wand2, MonitorPlay, Cpu, Brain, BarChart3 } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { motion } from "framer-motion";
+import type { ContentPillar } from "@/types";
 
 export default function UploadScreen() {
-  const { setVideoFile, setVideoUrl, setVideoDuration, setStatus } =
+  const { setVideoFile, setVideoUrl, setVideoDuration, setStatus, setBrandingConfig } =
     useProjectStore();
   const [dragOver, setDragOver] = useState(false);
+  const [selectedPillar, setSelectedPillar] = useState<ContentPillar | null>(null);
+
+  const contentPillars: { key: ContentPillar; label: string; desc: string; icon: React.ReactNode; color: string }[] = [
+    { key: "ia-tech", label: "IA & Tecnologia", desc: "Ferramentas, automação, futuro", icon: <Cpu className="w-4 h-4" />, color: "#00D4AA" },
+    { key: "psych-neuro", label: "Psicologia & Neuro", desc: "Cérebro, comportamento, mente", icon: <Brain className="w-4 h-4" />, color: "#E8A838" },
+    { key: "intersection", label: "IA + Comportamento", desc: "Tecnologia encontra psicologia", icon: <Sparkles className="w-4 h-4" />, color: "#00D4AA" },
+    { key: "cases", label: "Cases & Resultados", desc: "Transformações de clientes", icon: <BarChart3 className="w-4 h-4" />, color: "#FFD700" },
+    { key: "quick-tips", label: "Dicas Rápidas", desc: "Insights curtos e acionáveis", icon: <Zap className="w-4 h-4" />, color: "#a78bfa" },
+  ];
 
   const handleFile = useCallback(
     (file: File) => {
@@ -24,12 +34,14 @@ export default function UploadScreen() {
       video.preload = "metadata";
       video.onloadedmetadata = () => {
         setVideoDuration(video.duration);
+        if (selectedPillar) setBrandingConfig({ contentPillar: selectedPillar });
         setVideoFile(file);
         setVideoUrl(url);
         setStatus("uploading");
       };
       video.onerror = () => {
         // Even if metadata fails, still proceed (ProcessingScreen has fallbacks)
+        if (selectedPillar) setBrandingConfig({ contentPillar: selectedPillar });
         setVideoFile(file);
         setVideoUrl(url);
         setStatus("uploading");
@@ -171,6 +183,43 @@ export default function UploadScreen() {
             </p>
           </div>
         </button>
+      </motion.div>
+
+      {/* Content Pillar Selector */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.35 }}
+        className="mt-6 max-w-3xl w-full"
+      >
+        <p className="text-xs text-[var(--text-secondary)] uppercase tracking-wide mb-2 text-center">
+          Pilar de Conteúdo (opcional)
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+          {contentPillars.map((p) => (
+            <button
+              key={p.key}
+              onClick={() => setSelectedPillar(selectedPillar === p.key ? null : p.key)}
+              className={`py-2.5 px-3 rounded-xl border text-left transition-all duration-200 ${
+                selectedPillar === p.key
+                  ? "border-transparent bg-[var(--surface-hover)] scale-[1.02]"
+                  : "border-[var(--border)] bg-[var(--surface)] hover:border-[var(--border)]/80 hover:bg-[var(--surface-hover)]"
+              }`}
+              style={selectedPillar === p.key ? { borderColor: p.color, boxShadow: `0 0 12px ${p.color}25` } : {}}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <div
+                  className="w-6 h-6 rounded-md flex items-center justify-center"
+                  style={{ backgroundColor: `${p.color}20`, color: p.color }}
+                >
+                  {p.icon}
+                </div>
+                <span className="text-xs font-semibold truncate">{p.label}</span>
+              </div>
+              <p className="text-[10px] text-[var(--text-secondary)] leading-tight">{p.desc}</p>
+            </button>
+          ))}
+        </div>
       </motion.div>
 
       <motion.div

@@ -3,7 +3,8 @@
 import { useState, useCallback, useRef } from "react";
 import { Download, Loader2, Film, Settings, Smartphone, Square, Monitor } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
-import { isEmberTheme, isVelocityTheme } from "@/lib/presets";
+import { isEmberTheme, isVelocityTheme, isAuthorityTheme, getAuthorityLean } from "@/lib/presets";
+import { getCTAText, getAccentColor } from "./CTAOverlay";
 
 type ExportFormat = "mp4" | "webm";
 type ExportQuality = "720p" | "1080p";
@@ -16,7 +17,7 @@ const aspectRatioConfig: Record<AspectRatio, { label: string; icon: React.ReactN
 };
 
 export default function ExportPanel() {
-  const { videoUrl, captions, effects, bRollImages, videoDuration, status, setStatus } =
+  const { videoUrl, captions, effects, bRollImages, videoDuration, status, setStatus, brandingConfig } =
     useProjectStore();
   const [format, setFormat] = useState<ExportFormat>("webm");
   const [quality, setQuality] = useState<ExportQuality>("1080p");
@@ -203,6 +204,8 @@ export default function ExportPanel() {
                 cssFilter += " sepia(0.2) saturate(1.1) contrast(1.06) brightness(1.02)";
               else if (preset === "velocity-gold")
                 cssFilter += " sepia(0.15) saturate(1.25) contrast(1.12) brightness(1.04)";
+              else if (preset === "authority-deep")
+                cssFilter += " saturate(1.05) contrast(1.1) brightness(0.98) hue-rotate(10deg)";
               else if (preset === "cold-thriller")
                 cssFilter += " saturate(0.8) hue-rotate(200deg) contrast(1.15)";
               else if (preset === "vintage")
@@ -345,16 +348,20 @@ export default function ExportPanel() {
               : height * 0.88;
 
           // Theme-aware highlight colors matching CaptionOverlay THEME_COLORS
-          const highlightColor = isVelocityTheme()
-            ? "#FFD700"
-            : isEmberTheme()
-              ? "#D4835C"
-              : "#CCFF00";
-          const highlightGlow = isVelocityTheme()
-            ? "rgba(255,215,0,0.5)"
-            : isEmberTheme()
-              ? "rgba(212,131,92,0.4)"
-              : "rgba(204,255,0,0.4)";
+          const highlightColor = isAuthorityTheme()
+            ? (getAuthorityLean() === "amber" ? "#E8A838" : "#00D4AA")
+            : isVelocityTheme()
+              ? "#FFD700"
+              : isEmberTheme()
+                ? "#D4835C"
+                : "#CCFF00";
+          const highlightGlow = isAuthorityTheme()
+            ? (getAuthorityLean() === "amber" ? "rgba(232,168,56,0.4)" : "rgba(0,212,170,0.4)")
+            : isVelocityTheme()
+              ? "rgba(255,215,0,0.5)"
+              : isEmberTheme()
+                ? "rgba(212,131,92,0.4)"
+                : "rgba(204,255,0,0.4)";
 
           // Draw keyword label (Ember/Velocity dual-layer) ABOVE subtitle
           if (caption.keywordLabel) {
@@ -533,6 +540,94 @@ export default function ExportPanel() {
           ctx.restore();
         }
 
+        // Draw watermark (name + title, top-left, from 2s to duration-3.5s)
+        if (brandingConfig.showWatermark && videoDuration >= 6) {
+          const wmShowStart = 2;
+          const wmShowEnd = videoDuration - 3.5;
+          if (time >= wmShowStart && time <= wmShowEnd) {
+            const wmFadeIn = Math.min((time - wmShowStart) / 0.5, 1);
+            const wmFadeOut = Math.min((wmShowEnd - time) / 0.5, 1);
+            const wmOpacity = Math.min(wmFadeIn, wmFadeOut) * 0.7;
+
+            ctx.save();
+            ctx.globalAlpha = wmOpacity;
+
+            const wmAccent = getAccentColor();
+            const wmX = width * 0.04;
+            const wmY = height * 0.06;
+
+            // Accent bar
+            const barWidth = Math.max(2, width * 0.003);
+            const barHeight = height * 0.035;
+            ctx.fillStyle = wmAccent;
+            ctx.beginPath();
+            ctx.roundRect(wmX, wmY, barWidth, barHeight, barWidth / 2);
+            ctx.fill();
+
+            // Name
+            const nameFontSize = Math.max(8, Math.min(width * 0.012, 13));
+            ctx.font = `700 ${nameFontSize}px Inter, system-ui, sans-serif`;
+            ctx.fillStyle = "#FFFFFF";
+            ctx.textAlign = "left";
+            ctx.shadowColor = "rgba(0,0,0,0.8)";
+            ctx.shadowBlur = 4;
+            ctx.fillText(brandingConfig.name.toUpperCase(), wmX + barWidth + width * 0.01, wmY + nameFontSize * 0.85);
+
+            // Title
+            const titleFontSize = Math.max(6, Math.min(width * 0.009, 10));
+            ctx.font = `500 ${titleFontSize}px Inter, system-ui, sans-serif`;
+            ctx.fillStyle = "rgba(255,255,255,0.6)";
+            ctx.shadowColor = "rgba(0,0,0,0.6)";
+            ctx.shadowBlur = 3;
+            ctx.fillText(brandingConfig.title, wmX + barWidth + width * 0.01, wmY + nameFontSize + titleFontSize * 0.9);
+
+            ctx.restore();
+          }
+        }
+
+        // Draw CTA overlay (last 3 seconds)
+        if (brandingConfig.showCTA && videoDuration >= 6) {
+          const ctaStart = videoDuration - 3;
+          if (time >= ctaStart && time <= videoDuration) {
+            const ctaProgress = (time - ctaStart) / 3;
+            const ctaFadeIn = Math.min(ctaProgress / 0.2, 1);
+            const ctaSlideUp = (1 - ctaFadeIn) * height * 0.03;
+
+            ctx.save();
+            ctx.globalAlpha = ctaFadeIn * 0.95;
+
+            const ctaText = getCTAText(brandingConfig.ctaTemplate, brandingConfig.ctaCustomText);
+            const ctaAccent = getAccentColor();
+            const ctaFontSize = Math.max(12, Math.min(width * 0.025, 24));
+            const ctaY = height * 0.80 + ctaSlideUp;
+
+            ctx.font = `700 ${ctaFontSize}px Inter, system-ui, sans-serif`;
+            ctx.textAlign = "center";
+            ctx.fillStyle = "#FFFFFF";
+            ctx.shadowColor = "rgba(0,0,0,0.8)";
+            ctx.shadowBlur = 8;
+            ctx.fillText(ctaText, width / 2, ctaY);
+
+            // Accent underline
+            const textWidth = ctx.measureText(ctaText).width;
+            const underlineY = ctaY + ctaFontSize * 0.3;
+            ctx.shadowColor = "transparent";
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = ctaAccent;
+            ctx.beginPath();
+            ctx.roundRect(
+              width / 2 - textWidth / 2,
+              underlineY,
+              textWidth,
+              Math.max(2, height * 0.003),
+              2
+            );
+            ctx.fill();
+
+            ctx.restore();
+          }
+        }
+
         setProgress(Math.round((frame / totalFrames) * 100));
 
         // Small delay to allow UI updates and prevent freezing
@@ -567,7 +662,7 @@ export default function ExportPanel() {
       setExporting(false);
       setProgress(0);
     }
-  }, [videoUrl, captions, effects, bRollImages, videoDuration, format, quality, aspectRatio, setStatus]);
+  }, [videoUrl, captions, effects, bRollImages, videoDuration, format, quality, aspectRatio, setStatus, brandingConfig]);
 
   return (
     <div className="p-4 space-y-4 overflow-y-auto h-full">

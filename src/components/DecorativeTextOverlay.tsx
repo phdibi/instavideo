@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useProjectStore } from "@/store/useProjectStore";
-import { isEmberTheme, isVelocityTheme } from "@/lib/presets";
+import { isEmberTheme, isVelocityTheme, isAuthorityTheme, getAuthorityLean } from "@/lib/presets";
 
 interface Props {
   currentTime: number;
@@ -33,6 +33,7 @@ export default function DecorativeTextOverlay({ currentTime }: Props) {
   // Only show decorative text for hook and futuristic-hud presets,
   // or when there's a strong keyword highlight.
   // NEVER show for Ember theme (editorial/clean style doesn't use cascading text).
+  const isAuthority = isAuthorityTheme();
   const shouldShow = useMemo(() => {
     if (isEmberTheme()) return false; // Ember: no decorative background text
     if (isVelocityTheme()) return false; // Velocity: uses 3D ribbons, not cascading text
@@ -86,7 +87,9 @@ export default function DecorativeTextOverlay({ currentTime }: Props) {
                 fontWeight: 900,
                 fontStyle: "italic",
                 color: "transparent",
-                WebkitTextStroke: "1px rgba(255,255,255,0.12)",
+                WebkitTextStroke: isAuthority
+                  ? `1px ${getAuthorityLean() === "amber" ? "rgba(232,168,56,0.08)" : "rgba(0,212,170,0.08)"}`
+                  : "1px rgba(255,255,255,0.12)",
                 letterSpacing: "-0.02em",
                 lineHeight: 1.05,
                 // Alternate slight horizontal offset for visual interest

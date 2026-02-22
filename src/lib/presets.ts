@@ -7,6 +7,7 @@ import type {
   EditEffect,
   BRollImage,
   TranscriptionSegment,
+  ContentPillar,
 } from "@/types";
 
 // ===== Keyword detection sets =====
@@ -54,6 +55,63 @@ const VISUAL_CONTENT_KEYWORDS = new Set([
   "implementar", "implement", "construir", "build",
   "criar", "create", "fazer", "make",
   "projetar", "design", "desenvolver", "develop",
+]);
+
+// ===== Authority niche keyword sets =====
+const AUTHORITY_AI_KEYWORDS = new Set([
+  "diagnóstico", "diagnostico", "implementação", "implementacao",
+  "automação", "automacao", "chatbot", "prompt", "agente", "agent",
+  "workflow", "pipeline", "framework", "ferramenta", "tool",
+  "plataforma", "platform", "consultoria", "consulting",
+  "solução", "solucao", "solution", "integração", "integracao",
+  "dashboard", "relatório", "relatorio", "report",
+  "otimização", "otimizacao", "optimization",
+  "processo", "process", "eficiência", "eficiencia",
+  "escalabilidade", "scalability", "deploy",
+  "aplicativo", "app", "bot", "copilot",
+]);
+
+const AUTHORITY_PSYCH_KEYWORDS = new Set([
+  "comportamento", "behavior", "behaviour",
+  "viés cognitivo", "vies cognitivo", "cognitive bias",
+  "heurística", "heuristica", "heuristic",
+  "dopamina", "dopamine", "serotonina", "serotonin",
+  "cortisol", "adrenalina", "adrenaline",
+  "amígdala", "amigdala", "hipocampo", "hippocampus",
+  "córtex", "cortex", "pré-frontal", "prefrontal",
+  "neuroplasticidade", "neuroplasticity",
+  "inconsciente", "subconscious", "consciência", "consciencia",
+  "emoção", "emocao", "emotion", "afeto", "affect",
+  "percepção", "percepcao", "perception",
+  "atenção", "atencao", "attention",
+  "motivação", "motivacao", "motivation",
+  "recompensa", "reward", "punição", "punicao",
+  "hábito", "habito", "habit", "condicionamento", "conditioning",
+  "terapia", "therapy", "psicoterapia", "psychotherapy",
+  "ansiedade", "anxiety", "estresse", "stress",
+  "cognição", "cognicao", "cognition", "metacognição", "metacognicao",
+  "psicologia", "psychology", "neurociência", "neurociencia", "neuroscience",
+  "cérebro", "cerebro", "brain", "mente", "mind",
+  "memória", "memoria", "memory",
+  "aprendizagem", "learning", "tomada de decisão", "decision making",
+  "viés", "vies", "bias", "priming", "ancoragem", "anchoring",
+  "resiliência", "resiliencia", "resilience",
+  "inteligência emocional", "inteligencia emocional", "emotional intelligence",
+  "autoconhecimento", "self-knowledge", "autocontrole", "self-control",
+]);
+
+const AUTHORITY_RESULTS_KEYWORDS = new Set([
+  "resultado", "result", "transformação", "transformacao", "transformation",
+  "case", "caso", "roi", "retorno", "return",
+  "antes", "depois", "before", "after",
+  "crescimento", "growth", "aumento", "increase",
+  "redução", "reducao", "reduction", "economia", "saving",
+  "cliente", "client", "empresa", "company",
+  "implementação", "implementacao", "implementation",
+  "sucesso", "success", "impacto", "impact",
+  "métricas", "metricas", "metrics", "kpi",
+  "faturamento", "revenue", "conversão", "conversao", "conversion",
+  "produtividade", "productivity", "desempenho", "performance",
 ]);
 
 // ===== Detect preset for a segment =====
@@ -138,6 +196,9 @@ export function extractKeywordHighlight(text: string): string {
     // Bonus for tech/futuristic keywords
     if (FUTURISTIC_KEYWORDS.has(cleaned)) score += 10;
     if (VISUAL_CONTENT_KEYWORDS.has(cleaned)) score += 5;
+    if (AUTHORITY_AI_KEYWORDS.has(cleaned)) score += 10;
+    if (AUTHORITY_PSYCH_KEYWORDS.has(cleaned)) score += 10;
+    if (AUTHORITY_RESULTS_KEYWORDS.has(cleaned)) score += 8;
 
     // Bonus for capitalized words (proper nouns, emphasis)
     if (word[0] === word[0].toUpperCase() && word[0] !== word[0].toLowerCase()) {
@@ -158,16 +219,26 @@ export function extractKeywordHighlight(text: string): string {
 
 // ===== Generate B-Roll query from segment text =====
 export function generateBrollQuery(text: string, preset: PresetType): string {
-  if (preset === "futuristic-hud") {
-    return `futuristic technology HUD interface, digital hologram, neural network visualization, cinematic, blue cyan glow`;
-  }
-
   // Extract nouns and meaningful words
   const words = text.split(/\s+/);
   const meaningful = words
     .map(w => w.replace(/[.,!?;:'"()]/g, ""))
     .filter(w => w.length > 3)
     .slice(0, 4);
+
+  if (useAuthorityTheme) {
+    const segLean = detectSegmentLean(text);
+    if (segLean === "teal") {
+      return `futuristic professional office with AI dashboard, holographic neural network interface, cool blue-teal cinematic lighting, data analytics visualization, modern technology, ${meaningful.join(" ")}`;
+    } else if (segLean === "amber") {
+      return `cinematic brain neural pathways visualization, warm amber golden lighting, professional psychology consultation, human connection, neuroscience concept art, ${meaningful.join(" ")}`;
+    }
+    return `modern professional consulting environment, AI and human collaboration, cinematic lighting, data-driven insights, ${meaningful.join(" ")}`;
+  }
+
+  if (preset === "futuristic-hud") {
+    return `futuristic technology HUD interface, digital hologram, neural network visualization, cinematic, blue cyan glow`;
+  }
 
   return `cinematic ${meaningful.join(" ")}, professional photography, high quality, 16:9`;
 }
@@ -332,6 +403,36 @@ const velocityTalkingHeadBrollCaptionStyle: Partial<CaptionStyle> = {
   shadowBlur: 12,
 };
 
+// ===== Authority theme overrides =====
+// Professional deep palette: teal (#00D4AA) for AI, amber (#E8A838) for psychology
+const AUTHORITY_TEAL = "#00D4AA";
+const AUTHORITY_AMBER = "#E8A838";
+
+const authorityHookCaptionStyle: Partial<CaptionStyle> = {
+  ...hookCaptionStyle,
+  fontSize: 78,
+  color: "#FFFFFF",
+  strokeWidth: 4,
+  shadowColor: "rgba(0,212,170,0.5)",
+  shadowBlur: 22,
+};
+
+const authorityTalkingHeadCaptionStyle: Partial<CaptionStyle> = {
+  ...talkingHeadCaptionStyle,
+  color: "#FFFFFF",
+  strokeWidth: 3,
+  shadowColor: "rgba(0,212,170,0.4)",
+  shadowBlur: 10,
+};
+
+const authorityTalkingHeadBrollCaptionStyle: Partial<CaptionStyle> = {
+  ...talkingHeadBrollCaptionStyle,
+  color: "#FFFFFF",
+  strokeWidth: 3,
+  shadowColor: "rgba(0,212,170,0.4)",
+  shadowBlur: 12,
+};
+
 // ===== Heuristic: detect if content is more editorial/lifestyle =====
 // Used to automatically choose Ember theme for appropriate content
 const EMBER_KEYWORDS = new Set([
@@ -418,9 +519,11 @@ function detectVelocityContent(fullText: string): boolean {
 }
 
 // Track which theme should be applied (set during applyAllPresets)
-// Priority: velocity > ember > volt (default)
+// Priority: authority > velocity > ember > volt (default)
 let useEmberTheme = false;
 let useVelocityTheme = false;
+let useAuthorityTheme = false;
+let authorityLean: "teal" | "amber" | "blended" = "blended";
 
 export function setEmberTheme(enabled: boolean) {
   useEmberTheme = enabled;
@@ -436,6 +539,102 @@ export function setVelocityTheme(enabled: boolean) {
 
 export function isVelocityTheme(): boolean {
   return useVelocityTheme;
+}
+
+export function setAuthorityTheme(enabled: boolean) {
+  useAuthorityTheme = enabled;
+}
+
+export function isAuthorityTheme(): boolean {
+  return useAuthorityTheme;
+}
+
+export function getAuthorityLean(): "teal" | "amber" | "blended" {
+  return authorityLean;
+}
+
+export function setAuthorityLean(lean: "teal" | "amber" | "blended") {
+  authorityLean = lean;
+}
+
+// ===== Authority content detection =====
+function detectAuthorityContent(fullText: string): { isAuthority: boolean; lean: "teal" | "amber" | "blended" } {
+  const textLower = fullText.toLowerCase();
+  const words = textLower.split(/\s+/);
+  let aiScore = 0;
+  let psychScore = 0;
+
+  for (const word of words) {
+    const cleaned = word.replace(/[.,!?;:'"()]/g, "");
+    if (AUTHORITY_AI_KEYWORDS.has(cleaned) || FUTURISTIC_KEYWORDS.has(cleaned)) aiScore++;
+    if (AUTHORITY_PSYCH_KEYWORDS.has(cleaned) || EMBER_KEYWORDS.has(cleaned)) psychScore++;
+    if (AUTHORITY_RESULTS_KEYWORDS.has(cleaned)) { aiScore += 0.5; psychScore += 0.5; }
+  }
+  // Check 2-word phrases
+  for (let i = 0; i < words.length - 1; i++) {
+    const phrase = words[i].replace(/[.,!?;:'"()]/g, "") + " " + words[i + 1].replace(/[.,!?;:'"()]/g, "");
+    if (AUTHORITY_AI_KEYWORDS.has(phrase) || FUTURISTIC_KEYWORDS.has(phrase)) aiScore += 2;
+    if (AUTHORITY_PSYCH_KEYWORDS.has(phrase)) psychScore += 2;
+  }
+
+  const total = aiScore + psychScore;
+  if (total < 3) return { isAuthority: false, lean: "blended" };
+
+  const lean = aiScore > psychScore * 1.5 ? "teal"
+    : psychScore > aiScore * 1.5 ? "amber"
+    : "blended";
+
+  return { isAuthority: true, lean };
+}
+
+export function detectSegmentLean(text: string): "teal" | "amber" | "blended" {
+  const textLower = text.toLowerCase();
+  const words = textLower.split(/\s+/);
+  let aiScore = 0;
+  let psychScore = 0;
+
+  for (const word of words) {
+    const cleaned = word.replace(/[.,!?;:'"()]/g, "");
+    if (AUTHORITY_AI_KEYWORDS.has(cleaned) || FUTURISTIC_KEYWORDS.has(cleaned)) aiScore++;
+    if (AUTHORITY_PSYCH_KEYWORDS.has(cleaned)) psychScore++;
+  }
+
+  if (aiScore > psychScore) return "teal";
+  if (psychScore > aiScore) return "amber";
+  return "blended";
+}
+
+// Force theme based on content pillar selection
+export function forceThemeFromPillar(pillar: ContentPillar) {
+  switch (pillar) {
+    case "ia-tech":
+      useAuthorityTheme = true;
+      authorityLean = "teal";
+      useEmberTheme = false;
+      useVelocityTheme = false;
+      break;
+    case "psych-neuro":
+      useAuthorityTheme = true;
+      authorityLean = "amber";
+      useEmberTheme = false;
+      useVelocityTheme = false;
+      break;
+    case "intersection":
+      useAuthorityTheme = true;
+      authorityLean = "blended";
+      useEmberTheme = false;
+      useVelocityTheme = false;
+      break;
+    case "cases":
+      useAuthorityTheme = true;
+      authorityLean = "blended";
+      useEmberTheme = false;
+      useVelocityTheme = false;
+      break;
+    case "quick-tips":
+      // Auto-detect normally
+      break;
+  }
 }
 
 // ===== Apply preset effects to a segment =====
@@ -485,10 +684,12 @@ function applyHookPreset(
   // Style captions: large bold centered with keyword highlight
   // Keep "pop" animation for 1-2 word captions (best for punchy short text)
   const topicLabel = segment.keywordHighlight?.toUpperCase() || "";
-  const captionStyle = useVelocityTheme
-    ? velocityHookCaptionStyle
-    : useEmberTheme ? emberHookCaptionStyle : hookCaptionStyle;
-  const usesDualLayer = useEmberTheme || useVelocityTheme;
+  const captionStyle = useAuthorityTheme
+    ? authorityHookCaptionStyle
+    : useVelocityTheme
+      ? velocityHookCaptionStyle
+      : useEmberTheme ? emberHookCaptionStyle : hookCaptionStyle;
+  const usesDualLayer = useEmberTheme || useVelocityTheme || useAuthorityTheme;
   const updatedCaptions = segCaptions.map(c => ({
     ...c,
     style: { ...c.style, ...captionStyle },
@@ -511,11 +712,22 @@ function applyHookPreset(
     startTime: segment.startTime,
     endTime: segment.endTime,
     params: {
-      scale: 1.55,
+      scale: useAuthorityTheme ? 1.60 : 1.55,
       focusX: 0.5,
       focusY: 0.3,
     },
   });
+
+  // Authority: visual interrupt flash at video start
+  if (useAuthorityTheme && segment.startTime < 0.5) {
+    newEffects.push({
+      id: `preset_hook_flash_${segment.id}`,
+      type: "flash",
+      startTime: 0,
+      endTime: 0.2,
+      params: { intensity: 0.8 },
+    });
+  }
 
   // Fade-in at beginning
   if (segment.startTime < 0.5) {
@@ -550,10 +762,12 @@ function applyTalkingHeadPreset(
   newBroll: BRollImage[];
 } {
   // Keep "pop" for 1-2 word short captions; only use "karaoke" for longer ones
-  const captionStyle = useVelocityTheme
-    ? velocityTalkingHeadCaptionStyle
-    : useEmberTheme ? emberTalkingHeadCaptionStyle : talkingHeadCaptionStyle;
-  const usesDualLayer = useEmberTheme || useVelocityTheme;
+  const captionStyle = useAuthorityTheme
+    ? authorityTalkingHeadCaptionStyle
+    : useVelocityTheme
+      ? velocityTalkingHeadCaptionStyle
+      : useEmberTheme ? emberTalkingHeadCaptionStyle : talkingHeadCaptionStyle;
+  const usesDualLayer = useEmberTheme || useVelocityTheme || useAuthorityTheme;
   const updatedCaptions = segCaptions.map(c => {
     const wordCount = c.text.trim().split(/\s+/).length;
     // Ember/Velocity: For 1-2 word punchy captions, show the keyword as large dual-layer
@@ -614,10 +828,12 @@ function applyTalkingHeadBrollPreset(
   newBroll: BRollImage[];
 } {
   const topicLabel = segment.keywordHighlight?.toUpperCase() || "";
-  const captionStyle = useVelocityTheme
-    ? velocityTalkingHeadBrollCaptionStyle
-    : useEmberTheme ? emberTalkingHeadBrollCaptionStyle : talkingHeadBrollCaptionStyle;
-  const usesDualLayer = useEmberTheme || useVelocityTheme;
+  const captionStyle = useAuthorityTheme
+    ? authorityTalkingHeadBrollCaptionStyle
+    : useVelocityTheme
+      ? velocityTalkingHeadBrollCaptionStyle
+      : useEmberTheme ? emberTalkingHeadBrollCaptionStyle : talkingHeadBrollCaptionStyle;
+  const usesDualLayer = useEmberTheme || useVelocityTheme || useAuthorityTheme;
   const updatedCaptions = segCaptions.map(c => {
     const wordCount = c.text.trim().split(/\s+/).length;
     const isKeywordCaption = !!(usesDualLayer && wordCount <= 2
@@ -761,11 +977,23 @@ export function applyAllPresets(
   presetEffects: EditEffect[];
   presetBroll: BRollImage[];
 } {
-  // Auto-detect theme from content (priority: velocity > ember > volt)
+  // Auto-detect theme from content (priority: authority > velocity > ember > volt)
   const fullText = segments.map(s => s.text).join(" ");
-  useVelocityTheme = detectVelocityContent(fullText);
-  // If Velocity is detected, don't use Ember (they're mutually exclusive)
-  useEmberTheme = !useVelocityTheme && detectEmberContent(fullText);
+
+  // Check for authority content first (unless already forced by pillar)
+  if (!useAuthorityTheme) {
+    const authorityResult = detectAuthorityContent(fullText);
+    useAuthorityTheme = authorityResult.isAuthority;
+    authorityLean = authorityResult.lean;
+  }
+
+  if (useAuthorityTheme) {
+    useVelocityTheme = false;
+    useEmberTheme = false;
+  } else {
+    useVelocityTheme = detectVelocityContent(fullText);
+    useEmberTheme = !useVelocityTheme && detectEmberContent(fullText);
+  }
 
   let allUpdatedCaptions = [...captions];
   const allNewEffects: EditEffect[] = [];
@@ -806,7 +1034,7 @@ export function applyAllPresets(
       type: "color-grade",
       startTime: 0,
       endTime: videoDuration,
-      params: { preset: useVelocityTheme ? "velocity-gold" : useEmberTheme ? "ember-warm" : "cinematic-warm" },
+      params: { preset: useAuthorityTheme ? "authority-deep" : useVelocityTheme ? "velocity-gold" : useEmberTheme ? "ember-warm" : "cinematic-warm" },
     });
   }
 
@@ -820,7 +1048,7 @@ export function applyAllPresets(
       type: "vignette",
       startTime: 0,
       endTime: videoDuration,
-      params: { intensity: useVelocityTheme ? 0.35 : useEmberTheme ? 0.28 : 0.2 },
+      params: { intensity: useAuthorityTheme ? 0.30 : useVelocityTheme ? 0.35 : useEmberTheme ? 0.28 : 0.2 },
     });
   }
 

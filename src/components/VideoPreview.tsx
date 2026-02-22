@@ -6,6 +6,8 @@ import { useProjectStore } from "@/store/useProjectStore";
 import { formatTime } from "@/lib/formatTime";
 import CaptionOverlay from "./CaptionOverlay";
 import DecorativeTextOverlay from "./DecorativeTextOverlay";
+import CTAOverlay from "./CTAOverlay";
+import WatermarkOverlay from "./WatermarkOverlay";
 import { useState } from "react";
 
 export default function VideoPreview() {
@@ -294,6 +296,8 @@ export default function VideoPreview() {
           else if (preset === "velocity-gold")
             // Velocity: high-contrast golden grade with boosted saturation
             filter += " sepia(0.15) saturate(1.25) contrast(1.12) brightness(1.04)";
+          else if (preset === "authority-deep")
+            filter += " saturate(1.05) contrast(1.1) brightness(0.98) hue-rotate(10deg)";
           else if (preset === "cold-thriller")
             filter += " saturate(0.8) hue-rotate(200deg) contrast(1.15)";
           else if (preset === "vintage")
@@ -536,6 +540,16 @@ export default function VideoPreview() {
         {/* Decorative text overlay - z-35, behind captions but above video */}
         <div className="absolute inset-0 z-[35] pointer-events-none">
           <DecorativeTextOverlay currentTime={currentTime} />
+        </div>
+
+        {/* Watermark overlay - z-42, subtle name/title */}
+        <div className="absolute inset-0 z-[42] pointer-events-none">
+          <WatermarkOverlay currentTime={currentTime} videoDuration={videoDuration} />
+        </div>
+
+        {/* CTA overlay - z-45, final seconds */}
+        <div className="absolute inset-0 z-[45] pointer-events-none">
+          <CTAOverlay currentTime={currentTime} videoDuration={videoDuration} />
         </div>
 
         {/* Caption overlay - z-50, MUST be after click handler to render on top */}

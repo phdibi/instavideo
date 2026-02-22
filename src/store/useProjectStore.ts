@@ -8,6 +8,7 @@ import type {
   TeleprompterSettings,
   VideoSegment,
   BrandingConfig,
+  BackgroundConfig,
 } from "@/types";
 
 interface ProjectStore {
@@ -26,6 +27,7 @@ interface ProjectStore {
   selectedItem: { type: "caption" | "effect" | "broll" | "segment"; id: string } | null;
   teleprompterSettings: TeleprompterSettings;
   brandingConfig: BrandingConfig;
+  backgroundConfig: BackgroundConfig;
 
   setSegments: (segments: VideoSegment[]) => void;
   updateSegment: (id: string, updates: Partial<VideoSegment>) => void;
@@ -48,6 +50,7 @@ interface ProjectStore {
   setSelectedItem: (item: { type: "caption" | "effect" | "broll" | "segment"; id: string } | null) => void;
   setTeleprompterSettings: (settings: Partial<TeleprompterSettings>) => void;
   setBrandingConfig: (config: Partial<BrandingConfig>) => void;
+  setBackgroundConfig: (config: Partial<BackgroundConfig>) => void;
   reset: () => void;
 }
 
@@ -64,6 +67,12 @@ const defaultTeleprompterSettings: TeleprompterSettings = {
   lineHeight: 1.6,
   paddingHorizontal: 10,
   cueLinePosition: 35,
+};
+
+const defaultBackgroundConfig: BackgroundConfig = {
+  enabled: false,
+  microphoneOverlay: false,
+  edgeSmoothing: 0.5,
 };
 
 const defaultBrandingConfig: BrandingConfig = {
@@ -91,6 +100,7 @@ const initialState = {
   selectedItem: null,
   teleprompterSettings: { ...defaultTeleprompterSettings },
   brandingConfig: { ...defaultBrandingConfig },
+  backgroundConfig: { ...defaultBackgroundConfig },
 };
 
 export const useProjectStore = create<ProjectStore>((set) => ({
@@ -157,6 +167,10 @@ export const useProjectStore = create<ProjectStore>((set) => ({
   setBrandingConfig: (config) =>
     set((state) => ({
       brandingConfig: { ...state.brandingConfig, ...config },
+    })),
+  setBackgroundConfig: (config) =>
+    set((state) => ({
+      backgroundConfig: { ...state.backgroundConfig, ...config },
     })),
   reset: () => set(initialState),
 }));

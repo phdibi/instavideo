@@ -5,6 +5,7 @@ import { Upload, Film, Sparkles, Zap, Type, Wand2, MonitorPlay, Cpu, Brain, BarC
 import { useProjectStore } from "@/store/useProjectStore";
 import { motion } from "framer-motion";
 import type { ContentPillar } from "@/types";
+import BackgroundSettings from "./BackgroundSettings";
 
 export default function UploadScreen() {
   const { setVideoFile, setVideoUrl, setVideoDuration, setStatus, setBrandingConfig } =
@@ -220,6 +221,16 @@ export default function UploadScreen() {
             </button>
           ))}
         </div>
+      </motion.div>
+
+      {/* Background Replacement Settings */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.38 }}
+        className="mt-6 max-w-3xl w-full"
+      >
+        <BackgroundSettings />
       </motion.div>
 
       <motion.div

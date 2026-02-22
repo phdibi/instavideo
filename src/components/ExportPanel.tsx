@@ -17,7 +17,7 @@ const aspectRatioConfig: Record<AspectRatio, { label: string; icon: React.ReactN
 };
 
 export default function ExportPanel() {
-  const { videoUrl, captions, effects, bRollImages, videoDuration, status, setStatus, brandingConfig } =
+  const { videoUrl, captions, effects, bRollImages, videoDuration, status, setStatus, brandingConfig, backgroundConfig } =
     useProjectStore();
   const [format, setFormat] = useState<ExportFormat>("webm");
   const [quality, setQuality] = useState<ExportQuality>("1080p");
@@ -123,6 +123,33 @@ export default function ExportPanel() {
           } catch {
             // Skip failed images
           }
+        }
+      }
+
+      // Pre-load background replacement resources if enabled
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let segService: any = null;
+      let bgImage: HTMLImageElement | null = null;
+
+      if (backgroundConfig.enabled) {
+        try {
+          const mod = await import("@/lib/segmentation");
+          await mod.SegmentationService.getInstance();
+          await mod.SegmentationService.setVideoMode();
+          segService = mod.SegmentationService;
+
+          // Load background image
+          if (backgroundConfig.backgroundImageUrl) {
+            bgImage = new Image();
+            bgImage.crossOrigin = "anonymous";
+            bgImage.src = backgroundConfig.backgroundImageUrl;
+            await new Promise<void>((resolve) => {
+              bgImage!.onload = () => resolve();
+              bgImage!.onerror = () => resolve(); // Continue without bg
+            });
+          }
+        } catch (err) {
+          console.warn("[CineAI] Failed to init segmentation for export:", err);
         }
       }
 
@@ -250,6 +277,26 @@ export default function ExportPanel() {
 
         ctx.drawImage(video, dx, dy, dw, dh);
         ctx.restore();
+
+        // Background replacement: person segmentation + custom background + microphone
+        if (segService && backgroundConfig.enabled) {
+          try {
+            const timestampMs = Math.round(time * 1000);
+            const mask = segService.segmentVideoFrame(video, timestampMs);
+            if (mask) {
+              segService.compositeFrame(
+                ctx, video, mask, bgImage, width, height,
+                backgroundConfig.edgeSmoothing
+              );
+              // Draw microphone overlay if enabled
+              if (backgroundConfig.microphoneOverlay) {
+                segService.drawMicrophone(ctx, width, height);
+              }
+            }
+          } catch {
+            // On segmentation error, keep the original frame
+          }
+        }
 
         // Draw B-roll overlay - FULLY OPAQUE with ken-burns effect
         const activeBRoll = bRollImages.find(

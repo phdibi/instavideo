@@ -8,13 +8,18 @@ import CaptionOverlay from "./CaptionOverlay";
 import DecorativeTextOverlay from "./DecorativeTextOverlay";
 import CTAOverlay from "./CTAOverlay";
 import WatermarkOverlay from "./WatermarkOverlay";
+import { useBackgroundReplacement } from "@/hooks/useBackgroundReplacement";
 import { useState } from "react";
 
 export default function VideoPreview() {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const bgCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const animFrameRef = useRef<number>(0);
   const [muted, setMuted] = useState(false);
+
+  // Background replacement: person segmentation + custom background + microphone
+  const { isActive: bgActive } = useBackgroundReplacement(videoRef, bgCanvasRef);
 
   // Synchronous flag — set immediately on play/pause, not subject to React batching.
   // This is the SINGLE source of truth for whether we're in playback mode.
@@ -479,7 +484,12 @@ export default function VideoPreview() {
             ref={videoRef}
             src={videoUrl}
             className="w-full h-full object-contain"
-            style={videoStyle}
+            style={{
+              ...videoStyle,
+              // When background replacement is active, hide video visually
+              // but keep it playing (it provides frames to the segmentation canvas)
+              ...(bgActive ? { opacity: 0, position: "absolute" as const, pointerEvents: "none" as const } : {}),
+            }}
             onLoadedMetadata={(e) => {
               const vid = e.target as HTMLVideoElement;
               if (Number.isFinite(vid.duration) && vid.duration > 0) {
@@ -500,6 +510,15 @@ export default function VideoPreview() {
             muted={muted}
             playsInline
           />
+
+          {/* Background replacement canvas — shows person over custom background */}
+          {bgActive && (
+            <canvas
+              ref={bgCanvasRef}
+              className="w-full h-full object-contain"
+              style={videoStyle}
+            />
+          )}
 
           {/* B-Roll overlay - FULLY OPAQUE with ken-burns effect */}
           {activeBRoll && bRollStyle && (

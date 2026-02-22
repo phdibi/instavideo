@@ -597,6 +597,10 @@ export default function ProcessingScreen() {
           type: audioBlob.type || "audio/wav",
         })
       );
+      // Send precise audio duration so Gemini can anchor its timestamps
+      if (audioDurationFromWav > 0) {
+        formData.append("audioDuration", audioDurationFromWav.toFixed(3));
+      }
 
       const transcribeRes = await fetch("/api/transcribe", {
         method: "POST",
@@ -643,7 +647,7 @@ export default function ProcessingScreen() {
         );
 
         // Apply if there's any meaningful difference (> 0.1%)
-        if (wavDriftPercent > 0.1 && wavDriftPercent < 30) {
+        if (wavDriftPercent > 0.1 && wavDriftPercent < 50) {
           for (const seg of segments) {
             seg.start *= wavToVideoScale;
             seg.end *= wavToVideoScale;
@@ -681,8 +685,17 @@ export default function ProcessingScreen() {
             `video=${effectiveDuration.toFixed(2)}s, residualScale=${residualScale.toFixed(4)} (${residualDrift.toFixed(1)}%)`
           );
 
-          // Only apply if residual drift is > 0.5% (with precise Layer 1, it should be small)
-          if (residualDrift > 0.5 && residualDrift < 25) {
+          // Warn when drift is very high — Gemini may have significantly compressed timestamps
+          if (residualDrift > 40) {
+            console.warn(
+              `[CineAI] HIGH DRIFT WARNING: Transcription timestamps drift ${residualDrift.toFixed(1)}% ` +
+              `from video duration. Gemini may have compressed the timeline. ` +
+              `Applying linear correction — review results for accuracy.`
+            );
+          }
+
+          // Apply correction for drift up to 70% (Gemini can compress timestamps significantly)
+          if (residualDrift > 0.5 && residualDrift < 70) {
             for (const seg of segments) {
               seg.start *= residualScale;
               seg.end *= residualScale;

@@ -15,6 +15,8 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const audioFile = formData.get("audio") as File;
+    const audioDurationStr = formData.get("audioDuration") as string | null;
+    const audioDuration = audioDurationStr ? parseFloat(audioDurationStr) : 0;
 
     if (!audioFile) {
       return NextResponse.json({ error: "No audio file provided" }, { status: 400 });
@@ -26,6 +28,11 @@ export async function POST(request: NextRequest) {
     const base64Audio = Buffer.from(audioBytes).toString("base64");
 
     const mimeType = audioFile.type || "audio/wav";
+
+    // Build duration anchor for the prompt — helps Gemini calibrate endpoint timestamps
+    const durationAnchor = audioDuration > 0
+      ? `\n\nAUDIO DURATION ANCHOR: This audio file is EXACTLY ${audioDuration.toFixed(2)} seconds long. Your LAST word's end time MUST be within 1-2 seconds of ${audioDuration.toFixed(2)}s. If your last timestamp is significantly before ${audioDuration.toFixed(2)}s (e.g., ending at ${(audioDuration * 0.6).toFixed(0)}s instead of ${audioDuration.toFixed(0)}s), your timestamps are COMPRESSED and WRONG. Use ${audioDuration.toFixed(2)}s as your absolute calibration anchor.\n`
+      : "";
 
     const response = await ai.models.generateContent({
       model: "gemini-2.0-flash",
@@ -42,7 +49,7 @@ export async function POST(request: NextRequest) {
             {
               text: `You are a professional audio transcription engine specialized in Brazilian Portuguese (PT-BR). Your job is to produce perfectly synchronized word-level timestamps for subtitle generation.
 
-CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations.
+CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations.${durationAnchor}
 
 Return this exact JSON structure:
 {

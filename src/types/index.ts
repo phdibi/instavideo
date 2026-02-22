@@ -224,10 +224,3 @@ export interface BrandingConfig {
   contentPillar: ContentPillar;
 }
 
-// ===== Background Replacement System =====
-export interface BackgroundConfig {
-  enabled: boolean;
-  backgroundImageUrl?: string;     // URL or data URL of the background image
-  microphoneOverlay: boolean;      // Show virtual podcast microphone in front of person
-  edgeSmoothing: number;           // 0-1, controls mask edge feathering strength
-}

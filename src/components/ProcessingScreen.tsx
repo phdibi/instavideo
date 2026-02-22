@@ -201,14 +201,14 @@ function buildCaptionsFromTranscription(
   if (allWords.length === 0) return [];
 
   // ── Step 2: Group words into caption cards ──
-  // Authority mode: 2-3 words per card (tighter sync, like Captions app)
-  // Default mode: 3-5 words per card
+  // Authority mode: 2 words per card (tight, punchy sync)
+  // Default mode: 3 words per card
   // Rules:
   //  • Pause > threshold between words ALWAYS triggers a new card
   //  • Never exceed MAX_WORDS per card
   //  • A trailing filler word won't start a new card alone — attach to previous
-  const MAX_WORDS = authorityMode ? 3 : 5;
-  const PAUSE_THRESHOLD = authorityMode ? 0.3 : 0.4; // Authority: tighter grouping
+  const MAX_WORDS = authorityMode ? 2 : 3;
+  const PAUSE_THRESHOLD = authorityMode ? 0.25 : 0.35; // Tighter grouping for natural flow
   const SHORT_FILLERS = new Set([
     "a", "o", "e", "é", "de", "do", "da", "em", "no", "na",
     "um", "os", "as", "se", "ou", "que", "por", "ao", "dos",

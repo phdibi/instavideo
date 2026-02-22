@@ -251,8 +251,8 @@ function CaptionDisplay({
       case "center":
         if (hideKeyword && keywordLabel) {
           // Keyword is rendered by StableKeywordOverlay at top-[18%]
-          // Position subtitle BELOW the keyword to prevent overlap
-          return "top-[32%]";
+          // Position subtitle at the TOP of the video to avoid overlap
+          return "top-[4%]";
         }
         // Hook with keyword: position higher (like Captions app)
         return keywordLabel

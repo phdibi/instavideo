@@ -48,32 +48,41 @@ export default function CTAOverlay({ currentTime, videoDuration }: Props) {
       <AnimatePresence>
         {progress >= 0 && (
           <motion.div
-            className="absolute bottom-[20%] left-0 right-0 flex flex-col items-center"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
+            className="absolute top-[6%] right-[4%] flex flex-col items-end"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 10 }}
             transition={{ duration: 0.4, ease: "easeOut" }}
           >
-            <p
-              className="text-white font-bold text-center px-4"
+            <div
+              className="px-3 py-1.5 rounded-lg"
               style={{
-                fontSize: "clamp(14px, 3.5vw, 22px)",
-                textShadow: "0 2px 8px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5)",
-                letterSpacing: "0.02em",
+                backgroundColor: "rgba(0,0,0,0.5)",
+                backdropFilter: "blur(8px)",
               }}
             >
-              {text}
-            </p>
-            <motion.div
-              className="mt-2 rounded-full"
-              style={{
-                backgroundColor: accentColor,
-                height: "3px",
-              }}
-              initial={{ width: 0 }}
-              animate={{ width: "120px" }}
-              transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
-            />
+              <p
+                className="text-white font-bold text-right"
+                style={{
+                  fontSize: "clamp(11px, 2.5vw, 16px)",
+                  textShadow: "0 1px 4px rgba(0,0,0,0.6)",
+                  letterSpacing: "0.02em",
+                  lineHeight: 1.3,
+                }}
+              >
+                {text}
+              </p>
+              <motion.div
+                className="mt-1 rounded-full ml-auto"
+                style={{
+                  backgroundColor: accentColor,
+                  height: "2px",
+                }}
+                initial={{ width: 0 }}
+                animate={{ width: "60px" }}
+                transition={{ duration: 0.5, delay: 0.15, ease: "easeOut" }}
+              />
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

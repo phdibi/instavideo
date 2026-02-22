@@ -17,7 +17,7 @@ const aspectRatioConfig: Record<AspectRatio, { label: string; icon: React.ReactN
 };
 
 export default function ExportPanel() {
-  const { videoUrl, captions, effects, bRollImages, videoDuration, status, setStatus, brandingConfig, backgroundConfig } =
+  const { videoUrl, captions, effects, bRollImages, videoDuration, status, setStatus, brandingConfig } =
     useProjectStore();
   const [format, setFormat] = useState<ExportFormat>("webm");
   const [quality, setQuality] = useState<ExportQuality>("1080p");
@@ -123,33 +123,6 @@ export default function ExportPanel() {
           } catch {
             // Skip failed images
           }
-        }
-      }
-
-      // Pre-load background replacement resources if enabled
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let segService: any = null;
-      let bgImage: HTMLImageElement | null = null;
-
-      if (backgroundConfig.enabled) {
-        try {
-          const mod = await import("@/lib/segmentation");
-          await mod.SegmentationService.getInstance();
-          await mod.SegmentationService.setVideoMode();
-          segService = mod.SegmentationService;
-
-          // Load background image
-          if (backgroundConfig.backgroundImageUrl) {
-            bgImage = new Image();
-            bgImage.crossOrigin = "anonymous";
-            bgImage.src = backgroundConfig.backgroundImageUrl;
-            await new Promise<void>((resolve) => {
-              bgImage!.onload = () => resolve();
-              bgImage!.onerror = () => resolve(); // Continue without bg
-            });
-          }
-        } catch (err) {
-          console.warn("[CineAI] Failed to init segmentation for export:", err);
         }
       }
 
@@ -277,26 +250,6 @@ export default function ExportPanel() {
 
         ctx.drawImage(video, dx, dy, dw, dh);
         ctx.restore();
-
-        // Background replacement: person segmentation + custom background + microphone
-        if (segService && backgroundConfig.enabled) {
-          try {
-            const timestampMs = Math.round(time * 1000);
-            const mask = segService.segmentVideoFrame(video, timestampMs);
-            if (mask) {
-              segService.compositeFrame(
-                ctx, video, mask, bgImage, width, height,
-                backgroundConfig.edgeSmoothing
-              );
-              // Draw microphone overlay if enabled
-              if (backgroundConfig.microphoneOverlay) {
-                segService.drawMicrophone(ctx, width, height);
-              }
-            }
-          } catch {
-            // On segmentation error, keep the original frame
-          }
-        }
 
         // Draw B-roll overlay - FULLY OPAQUE with ken-burns effect
         const activeBRoll = bRollImages.find(
@@ -648,35 +601,51 @@ export default function ExportPanel() {
           if (time >= ctaStart && time <= videoDuration) {
             const ctaProgress = (time - ctaStart) / 3;
             const ctaFadeIn = Math.min(ctaProgress / 0.2, 1);
-            const ctaSlideUp = (1 - ctaFadeIn) * height * 0.03;
+            const ctaSlideX = (1 - ctaFadeIn) * width * 0.03;
 
             ctx.save();
             ctx.globalAlpha = ctaFadeIn * 0.95;
 
             const ctaText = getCTAText(brandingConfig.ctaTemplate, brandingConfig.ctaCustomText);
             const ctaAccent = getAccentColor();
-            const ctaFontSize = Math.max(12, Math.min(width * 0.025, 24));
-            const ctaY = height * 0.80 + ctaSlideUp;
+            const ctaFontSize = Math.max(10, Math.min(width * 0.018, 18));
+            const ctaPadX = width * 0.015;
+            const ctaPadY = height * 0.008;
+            const ctaX = width * 0.96 + ctaSlideX; // right-aligned
+            const ctaY = height * 0.06;
 
+            // Background pill
             ctx.font = `700 ${ctaFontSize}px Inter, system-ui, sans-serif`;
-            ctx.textAlign = "center";
-            ctx.fillStyle = "#FFFFFF";
-            ctx.shadowColor = "rgba(0,0,0,0.8)";
-            ctx.shadowBlur = 8;
-            ctx.fillText(ctaText, width / 2, ctaY);
-
-            // Accent underline
+            ctx.textAlign = "right";
             const textWidth = ctx.measureText(ctaText).width;
-            const underlineY = ctaY + ctaFontSize * 0.3;
+            const pillX = ctaX - textWidth - ctaPadX * 2;
+            const pillY = ctaY - ctaPadY;
+            const pillW = textWidth + ctaPadX * 2;
+            const pillH = ctaFontSize + ctaPadY * 2;
+
+            ctx.fillStyle = "rgba(0,0,0,0.5)";
+            ctx.beginPath();
+            ctx.roundRect(pillX, pillY, pillW, pillH, 6);
+            ctx.fill();
+
+            // Text
+            ctx.fillStyle = "#FFFFFF";
+            ctx.shadowColor = "rgba(0,0,0,0.6)";
+            ctx.shadowBlur = 4;
+            ctx.fillText(ctaText, ctaX - ctaPadX, ctaY + ctaFontSize * 0.75);
+
+            // Accent underline (right-aligned, shorter)
+            const underlineW = Math.min(60, textWidth * 0.5);
+            const underlineY = ctaY + ctaFontSize + ctaPadY * 0.5;
             ctx.shadowColor = "transparent";
             ctx.shadowBlur = 0;
             ctx.fillStyle = ctaAccent;
             ctx.beginPath();
             ctx.roundRect(
-              width / 2 - textWidth / 2,
+              ctaX - ctaPadX - underlineW,
               underlineY,
-              textWidth,
-              Math.max(2, height * 0.003),
+              underlineW,
+              Math.max(2, height * 0.002),
               2
             );
             ctx.fill();

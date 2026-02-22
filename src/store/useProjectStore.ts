@@ -67,7 +67,7 @@ const defaultTeleprompterSettings: TeleprompterSettings = {
 };
 
 const defaultBrandingConfig: BrandingConfig = {
-  name: process.env.NEXT_PUBLIC_BRAND_NAME || "Seu Nome",
+  name: process.env.NEXT_PUBLIC_BRAND_NAME || "Pedro Della Giustina",
   title: process.env.NEXT_PUBLIC_BRAND_TITLE || "Consultor de IA | Psicólogo",
   showWatermark: true,
   showCTA: true,

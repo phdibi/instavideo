@@ -162,7 +162,13 @@ export function detectPreset(
     return "talking-head-broll";
   }
 
-  // Rule 4: Default = talking head
+  // Rule 4: Longer segments (>3s) default to talking-head-broll for visual variety.
+  // Only short transitional moments stay as plain talking-head.
+  const segDuration = segment.endTime - segment.startTime;
+  if (segDuration > 3) {
+    return "talking-head-broll";
+  }
+
   return "talking-head";
 }
 
@@ -307,7 +313,7 @@ export function buildSegmentsFromTranscription(
 // - "ember": Warm salmon highlights, cream text, editorial/cinematic
 
 const hookCaptionStyle: Partial<CaptionStyle> = {
-  fontSize: 72,
+  fontSize: 68,
   fontWeight: 900,
   color: "#FFFFFF",
   backgroundColor: "transparent",
@@ -315,43 +321,43 @@ const hookCaptionStyle: Partial<CaptionStyle> = {
   position: "center",
   textAlign: "center",
   strokeColor: "#000000",
-  strokeWidth: 4,
-  shadowColor: "rgba(255,215,0,0.6)",
-  shadowBlur: 20,
+  strokeWidth: 3,
+  shadowColor: "rgba(255,215,0,0.35)",
+  shadowBlur: 14,
 };
 
 const talkingHeadCaptionStyle: Partial<CaptionStyle> = {
-  fontSize: 64,
-  fontWeight: 900,
+  fontSize: 58,
+  fontWeight: 800,
   color: "#FFFFFF",
   backgroundColor: "transparent",
   backgroundOpacity: 0,
   position: "bottom",
   textAlign: "center",
   strokeColor: "#000000",
-  strokeWidth: 3,
-  shadowColor: "rgba(0,0,0,0.9)",
-  shadowBlur: 8,
+  strokeWidth: 2.5,
+  shadowColor: "rgba(0,0,0,0.85)",
+  shadowBlur: 6,
 };
 
 const talkingHeadBrollCaptionStyle: Partial<CaptionStyle> = {
-  fontSize: 64,
-  fontWeight: 900,
+  fontSize: 58,
+  fontWeight: 800,
   color: "#FFFFFF",
   backgroundColor: "transparent",
   backgroundOpacity: 0,
   position: "bottom",
   textAlign: "center",
   strokeColor: "#000000",
-  strokeWidth: 3,
-  shadowColor: "rgba(0,0,0,0.9)",
-  shadowBlur: 10,
+  strokeWidth: 2.5,
+  shadowColor: "rgba(0,0,0,0.85)",
+  shadowBlur: 8,
 };
 
 const futuristicHudCaptionStyle: Partial<CaptionStyle> = {
   fontFamily: "JetBrains Mono, Fira Code, monospace",
-  fontSize: 58,
-  fontWeight: 800,
+  fontSize: 54,
+  fontWeight: 700,
   color: "#00FFFF",
   backgroundColor: "transparent",
   backgroundOpacity: 0,
@@ -359,8 +365,8 @@ const futuristicHudCaptionStyle: Partial<CaptionStyle> = {
   textAlign: "center",
   strokeColor: "#000000",
   strokeWidth: 2,
-  shadowColor: "rgba(0,255,255,0.5)",
-  shadowBlur: 14,
+  shadowColor: "rgba(0,255,255,0.35)",
+  shadowBlur: 10,
 };
 
 // ===== Ember theme overrides =====
@@ -386,21 +392,21 @@ const emberTalkingHeadBrollCaptionStyle: Partial<CaptionStyle> = {
 // Bold italic, metallic golden accents, scanline effects
 const velocityHookCaptionStyle: Partial<CaptionStyle> = {
   ...hookCaptionStyle,
-  shadowColor: "rgba(255,215,0,0.6)", // Golden glow
-  shadowBlur: 24,
+  shadowColor: "rgba(255,215,0,0.35)", // Subtle golden glow
+  shadowBlur: 14,
   strokeWidth: 3,
 };
 
 const velocityTalkingHeadCaptionStyle: Partial<CaptionStyle> = {
   ...talkingHeadCaptionStyle,
-  shadowColor: "rgba(255,215,0,0.5)",
-  shadowBlur: 12,
+  shadowColor: "rgba(255,215,0,0.3)",
+  shadowBlur: 8,
 };
 
 const velocityTalkingHeadBrollCaptionStyle: Partial<CaptionStyle> = {
   ...talkingHeadBrollCaptionStyle,
-  shadowColor: "rgba(255,215,0,0.5)",
-  shadowBlur: 12,
+  shadowColor: "rgba(255,215,0,0.3)",
+  shadowBlur: 8,
 };
 
 // ===== Authority theme overrides =====
@@ -708,8 +714,8 @@ function applyHookPreset(
       ? velocityHookCaptionStyle
       : useEmberTheme ? emberHookCaptionStyle : hookCaptionStyle;
   const usesDualLayer = useEmberTheme || useVelocityTheme || useAuthorityTheme;
-  // Authority: "slide-up" for a controlled, confident entrance (not bouncy "pop")
-  const hookAnimation = useAuthorityTheme ? "slide-up" as const : "pop" as const;
+  // Controlled, confident entrance for all themes — calm and elegant
+  const hookAnimation = "slide-up" as const;
   const updatedCaptions = segCaptions.map(c => ({
     ...c,
     style: { ...c.style, ...captionStyle },
@@ -725,17 +731,16 @@ function applyHookPreset(
   const duration = segment.endTime - segment.startTime;
   const newEffects: EditEffect[] = [];
 
-  // Zoom-in on presenter face
-  // Authority: gentler zoom — confident, not aggressive (1.25 vs 1.55)
+  // Gentle zoom-in on presenter face — confident, not aggressive
   newEffects.push({
     id: `preset_hook_zoom_${segment.id}`,
     type: "zoom-in",
     startTime: segment.startTime,
     endTime: segment.endTime,
     params: {
-      scale: useAuthorityTheme ? 1.25 : 1.55,
+      scale: 1.25,
       focusX: 0.5,
-      focusY: useAuthorityTheme ? 0.35 : 0.3,
+      focusY: 0.35,
     },
   });
 
@@ -753,13 +758,13 @@ function applyHookPreset(
     });
   }
 
-  // Abrupt cut transition at end (short transition-glitch for urgency)
+  // Clean fade transition at end — elegant, not jarring
   newEffects.push({
     id: `preset_hook_cut_${segment.id}`,
-    type: "transition-glitch",
-    startTime: segment.endTime - 0.15,
+    type: "transition-fade",
+    startTime: segment.endTime - 0.2,
     endTime: segment.endTime + 0.1,
-    params: { intensity: 3, duration: 0.25 },
+    params: { duration: 0.3 },
   });
 
   return { updatedCaptions, newEffects, newBroll: [] };
@@ -787,11 +792,8 @@ function applyTalkingHeadPreset(
     const isKeywordCaption = !!(usesDualLayer && wordCount <= 2
       && segment.keywordHighlight
       && c.text.toLowerCase().includes(segment.keywordHighlight.toLowerCase()));
-    // Authority: "slide-up" for longer captions (clean entry, no bounce),
-    // "fade" for short punchy (subtle presence)
-    const animation = useAuthorityTheme
-      ? (wordCount <= 2 ? "fade" as const : "slide-up" as const)
-      : (wordCount <= 2 ? "pop" as const : "karaoke" as const);
+    // Clean, calm animations for all themes — "fade" for short, "slide-up" for longer
+    const animation = wordCount <= 2 ? "fade" as const : "slide-up" as const;
     return {
       ...c,
       style: { ...c.style, ...captionStyle },
@@ -806,44 +808,23 @@ function applyTalkingHeadPreset(
   const newEffects: EditEffect[] = [];
   const duration = segment.endTime - segment.startTime;
 
-  // Slow zoom-pulse synchronized with speech rhythm
-  // Authority: much calmer — every 6s with subtle scale, no alternating
-  // Other themes: every 3s with stronger scale, alternating in/out
-  if (useAuthorityTheme) {
-    // Authority: single gentle zoom-in per segment (max one), very subtle
-    if (duration > 3) {
-      newEffects.push({
-        id: `preset_th_zoom_${segment.id}`,
-        type: "zoom-in",
-        startTime: segment.startTime,
-        endTime: segment.endTime,
-        params: { scale: 1.06, focusX: 0.5, focusY: 0.38 },
-      });
-    }
-    // Short authority segments: no zoom at all (keep steady, natural)
-  } else if (duration > 2) {
-    const pulseCount = Math.floor(duration / 3);
-    for (let i = 0; i < Math.max(1, pulseCount); i++) {
-      const pulseStart = segment.startTime + i * 3;
-      const pulseEnd = Math.min(pulseStart + 3, segment.endTime);
-      if (pulseEnd - pulseStart < 1) break;
-
-      newEffects.push({
-        id: `preset_th_pulse_${segment.id}_${i}`,
-        type: i % 2 === 0 ? "zoom-in" : "zoom-out",
-        startTime: pulseStart,
-        endTime: pulseEnd,
-        params: { scale: 1.18, focusX: 0.5, focusY: 0.35 },
-      });
-    }
-  } else {
-    // Short segment: single gentle zoom-pulse
+  // Single gentle zoom per segment — calm, conversational
+  if (duration > 3) {
+    newEffects.push({
+      id: `preset_th_zoom_${segment.id}`,
+      type: "zoom-in",
+      startTime: segment.startTime,
+      endTime: segment.endTime,
+      params: { scale: 1.06, focusX: 0.5, focusY: 0.38 },
+    });
+  } else if (duration > 1.5) {
+    // Short segment: very subtle zoom-pulse
     newEffects.push({
       id: `preset_th_zoom_${segment.id}`,
       type: "zoom-pulse",
       startTime: segment.startTime,
       endTime: segment.endTime,
-      params: { scale: 1.06 },
+      params: { scale: 1.04 },
     });
   }
 
@@ -871,10 +852,8 @@ function applyTalkingHeadBrollPreset(
     const isKeywordCaption = !!(usesDualLayer && wordCount <= 2
       && segment.keywordHighlight
       && c.text.toLowerCase().includes(segment.keywordHighlight.toLowerCase()));
-    // Authority: cleaner animations (fade/slide-up)
-    const animation = useAuthorityTheme
-      ? (wordCount <= 2 ? "fade" as const : "slide-up" as const)
-      : (wordCount <= 2 ? "pop" as const : "karaoke" as const);
+    // Clean, calm animations — "fade" for short, "slide-up" for longer
+    const animation = wordCount <= 2 ? "fade" as const : "slide-up" as const;
     return {
       ...c,
       style: { ...c.style, ...captionStyle },
@@ -912,14 +891,13 @@ function applyTalkingHeadBrollPreset(
       cinematicOverlay: true,
     });
 
-    // Zoom-in on B-Roll for professional camera movement
-    // Authority: barely perceptible zoom — let the image speak
+    // Gentle zoom on B-Roll — subtle camera movement, let the image speak
     newEffects.push({
       id: `preset_thbr_zoom_${segment.id}`,
       type: "zoom-in",
       startTime: brollStart,
       endTime: brollEnd,
-      params: { scale: useAuthorityTheme ? 1.05 : 1.12, focusX: 0.5, focusY: 0.5 },
+      params: { scale: 1.06, focusX: 0.5, focusY: 0.5 },
     });
   }
 
@@ -941,7 +919,7 @@ function applyFuturisticHudPreset(
     return {
       ...c,
       style: { ...c.style, ...futuristicHudCaptionStyle },
-      animation: wordCount <= 2 ? "pop" as const : "glow" as const,
+      animation: wordCount <= 2 ? "fade" as const : "glow" as const,
       emphasis: segment.keywordHighlight ? [segment.keywordHighlight] : c.emphasis,
       emoji: c.emoji,
       topicLabel: topicLabel.length >= 3 ? topicLabel : undefined,
@@ -961,13 +939,13 @@ function applyFuturisticHudPreset(
     params: { preset: "cold-thriller" },
   });
 
-  // Intense vignette
+  // Moderate vignette — elegant, not heavy
   newEffects.push({
     id: `preset_hud_vignette_${segment.id}`,
     type: "vignette",
     startTime: segment.startTime,
     endTime: segment.endTime,
-    params: { intensity: 0.45 },
+    params: { intensity: 0.30 },
   });
 
   // B-Roll with futuristic theme
@@ -998,13 +976,13 @@ function applyFuturisticHudPreset(
     });
   }
 
-  // Glitch transition at segment boundaries
+  // Clean fade transition at segment boundaries
   newEffects.push({
-    id: `preset_hud_glitch_${segment.id}`,
-    type: "transition-glitch",
+    id: `preset_hud_fade_${segment.id}`,
+    type: "transition-fade",
     startTime: segment.endTime - 0.2,
     endTime: segment.endTime + 0.1,
-    params: { intensity: 4, duration: 0.3 },
+    params: { duration: 0.3 },
   });
 
   return { updatedCaptions, newEffects, newBroll };
@@ -1091,7 +1069,7 @@ export function applyAllPresets(
       type: "vignette",
       startTime: 0,
       endTime: videoDuration,
-      params: { intensity: useAuthorityTheme ? 0.22 : useVelocityTheme ? 0.35 : useEmberTheme ? 0.28 : 0.2 },
+      params: { intensity: useAuthorityTheme ? 0.20 : useVelocityTheme ? 0.22 : useEmberTheme ? 0.22 : 0.18 },
     });
   }
 

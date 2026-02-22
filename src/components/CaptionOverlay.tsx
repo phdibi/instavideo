@@ -325,7 +325,7 @@ function CaptionDisplay({
         {caption.topicLabel && !keywordLabel && (
           <motion.div
             className="mb-1.5 px-3 py-0.5 rounded-full"
-            initial={{ opacity: 0, y: 6, scale: 0.8 }}
+            initial={{ opacity: 0, y: 4, scale: 0.92 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             transition={{ duration: 0.2, delay: 0.05 }}
             style={{
@@ -350,13 +350,12 @@ function CaptionDisplay({
         {keywordLabel && !hideKeyword && (
           <motion.div
             className="mb-2 flex flex-col items-center justify-center"
-            initial={{ opacity: 0, scale: theme === "velocity" ? 0.5 : (theme === "authority" ? 0.85 : 0.7), y: theme === "velocity" ? 15 : (theme === "authority" ? 6 : 10) }}
+            initial={{ opacity: 0, scale: 0.9, y: 6 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             transition={{
-              type: theme === "authority" ? "tween" as const : "spring" as const,
-              ...(theme === "authority"
-                ? { duration: 0.25, ease: "easeOut" as const }
-                : { damping: theme === "velocity" ? 12 : 14, stiffness: theme === "velocity" ? 320 : 280 }),
+              type: "tween" as const,
+              duration: 0.25,
+              ease: "easeOut" as const,
               delay: 0.02,
             }}
             style={{
@@ -460,12 +459,12 @@ function CaptionDisplay({
         {caption.emoji && !keywordLabel && (
           <motion.div
             className="mb-1"
-            initial={{ opacity: 0, scale: 0.3, y: 8 }}
+            initial={{ opacity: 0, scale: 0.8, y: 4 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             transition={{
-              type: "spring",
-              damping: 12,
-              stiffness: 300,
+              type: "tween",
+              duration: 0.2,
+              ease: "easeOut",
               delay: 0.03,
             }}
             style={{
@@ -534,12 +533,13 @@ function CaptionDisplay({
             // Ember style: emphasis is bold but NOT italic (editorial/clean)
             // Velocity style: ultra-bold italic with stronger scale
             // Authority style: NO italic, subtle scale — confident, not flashy
+            // Subtle emphasis — confident, not flashy
             const emphasisScale = isEmphasized
-              ? (theme === "velocity" ? 1.15 : theme === "authority" ? 1.05 : theme === "ember" ? 1.08 : 1.12)
+              ? (theme === "authority" ? 1.05 : 1.06)
               : 1;
             const emphasisFontStyle = isEmphasized
-              ? (theme === "ember" || theme === "authority" ? "normal" : "italic")
-              : (theme === "velocity" ? "italic" : "normal");
+              ? "normal" // No italic — clean and professional across all themes
+              : "normal";
 
             return (
               <motion.span
@@ -550,10 +550,10 @@ function CaptionDisplay({
                   scale: isEmphasized
                     ? emphasisScale
                     : wordState.isActive && !isAllActive
-                      ? (theme === "authority" ? 1.04 : 1.1) // Authority: subtle word pop
+                      ? 1.04 // Subtle word pop — calm and elegant
                       : 1,
                   y: wordState.isActive && !isAllActive
-                    ? (theme === "authority" ? -1 : -2) // Authority: minimal lift
+                    ? -1 // Minimal lift — conversational, not bouncy
                     : 0,
                 }}
                 transition={{ duration: 0.1, ease: "easeOut" }}

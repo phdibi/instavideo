@@ -33,6 +33,8 @@ export interface CaptionStyle {
   shadowColor: string;
   shadowBlur: number;
   letterSpacing?: string;
+  offsetX?: number; // Horizontal offset in % (-50 to 50), 0 = center
+  offsetY?: number; // Vertical offset in % (-50 to 50), 0 = default position
 }
 
 export type CaptionAnimation =
@@ -81,15 +83,31 @@ export type EffectType =
   | "flash"
   | "blur-background";
 
+export type BRollAnimation =
+  | "fade"
+  | "slide"
+  | "zoom"
+  | "ken-burns"
+  | "pan-left"
+  | "pan-up"
+  | "pan-down"
+  | "blur-in"
+  | "cinematic-reveal"  // Zoom out from detail → full frame with blur transition
+  | "glitch-in"         // Quick digital glitch effect on entry
+  | "parallax";         // Multi-layer parallax depth movement
+
+export type BRollPosition = "fullscreen" | "overlay" | "split" | "pip";
+
 export interface BRollImage {
   id: string;
   url: string;
   prompt: string;
   startTime: number;
   endTime: number;
-  animation: "fade" | "slide" | "zoom" | "ken-burns" | "pan-left" | "pan-up" | "pan-down" | "blur-in";
+  animation: BRollAnimation;
   opacity: number;
-  position: "fullscreen" | "overlay" | "split" | "pip";
+  position: BRollPosition;
+  cinematicOverlay?: boolean;  // Auto gradient overlay for professional look (default: true)
 }
 
 export interface AudioSegment {

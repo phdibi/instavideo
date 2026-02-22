@@ -147,7 +147,7 @@ export default function VideoPreview() {
     [bRollImages, currentTime]
   );
 
-  // B-Roll animation: respects the `animation` property chosen in the sidebar
+  // B-Roll animation: respects the `animation` and `position` properties
   const bRollStyle = useMemo(() => {
     if (!activeBRoll) return null;
     const duration = activeBRoll.endTime - activeBRoll.startTime;
@@ -172,42 +172,62 @@ export default function VideoPreview() {
 
     switch (animation) {
       case "fade":
-        // Pure fade — no movement
         break;
       case "slide":
-        // Horizontal pan from left to right
-        translateX = (progress - 0.5) * -6; // -3% to +3%
+        translateX = (progress - 0.5) * -6;
         break;
       case "zoom":
-        // Smooth zoom in
         scale = 1 + progress * 0.2;
         break;
       case "pan-left":
-        // Pan from right to left
-        translateX = (1 - progress) * 4 - 2; // +2% to -2%
+        translateX = (1 - progress) * 4 - 2;
         break;
       case "pan-up":
-        // Pan from bottom to top
         translateY = (1 - progress) * 4 - 2;
         break;
       case "pan-down":
-        // Pan from top to bottom
         translateY = progress * 4 - 2;
         break;
       case "blur-in":
-        // Start blurred, become clear
         scale = 1 + (1 - progress) * 0.05;
+        break;
+      case "cinematic-reveal":
+        // Start zoomed in on detail, zoom out to reveal full image
+        scale = 1.4 - progress * 0.4;
+        translateY = (1 - progress) * -3;
+        break;
+      case "glitch-in": {
+        // Quick glitch on entry, then stabilize with subtle zoom
+        const glitchPhase = Math.min(progress / 0.2, 1);
+        if (glitchPhase < 1) {
+          const glitchAmount = (1 - glitchPhase) * 3;
+          translateX = Math.sin(glitchPhase * Math.PI * 8) * glitchAmount;
+          translateY = Math.cos(glitchPhase * Math.PI * 6) * glitchAmount * 0.5;
+        }
+        scale = 1 + progress * 0.06;
+        break;
+      }
+      case "parallax":
+        // Multi-layer depth movement
+        scale = 1.08;
+        translateX = (progress - 0.5) * -4;
+        translateY = Math.sin(progress * Math.PI) * -2;
         break;
       case "ken-burns":
       default:
-        // Classic ken-burns: zoom + pan
         scale = 1 + progress * 0.12;
         translateX = progress * -2;
         translateY = progress * -1;
         break;
     }
 
-    const blurAmount = animation === "blur-in" ? (1 - progress) * 8 : 0; // 8px blur → 0
+    const blurAmount = animation === "blur-in"
+      ? (1 - progress) * 8
+      : animation === "cinematic-reveal"
+        ? Math.max(0, (1 - progress * 3)) * 4
+        : animation === "glitch-in" && progress < 0.15
+          ? (1 - progress / 0.15) * 3
+          : 0;
 
     return {
       opacity,
@@ -219,6 +239,25 @@ export default function VideoPreview() {
       ...(blurAmount > 0 ? { filter: `blur(${blurAmount}px)` } : {}),
     } as React.CSSProperties;
   }, [activeBRoll, currentTime]);
+
+  // B-Roll position mode class names (fullscreen, overlay, split, pip)
+  const bRollPositionClass = useMemo(() => {
+    if (!activeBRoll) return "absolute inset-0";
+    switch (activeBRoll.position) {
+      case "pip":
+        return "absolute bottom-[15%] right-[4%] w-[35%] h-[30%] rounded-xl overflow-hidden shadow-2xl";
+      case "overlay":
+        return "absolute inset-[8%] rounded-2xl overflow-hidden shadow-2xl";
+      case "split":
+        return "absolute top-0 right-0 w-[50%] h-full";
+      case "fullscreen":
+      default:
+        return "absolute inset-0";
+    }
+  }, [activeBRoll]);
+
+  // B-Roll cinematic gradient overlay (auto-enabled)
+  const showCinematicOverlay = activeBRoll && (activeBRoll.cinematicOverlay !== false);
 
   // Compute transform style based on active effects
   const videoStyle = useMemo(() => {
@@ -501,12 +540,33 @@ export default function VideoPreview() {
             playsInline
           />
 
-          {/* B-Roll overlay - FULLY OPAQUE with ken-burns effect */}
+          {/* B-Roll overlay - supports position modes + cinematic overlay */}
           {activeBRoll && bRollStyle && (
-            <div
-              className="absolute inset-0 z-10"
-              style={bRollStyle}
-            />
+            <div className={`${bRollPositionClass} z-10`}>
+              {/* B-Roll image with animation */}
+              <div
+                className="absolute inset-0"
+                style={bRollStyle}
+              />
+              {/* Cinematic gradient overlay — dark top/bottom for professional look */}
+              {showCinematicOverlay && (
+                <div
+                  className="absolute inset-0 pointer-events-none"
+                  style={{
+                    background: "linear-gradient(to bottom, rgba(0,0,0,0.25) 0%, transparent 30%, transparent 70%, rgba(0,0,0,0.35) 100%)",
+                  }}
+                />
+              )}
+              {/* Border glow for non-fullscreen positions */}
+              {activeBRoll.position !== "fullscreen" && (
+                <div
+                  className="absolute inset-0 pointer-events-none rounded-[inherit]"
+                  style={{
+                    boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.15)",
+                  }}
+                />
+              )}
+            </div>
           )}
 
           {/* Vignette overlay */}

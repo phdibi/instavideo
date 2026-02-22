@@ -93,7 +93,7 @@ export default function UploadScreen() {
   ];
 
   return (
-    <div className="flex flex-col items-center min-h-[100dvh] p-4 pt-6 md:p-8 md:pt-10 overflow-y-auto">
+    <div className="flex flex-col items-center h-[100dvh] p-4 pt-6 md:p-8 md:pt-10 overflow-y-auto">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

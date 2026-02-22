@@ -251,7 +251,7 @@ export default function ExportPanel() {
         ctx.drawImage(video, dx, dy, dw, dh);
         ctx.restore();
 
-        // Draw B-roll overlay - FULLY OPAQUE with ken-burns effect
+        // Draw B-roll overlay with position modes, animations, and cinematic overlay
         const activeBRoll = bRollImages.find(
           (b) => b.url && time >= b.startTime && time <= b.endTime
         );
@@ -261,23 +261,145 @@ export default function ExportPanel() {
             const bDuration = activeBRoll.endTime - activeBRoll.startTime;
             const bProgress = Math.min(Math.max((time - activeBRoll.startTime) / bDuration, 0), 1);
 
-            // Fade in/out at edges, respecting stored opacity
+            // Fade in/out envelope
             let bOpacity = activeBRoll.opacity ?? 1;
             if (bProgress < 0.15) bOpacity *= bProgress / 0.15;
             else if (bProgress > 0.85) bOpacity *= (1 - bProgress) / 0.15;
 
-            // Ken Burns: slow zoom + slight pan
-            const bScale = 1 + bProgress * 0.12;
-            const bPanX = bProgress * -width * 0.02;
-            const bPanY = bProgress * -height * 0.01;
+            // Position mode bounds
+            let bx = 0, by = 0, bw = width, bh = height;
+            const pos = activeBRoll.position || "fullscreen";
+            switch (pos) {
+              case "pip":
+                bw = Math.round(width * 0.35);
+                bh = Math.round(height * 0.3);
+                bx = width - bw - Math.round(width * 0.04);
+                by = Math.round(height * 0.55);
+                break;
+              case "overlay":
+                bx = Math.round(width * 0.08);
+                by = Math.round(height * 0.08);
+                bw = width - bx * 2;
+                bh = height - by * 2;
+                break;
+              case "split":
+                bx = Math.round(width * 0.5);
+                bw = Math.round(width * 0.5);
+                break;
+            }
+
+            // Animation transforms
+            let bScale = 1;
+            let bPanX = 0;
+            let bPanY = 0;
+            let bBlur = 0;
+            const anim = activeBRoll.animation || "ken-burns";
+
+            switch (anim) {
+              case "fade": break;
+              case "slide":
+                bPanX = (bProgress - 0.5) * -bw * 0.06;
+                break;
+              case "zoom":
+                bScale = 1 + bProgress * 0.2;
+                break;
+              case "pan-left":
+                bPanX = ((1 - bProgress) * 4 - 2) * bw * 0.01;
+                break;
+              case "pan-up":
+                bPanY = ((1 - bProgress) * 4 - 2) * bh * 0.01;
+                break;
+              case "pan-down":
+                bPanY = (bProgress * 4 - 2) * bh * 0.01;
+                break;
+              case "blur-in":
+                bScale = 1 + (1 - bProgress) * 0.05;
+                bBlur = (1 - bProgress) * 8;
+                break;
+              case "cinematic-reveal":
+                bScale = 1.4 - bProgress * 0.4;
+                bPanY = (1 - bProgress) * -bh * 0.03;
+                bBlur = Math.max(0, (1 - bProgress * 3)) * 4;
+                break;
+              case "glitch-in": {
+                const gp = Math.min(bProgress / 0.2, 1);
+                if (gp < 1) {
+                  const ga = (1 - gp) * 3;
+                  bPanX = Math.sin(gp * Math.PI * 8) * ga * bw * 0.01;
+                  bPanY = Math.cos(gp * Math.PI * 6) * ga * 0.5 * bh * 0.01;
+                }
+                bScale = 1 + bProgress * 0.06;
+                if (bProgress < 0.15) bBlur = (1 - bProgress / 0.15) * 3;
+                break;
+              }
+              case "parallax":
+                bScale = 1.08;
+                bPanX = (bProgress - 0.5) * -bw * 0.04;
+                bPanY = Math.sin(bProgress * Math.PI) * -bh * 0.02;
+                break;
+              case "ken-burns":
+              default:
+                bScale = 1 + bProgress * 0.12;
+                bPanX = bProgress * -bw * 0.02;
+                bPanY = bProgress * -bh * 0.01;
+                break;
+            }
 
             ctx.save();
             ctx.globalAlpha = bOpacity;
-            ctx.translate(width / 2 + bPanX, height / 2 + bPanY);
+
+            // Clip to position bounds for non-fullscreen
+            if (pos !== "fullscreen") {
+              ctx.beginPath();
+              if (pos === "pip" || pos === "overlay") {
+                const r = pos === "pip" ? 12 : 16;
+                ctx.roundRect(bx, by, bw, bh, r);
+              } else {
+                ctx.rect(bx, by, bw, bh);
+              }
+              ctx.clip();
+            }
+
+            // Apply blur if needed
+            if (bBlur > 0) ctx.filter = `blur(${bBlur}px)`;
+
+            // Draw B-roll image with animation transform
+            const cx = bx + bw / 2 + bPanX;
+            const cy = by + bh / 2 + bPanY;
+            ctx.translate(cx, cy);
             ctx.scale(bScale, bScale);
-            ctx.translate(-width / 2, -height / 2);
-            ctx.drawImage(img, 0, 0, width, height);
+            ctx.translate(-bw / 2, -bh / 2);
+            ctx.drawImage(img, 0, 0, bw, bh);
+            ctx.filter = "none";
+
+            // Cinematic gradient overlay
+            if (activeBRoll.cinematicOverlay !== false) {
+              ctx.translate(bw / 2, bh / 2);
+              ctx.scale(1 / bScale, 1 / bScale);
+              ctx.translate(-cx, -cy);
+              const grad = ctx.createLinearGradient(bx, by, bx, by + bh);
+              grad.addColorStop(0, "rgba(0,0,0,0.25)");
+              grad.addColorStop(0.3, "rgba(0,0,0,0)");
+              grad.addColorStop(0.7, "rgba(0,0,0,0)");
+              grad.addColorStop(1, "rgba(0,0,0,0.35)");
+              ctx.fillStyle = grad;
+              ctx.fillRect(bx, by, bw, bh);
+            }
+
             ctx.restore();
+
+            // Border for non-fullscreen positions
+            if (pos !== "fullscreen") {
+              ctx.save();
+              ctx.globalAlpha = bOpacity * 0.15;
+              ctx.strokeStyle = "#FFFFFF";
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              const r = pos === "pip" ? 12 : pos === "overlay" ? 16 : 0;
+              ctx.roundRect(bx, by, bw, bh, r);
+              ctx.stroke();
+              ctx.restore();
+            }
           }
         }
 
@@ -328,11 +450,7 @@ export default function ExportPanel() {
 
         let caption = activeCaptions.length > 0 ? activeCaptions[0] : null;
 
-        // Hide bottom captions during CTA (last 3 seconds) to prevent overlap
-        const ctaShowing = brandingConfig.showCTA && videoDuration >= 6 && time >= (videoDuration - 3);
-        if (ctaShowing && caption?.style.position === "bottom") {
-          caption = null;
-        }
+        // CTA is now at top-right — no need to hide bottom captions
 
         if (caption) {
           const captionDuration = caption.endTime - caption.startTime;
@@ -350,12 +468,23 @@ export default function ExportPanel() {
 
           // Match CaptionOverlay positions: top-[8%], center (or 18% for hook with keyword), bottom-[12%]
           const isHookWithKeyword = caption.style.position === "center" && caption.keywordLabel;
-          const y =
+          // When keyword is displayed separately (hideKeyword), subtitle goes to top-[4%]
+          const hideKeyword = !!caption.keywordLabel;
+          let y =
             caption.style.position === "top"
               ? height * 0.08
               : caption.style.position === "center"
-              ? (isHookWithKeyword ? height * 0.18 : height / 2)
+              ? (hideKeyword ? height * 0.04 : isHookWithKeyword ? height * 0.18 : height / 2)
               : height * 0.88;
+
+          // Apply user offset adjustments
+          if (caption.style.offsetX) {
+            // offsetX shifts horizontally — applied as translate in canvas
+            // We'll apply this when drawing text below
+          }
+          if (caption.style.offsetY) {
+            y += (caption.style.offsetY / 100) * height;
+          }
 
           // Theme-aware highlight colors matching CaptionOverlay THEME_COLORS
           const highlightColor = isAuthorityTheme()
@@ -374,9 +503,10 @@ export default function ExportPanel() {
                 : "rgba(204,255,0,0.4)";
 
           // Draw keyword label (Ember/Velocity dual-layer) ABOVE subtitle
+          // Keyword renders at the position the user chose (with offsets applied to y already)
+          // But keyword has its own vertical position (top-[18%] for hook)
           if (caption.keywordLabel) {
             const isHookKw = caption.style.position === "center";
-            // Hook keywords: much larger (like Captions app); non-hook: moderate
             const kwFontSize = isHookKw
               ? caption.style.fontSize * (isVelocityTheme() ? 0.85 : 0.75)
               : caption.style.fontSize * (isVelocityTheme() ? 0.55 : 0.5);
@@ -384,7 +514,12 @@ export default function ExportPanel() {
             ctx.font = kwFont;
             ctx.textAlign = "center";
 
-            const kwY = y + kwFontSize * 0.35;
+            // Keyword position: top-[18%] for hook, top-[8%] for others
+            const kwBaseY = isHookKw ? height * 0.18 : height * 0.08;
+            const kwOffsetY = caption.style.offsetY ? (caption.style.offsetY / 100) * height : 0;
+            const kwOffsetX = caption.style.offsetX ? (caption.style.offsetX / 100) * width : 0;
+            const kwCenterX = width / 2 + kwOffsetX;
+            const kwY = kwBaseY + kwOffsetY + kwFontSize * 0.35;
 
             // Decorative quote above keyword (centered)
             if (caption.keywordQuotes) {
@@ -399,7 +534,7 @@ export default function ExportPanel() {
               ctx.shadowColor = "rgba(0,0,0,0.6)";
               ctx.shadowBlur = 6;
               ctx.textAlign = "center";
-              ctx.fillText("\u201C", width / 2, kwY - kwFontSize * 0.9);
+              ctx.fillText("\u201C", kwCenterX, kwY - kwFontSize * 0.9);
               ctx.globalAlpha = 1;
             }
 
@@ -413,8 +548,8 @@ export default function ExportPanel() {
               ctx.lineJoin = "round";
               ctx.shadowColor = "transparent";
               ctx.shadowBlur = 0;
-              const offsetY = kwFontSize * 0.04;
-              ctx.strokeText(caption.keywordLabel, width / 2, kwY + offsetY);
+              const kwStrokeOffsetY = kwFontSize * 0.04;
+              ctx.strokeText(caption.keywordLabel, kwCenterX, kwY + kwStrokeOffsetY);
             }
 
             // Front layer: colored fill
@@ -425,7 +560,7 @@ export default function ExportPanel() {
               ? "rgba(0,0,0,0.8)"
               : "rgba(0,0,0,0.7)";
             ctx.shadowBlur = isVelocityTheme() ? 10 : 8;
-            ctx.fillText(caption.keywordLabel, width / 2, kwY);
+            ctx.fillText(caption.keywordLabel, kwCenterX, kwY);
 
             ctx.shadowColor = "transparent";
             ctx.shadowBlur = 0;
@@ -480,8 +615,9 @@ export default function ExportPanel() {
                   .toString(16)
                   .padStart(2, "0");
               ctx.beginPath();
+              const bgXOffset = caption.style.offsetX ? (caption.style.offsetX / 100) * width : 0;
               ctx.roundRect(
-                width / 2 - totalTextWidth / 2 - bgPad,
+                width / 2 - totalTextWidth / 2 - bgPad + bgXOffset,
                 y - textHeight * 0.7 - bgPad / 2,
                 totalTextWidth + bgPad * 2,
                 textHeight + bgPad,
@@ -490,7 +626,8 @@ export default function ExportPanel() {
               ctx.fill();
             }
 
-            let currentX = width / 2 - totalTextWidth / 2;
+            const xOffset = caption.style.offsetX ? (caption.style.offsetX / 100) * width : 0;
+            let currentX = width / 2 - totalTextWidth / 2 + xOffset;
             ctx.textAlign = "left";
             ctx.lineJoin = "round";
             ctx.miterLimit = 2;

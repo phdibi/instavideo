@@ -52,6 +52,8 @@ export default function PresetPanel() {
     videoDuration,
     editPlan,
     setCurrentTime,
+    brandingConfig,
+    setBrandingConfig,
   } = useProjectStore();
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -357,6 +359,39 @@ export default function PresetPanel() {
           })}
         </div>
       )}
+
+      {/* Personal Branding */}
+      <div className="p-3 border-b border-[var(--border)] space-y-2">
+        <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide font-semibold">
+          Branding Pessoal
+        </p>
+        <div className="grid grid-cols-1 gap-2">
+          <div>
+            <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
+              Nome
+            </label>
+            <input
+              type="text"
+              value={brandingConfig.name}
+              onChange={(e) => setBrandingConfig({ name: e.target.value })}
+              className="w-full mt-0.5 p-2 text-sm bg-[var(--background)] border border-[var(--border)] rounded-lg focus:border-[var(--accent)] focus:outline-none"
+              placeholder="Seu Nome"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
+              Título / Profissão
+            </label>
+            <input
+              type="text"
+              value={brandingConfig.title}
+              onChange={(e) => setBrandingConfig({ title: e.target.value })}
+              className="w-full mt-0.5 p-2 text-sm bg-[var(--background)] border border-[var(--border)] rounded-lg focus:border-[var(--accent)] focus:outline-none"
+              placeholder="Consultor de IA | Psicólogo"
+            />
+          </div>
+        </div>
+      </div>
 
       {/* Segment list */}
       <div className="flex-1 overflow-y-auto">

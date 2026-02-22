@@ -8,9 +8,21 @@ import {
   RefreshCw,
   Download,
   Pencil,
+  Maximize,
+  Layers,
+  LayoutPanelLeft,
+  PictureInPicture2,
 } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { formatTime } from "@/lib/formatTime";
+import type { BRollAnimation, BRollPosition } from "@/types";
+
+const positionOptions: { value: BRollPosition; label: string; icon: React.ReactNode }[] = [
+  { value: "fullscreen", label: "Tela Cheia", icon: <Maximize className="w-3 h-3" /> },
+  { value: "overlay", label: "Sobreposição", icon: <Layers className="w-3 h-3" /> },
+  { value: "split", label: "Split", icon: <LayoutPanelLeft className="w-3 h-3" /> },
+  { value: "pip", label: "PiP", icon: <PictureInPicture2 className="w-3 h-3" /> },
+];
 
 export default function BRollPanel() {
   const { bRollImages, updateBRollImage, deleteBRollImage, setCurrentTime, selectedItem } =
@@ -265,25 +277,58 @@ export default function BRollPanel() {
                       </div>
                     )}
 
-                    {/* Controls */}
+                    {/* Position mode selector */}
+                    <div>
+                      <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
+                        Enquadramento
+                      </label>
+                      <div className="flex gap-1 mt-0.5">
+                        {positionOptions.map((opt) => (
+                          <button
+                            key={opt.value}
+                            onClick={() => updateBRollImage(img.id, { position: opt.value })}
+                            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] rounded-lg transition-colors ${
+                              img.position === opt.value
+                                ? "bg-[var(--accent)] text-white"
+                                : "bg-[var(--background)] border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)]/50"
+                            }`}
+                            title={opt.label}
+                          >
+                            {opt.icon}
+                            <span className="hidden sm:inline">{opt.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Animation + Opacity controls */}
                     <div className="flex items-center gap-2">
                       <select
                         value={img.animation}
                         onChange={(e) =>
                           updateBRollImage(img.id, {
-                            animation: e.target.value as "fade" | "slide" | "zoom" | "ken-burns",
+                            animation: e.target.value as BRollAnimation,
                           })
                         }
                         className="flex-1 p-1.5 text-xs bg-[var(--background)] border border-[var(--border)] rounded-lg"
                       >
-                        <option value="fade">Fade</option>
-                        <option value="slide">Slide</option>
-                        <option value="zoom">Zoom</option>
-                        <option value="ken-burns">Ken Burns</option>
-                        <option value="pan-left">Pan Esquerda</option>
-                        <option value="pan-up">Pan Cima</option>
-                        <option value="pan-down">Pan Baixo</option>
-                        <option value="blur-in">Blur In</option>
+                        <optgroup label="Clássicos">
+                          <option value="fade">Fade</option>
+                          <option value="slide">Slide</option>
+                          <option value="zoom">Zoom</option>
+                          <option value="ken-burns">Ken Burns</option>
+                        </optgroup>
+                        <optgroup label="Movimento">
+                          <option value="pan-left">Pan Esquerda</option>
+                          <option value="pan-up">Pan Cima</option>
+                          <option value="pan-down">Pan Baixo</option>
+                          <option value="parallax">Parallax</option>
+                        </optgroup>
+                        <optgroup label="Profissional">
+                          <option value="cinematic-reveal">Reveal Cinematográfico</option>
+                          <option value="blur-in">Blur In</option>
+                          <option value="glitch-in">Glitch In</option>
+                        </optgroup>
                       </select>
 
                       <div className="flex items-center gap-1">
@@ -305,6 +350,23 @@ export default function BRollPanel() {
                         />
                       </div>
                     </div>
+
+                    {/* Cinematic overlay toggle */}
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={img.cinematicOverlay !== false}
+                        onChange={(e) =>
+                          updateBRollImage(img.id, {
+                            cinematicOverlay: e.target.checked,
+                          })
+                        }
+                        className="w-3.5 h-3.5 rounded border-[var(--border)] accent-[var(--accent)]"
+                      />
+                      <span className="text-[10px] text-[var(--text-secondary)]">
+                        Overlay cinematográfico (gradiente profissional)
+                      </span>
+                    </label>
 
                     <div className="flex items-center gap-1">
                       {!img.url ? (

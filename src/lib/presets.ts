@@ -897,15 +897,19 @@ function applyTalkingHeadBrollPreset(
   const brollDuration = brollEnd - brollStart;
 
   if (brollDuration > 0.5) {
+    // Professional animation variety: alternate between cinematic styles
+    const brollAnims = ["cinematic-reveal", "ken-burns", "parallax", "zoom"] as const;
+    const animIdx = Math.abs(segment.id.charCodeAt(segment.id.length - 1)) % brollAnims.length;
     newBroll.push({
       id: `preset_broll_${segment.id}`,
       url: "", // Will be generated
       prompt: segment.brollQuery,
       startTime: brollStart,
       endTime: brollEnd,
-      animation: "ken-burns",
+      animation: brollAnims[animIdx],
       opacity: 0.95,
       position: "fullscreen",
+      cinematicOverlay: true,
     });
 
     // Zoom-in on B-Roll for professional camera movement
@@ -971,15 +975,17 @@ function applyFuturisticHudPreset(
     const brollStart = segment.startTime + duration * 0.15;
     const brollEnd = segment.endTime - duration * 0.1;
 
+    // Futuristic: use glitch-in for sci-fi feel
     newBroll.push({
       id: `preset_hud_broll_${segment.id}`,
       url: "",
       prompt: segment.brollQuery,
       startTime: brollStart,
       endTime: brollEnd,
-      animation: "ken-burns",
+      animation: "glitch-in",
       opacity: 0.85,
       position: "fullscreen",
+      cinematicOverlay: true,
     });
 
     // Zoom on B-Roll

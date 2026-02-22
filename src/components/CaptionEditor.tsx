@@ -662,6 +662,54 @@ function CaptionItem({
             </div>
           </div>
 
+          {/* Position fine-tune offsets */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
+                Ajuste Horizontal
+              </label>
+              <input
+                type="range"
+                min="-40"
+                max="40"
+                step="2"
+                value={caption.style.offsetX || 0}
+                onChange={(e) =>
+                  onUpdate({
+                    style: {
+                      ...caption.style,
+                      offsetX: parseInt(e.target.value),
+                    },
+                  })
+                }
+                className="w-full mt-1 h-1 rounded-full appearance-none bg-[var(--border)] [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[var(--accent)]"
+              />
+              <div className="text-[9px] text-[var(--text-secondary)] text-center mt-0.5">{caption.style.offsetX || 0}%</div>
+            </div>
+            <div>
+              <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
+                Ajuste Vertical
+              </label>
+              <input
+                type="range"
+                min="-30"
+                max="30"
+                step="2"
+                value={caption.style.offsetY || 0}
+                onChange={(e) =>
+                  onUpdate({
+                    style: {
+                      ...caption.style,
+                      offsetY: parseInt(e.target.value),
+                    },
+                  })
+                }
+                className="w-full mt-1 h-1 rounded-full appearance-none bg-[var(--border)] [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[var(--accent)]"
+              />
+              <div className="text-[9px] text-[var(--text-secondary)] text-center mt-0.5">{caption.style.offsetY || 0}%</div>
+            </div>
+          </div>
+
           {/* Emphasis words */}
           <div>
             <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">

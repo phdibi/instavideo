@@ -28,12 +28,7 @@ export default function CaptionOverlay({ currentTime }: Props) {
     return <div className="absolute inset-0 pointer-events-none" />;
   }
 
-  // Hide bottom-positioned captions when CTA overlay is showing (last 3s)
-  // to prevent text overlap. CTA takes priority as the final call-to-action.
-  const ctaIsShowing = brandingConfig?.showCTA && videoDuration >= 6 && currentTime >= (videoDuration - 3);
-  if (ctaIsShowing && activeCaption.style.position === "bottom") {
-    return <div className="absolute inset-0 pointer-events-none" />;
-  }
+  // CTA is now at top-right — no need to hide bottom captions anymore
 
   // Extract the keyword label so it can be rendered OUTSIDE the AnimatePresence.
   // This way, the keyword stays stable when only the subtitle changes underneath.
@@ -140,8 +135,14 @@ function StableKeywordOverlay({ caption, keyword }: { caption: Caption; keyword:
   // Position: match the hook position (top-[18%] for center+keyword)
   const posClass = caption.style.position === "center" ? "top-[18%]" : "top-[8%]";
 
+  // Apply user offset adjustments
+  const offsetStyle: React.CSSProperties = {
+    ...(caption.style.offsetX ? { transform: `translateX(${caption.style.offsetX}%)` } : {}),
+    ...(caption.style.offsetY ? { marginTop: `${caption.style.offsetY}%` } : {}),
+  };
+
   return (
-    <div className={`absolute left-0 right-0 ${posClass} px-4 flex justify-center z-10`}>
+    <div className={`absolute left-0 right-0 ${posClass} px-4 flex justify-center z-10`} style={offsetStyle}>
       <div className="flex flex-col items-center">
         {/* Decorative quote */}
         {caption.keywordQuotes && (
@@ -304,9 +305,16 @@ function CaptionDisplay({
     && caption.text.toUpperCase().trim() === keywordLabel.toUpperCase().trim();
   const showSubtitle = !keywordMatchesCaption;
 
+  // Apply user offset adjustments
+  const captionOffsetStyle: React.CSSProperties = {
+    ...(caption.style.offsetX ? { transform: `translateX(${caption.style.offsetX}%)` } : {}),
+    ...(caption.style.offsetY ? { marginTop: `${caption.style.offsetY}%` } : {}),
+  };
+
   return (
     <motion.div
       className={`absolute left-0 right-0 ${positionStyle} px-4 flex justify-center`}
+      style={captionOffsetStyle}
       initial={animVariants.initial}
       animate={animVariants.animate}
       exit={animVariants.exit}

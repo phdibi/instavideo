@@ -24,10 +24,16 @@ export function useBackgroundReplacement(
   const backgroundConfig = useProjectStore((s) => s.backgroundConfig);
   const isPlaying = useProjectStore((s) => s.isPlaying);
 
+  // Only fully activate when BOTH enabled AND a background image is set.
+  // Without a background image, segmentation would use a dark fallback that
+  // creates visible artifacts (shadow on face).
+  const isConfigReady = backgroundConfig.enabled && !!backgroundConfig.backgroundImageUrl;
+
   const rafIdRef = useRef<number>(0);
   const segServiceRef = useRef<typeof SegServiceType | null>(null);
   const bgImageRef = useRef<HTMLImageElement | null>(null);
   const lastFrameTimeRef = useRef(0);
+  const lastVideoTimeRef = useRef(-1);
   const isLoadingRef = useRef(false);
   const isActiveRef = useRef(false);
 
@@ -51,7 +57,7 @@ export function useBackgroundReplacement(
     const canvas = canvasRef.current;
     const SegService = segServiceRef.current;
 
-    if (!video || !canvas || !SegService || !backgroundConfig.enabled) {
+    if (!video || !canvas || !SegService || !isConfigReady) {
       rafIdRef.current = requestAnimationFrame(renderFrame);
       return;
     }
@@ -62,15 +68,22 @@ export function useBackgroundReplacement(
       return;
     }
 
+    // Skip if video is paused and time hasn't changed (no seek)
+    if (video.paused && video.currentTime === lastVideoTimeRef.current) {
+      rafIdRef.current = requestAnimationFrame(renderFrame);
+      return;
+    }
+    lastVideoTimeRef.current = video.currentTime;
+
     const ctx = canvas.getContext("2d");
     if (!ctx) {
       rafIdRef.current = requestAnimationFrame(renderFrame);
       return;
     }
 
-    // Throttle to ~30fps (every 33ms)
+    // Throttle to ~24fps (every 42ms) for smooth balance of quality vs performance
     const now = performance.now();
-    if (now - lastFrameTimeRef.current < 33) {
+    if (now - lastFrameTimeRef.current < 42) {
       rafIdRef.current = requestAnimationFrame(renderFrame);
       return;
     }
@@ -117,11 +130,11 @@ export function useBackgroundReplacement(
     }
 
     rafIdRef.current = requestAnimationFrame(renderFrame);
-  }, [backgroundConfig, videoRef, canvasRef]);
+  }, [backgroundConfig, isConfigReady, videoRef, canvasRef]);
 
   // Initialize/teardown segmentation service
   useEffect(() => {
-    if (!backgroundConfig.enabled) {
+    if (!isConfigReady) {
       isActiveRef.current = false;
       if (rafIdRef.current) {
         cancelAnimationFrame(rafIdRef.current);
@@ -155,11 +168,11 @@ export function useBackgroundReplacement(
         rafIdRef.current = 0;
       }
     };
-  }, [backgroundConfig.enabled, renderFrame]);
+  }, [isConfigReady, renderFrame]);
 
   // Re-render single frame when video seeks (paused state)
   useEffect(() => {
-    if (!backgroundConfig.enabled || isPlaying) return;
+    if (!isConfigReady || isPlaying) return;
 
     // When paused, render a single frame on time change
     const video = videoRef.current;
@@ -177,10 +190,10 @@ export function useBackgroundReplacement(
 
     video.addEventListener("seeked", handleSeeked);
     return () => video.removeEventListener("seeked", handleSeeked);
-  }, [backgroundConfig.enabled, isPlaying, videoRef, canvasRef]);
+  }, [isConfigReady, isPlaying, videoRef, canvasRef]);
 
   return {
-    isActive: backgroundConfig.enabled && isActiveRef.current,
+    isActive: isConfigReady && isActiveRef.current,
     isLoading: isLoadingRef.current,
   };
 }

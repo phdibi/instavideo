@@ -249,6 +249,11 @@ function CaptionDisplay({
       case "top":
         return "top-[8%]";
       case "center":
+        if (hideKeyword && keywordLabel) {
+          // Keyword is rendered by StableKeywordOverlay at top-[18%]
+          // Position subtitle BELOW the keyword to prevent overlap
+          return "top-[32%]";
+        }
         // Hook with keyword: position higher (like Captions app)
         return keywordLabel
           ? "top-[18%]"
@@ -257,7 +262,7 @@ function CaptionDisplay({
       default:
         return "bottom-[12%]";
     }
-  }, [caption.style.position, keywordLabel]);
+  }, [caption.style.position, keywordLabel, hideKeyword]);
 
   const animVariants = getAnimationVariants(caption.animation);
   const words = caption.text.split(" ");

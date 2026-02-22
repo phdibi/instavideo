@@ -94,12 +94,12 @@ export default function UploadScreen() {
   ];
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[100dvh] p-4 md:p-8 overflow-y-auto">
+    <div className="flex flex-col items-center min-h-[100dvh] p-4 pt-6 md:p-8 md:pt-10 overflow-y-auto">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
-        className="text-center mb-6 md:mb-12"
+        className="text-center mb-3 md:mb-6"
       >
         <div className="flex items-center justify-center gap-3 mb-4">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[var(--accent)] to-purple-500 flex items-center justify-center">
@@ -119,7 +119,7 @@ export default function UploadScreen() {
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.5, delay: 0.2 }}
-        className={`relative w-full max-w-xl border-2 border-dashed rounded-2xl p-8 md:p-16 text-center cursor-pointer transition-all duration-300 ${
+        className={`relative w-full max-w-xl border-2 border-dashed rounded-2xl p-5 md:p-10 text-center cursor-pointer transition-all duration-300 ${
           dragOver
             ? "border-[var(--accent)] bg-[var(--accent)]/10 scale-[1.02]"
             : "border-[var(--border)] bg-[var(--surface)] hover:border-[var(--accent)]/50 hover:bg-[var(--surface-hover)]"
@@ -140,12 +140,12 @@ export default function UploadScreen() {
           onChange={handleInput}
         />
         <div
-          className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-6 transition-colors ${
+          className={`mx-auto w-12 h-12 rounded-full flex items-center justify-center mb-3 transition-colors ${
             dragOver ? "bg-[var(--accent)]/20" : "bg-[var(--surface-hover)]"
           }`}
         >
           <Upload
-            className={`w-8 h-8 transition-colors ${
+            className={`w-6 h-6 transition-colors ${
               dragOver ? "text-[var(--accent)]" : "text-[var(--text-secondary)]"
             }`}
           />
@@ -163,7 +163,7 @@ export default function UploadScreen() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.3 }}
-        className="mt-6"
+        className="mt-3"
       >
         <div className="flex items-center gap-3 text-[var(--text-secondary)] text-sm">
           <div className="h-px flex-1 bg-[var(--border)]" />
@@ -191,7 +191,7 @@ export default function UploadScreen() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.35 }}
-        className="mt-6 max-w-3xl w-full"
+        className="mt-3 max-w-3xl w-full"
       >
         <p className="text-xs text-[var(--text-secondary)] uppercase tracking-wide mb-2 text-center">
           Pilar de Conteúdo (opcional)
@@ -228,7 +228,7 @@ export default function UploadScreen() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.38 }}
-        className="mt-6 max-w-3xl w-full"
+        className="mt-3 max-w-3xl w-full"
       >
         <BackgroundSettings />
       </motion.div>
@@ -237,7 +237,7 @@ export default function UploadScreen() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.4 }}
-        className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mt-8 md:mt-12 max-w-3xl w-full pb-4"
+        className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 mt-4 md:mt-6 max-w-3xl w-full pb-4"
       >
         {features.map((f, i) => (
           <div

@@ -142,8 +142,10 @@ function getEmojiForCaption(text: string): string | undefined {
 // next card replaces them — ZERO empty frames throughout the video.
 function buildCaptionsFromTranscription(
   segments: TranscriptionSegment[],
-  videoDuration: number
+  videoDuration: number,
+  options?: { authorityMode?: boolean }
 ): Caption[] {
+  const authorityMode = options?.authorityMode ?? false;
   const effectiveDuration =
     videoDuration > 0
       ? videoDuration
@@ -198,14 +200,15 @@ function buildCaptionsFromTranscription(
 
   if (allWords.length === 0) return [];
 
-  // ── Step 2: Group words into 3-5 word cards ──
+  // ── Step 2: Group words into caption cards ──
+  // Authority mode: 2-3 words per card (tighter sync, like Captions app)
+  // Default mode: 3-5 words per card
   // Rules:
-  //  • Target 3-5 words per card for readability
-  //  • Pause > 0.4s between words ALWAYS triggers a new card
-  //  • Never exceed 5 words per card
+  //  • Pause > threshold between words ALWAYS triggers a new card
+  //  • Never exceed MAX_WORDS per card
   //  • A trailing filler word won't start a new card alone — attach to previous
-  const MAX_WORDS = 5;
-  const PAUSE_THRESHOLD = 0.4; // 400ms gap = forced new card
+  const MAX_WORDS = authorityMode ? 3 : 5;
+  const PAUSE_THRESHOLD = authorityMode ? 0.3 : 0.4; // Authority: tighter grouping
   const SHORT_FILLERS = new Set([
     "a", "o", "e", "é", "de", "do", "da", "em", "no", "na",
     "um", "os", "as", "se", "ou", "que", "por", "ao", "dos",
@@ -295,7 +298,8 @@ function buildCaptionsFromTranscription(
 
     const wordTexts = cap.wordIndices.map((wi) => allWords[wi].word);
     const text = wordTexts.join(" ").toUpperCase();
-    const emoji = getEmojiForCaption(wordTexts.join(" "));
+    // Authority mode: no emojis — they reduce credibility for professional content
+    const emoji = authorityMode ? undefined : getEmojiForCaption(wordTexts.join(" "));
 
     captions.push({
       id: uuid(),
@@ -695,7 +699,10 @@ export default function ProcessingScreen() {
       }
 
       // Step 3: Build captions deterministically from transcription segments
-      const captions = buildCaptionsFromTranscription(segments, effectiveDuration);
+      // Read content pillar early to enable authority mode (fewer words, no emojis)
+      const pillar = useProjectStore.getState().brandingConfig.contentPillar;
+      const isAuthority = pillar !== "quick-tips" && pillar !== undefined;
+      const captions = buildCaptionsFromTranscription(segments, effectiveDuration, { authorityMode: isAuthority });
 
       // Step 4: Get AI-generated effects and b-roll suggestions
       setStatus("analyzing");

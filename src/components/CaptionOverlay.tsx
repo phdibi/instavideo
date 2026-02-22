@@ -35,19 +35,27 @@ export default function CaptionOverlay({ currentTime }: Props) {
     return <div className="absolute inset-0 pointer-events-none" />;
   }
 
-  // Track the keyword label to give it a stable key across caption changes.
-  // This prevents the hook keyword from flashing/re-animating when the subtitle
-  // underneath changes but the keyword stays the same.
+  // Extract the keyword label so it can be rendered OUTSIDE the AnimatePresence.
+  // This way, the keyword stays stable when only the subtitle changes underneath.
   const stableKeyword = activeCaption.keywordLabel || null;
+  const hasKeyword = !!stableKeyword;
 
   return (
     <div className="absolute inset-0 pointer-events-none">
+      {/* Keyword layer: rendered outside AnimatePresence so it NEVER re-animates on caption change */}
+      {hasKeyword && (
+        <StableKeywordOverlay
+          caption={activeCaption}
+          keyword={stableKeyword!}
+        />
+      )}
+      {/* Subtitle layer: this re-animates on caption change (which is fine for subtitle text) */}
       <AnimatePresence mode="popLayout">
         <CaptionDisplay
           key={activeCaption.id}
           caption={activeCaption}
           currentTime={currentTime}
-          stableKeywordKey={stableKeyword}
+          hideKeyword={hasKeyword}
         />
       </AnimatePresence>
     </div>
@@ -116,21 +124,114 @@ function detectTheme(caption: Caption): CaptionTheme {
   return "volt";
 }
 
+/**
+ * StableKeywordOverlay renders the large hook keyword OUTSIDE of AnimatePresence,
+ * so it stays perfectly stable when the subtitle underneath changes.
+ * It animates in ONCE when it first appears, then stays put.
+ */
+function StableKeywordOverlay({ caption, keyword }: { caption: Caption; keyword: string }) {
+  const theme = detectTheme(caption);
+  const colors = THEME_COLORS[theme];
+  const label = keyword.replace(/_/g, " ");
+  const hasEntered = useRef(false);
+  const shouldAnimate = !hasEntered.current;
+  if (!hasEntered.current) hasEntered.current = true;
+
+  // Position: match the hook position (top-[18%] for center+keyword)
+  const posClass = caption.style.position === "center" ? "top-[18%]" : "top-[8%]";
+
+  return (
+    <div className={`absolute left-0 right-0 ${posClass} px-4 flex justify-center z-10`}>
+      <div className="flex flex-col items-center">
+        {/* Decorative quote */}
+        {caption.keywordQuotes && (
+          <span
+            style={{
+              fontSize: `${caption.style.fontSize * (theme === "velocity" ? 0.5 : 0.45)}px`,
+              fontWeight: 900,
+              color: colors.quoteColor,
+              opacity: theme === "velocity" ? 0.85 : 0.7,
+              fontFamily: theme === "velocity"
+                ? "Inter, system-ui, sans-serif"
+                : "Georgia, 'Times New Roman', serif",
+              fontStyle: theme === "velocity" ? "italic" : "normal",
+              lineHeight: 1,
+              marginBottom: "0.05em",
+              textShadow: `0 2px 6px rgba(0,0,0,0.6)`,
+            }}
+          >
+            {"\u201C"}
+          </span>
+        )}
+
+        {/* Keyword text — dual layer */}
+        <motion.div
+          className="relative"
+          style={{ lineHeight: 1 }}
+          initial={shouldAnimate ? { opacity: 0, scale: theme === "authority" ? 0.9 : 0.7, y: 8 } : false}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={shouldAnimate ? {
+            type: theme === "authority" ? "tween" : "spring",
+            ...(theme === "authority"
+              ? { duration: 0.3, ease: "easeOut" }
+              : { damping: 14, stiffness: 280 }),
+          } : { duration: 0 }}
+        >
+          {/* Back layer: white outline */}
+          {caption.style.position === "center" && (
+            <span
+              style={{
+                fontFamily: caption.style.fontFamily,
+                fontSize: `${caption.style.fontSize * (theme === "velocity" ? 0.85 : 0.75)}px`,
+                fontWeight: 900,
+                fontStyle: theme === "velocity" ? "italic" : "normal",
+                color: "transparent",
+                WebkitTextStroke: `2px rgba(255,255,255,0.6)`,
+                letterSpacing: theme === "velocity" ? "-0.03em" : "-0.02em",
+                lineHeight: 1,
+                textTransform: "uppercase" as const,
+                position: "absolute" as const,
+                top: "0.06em",
+                left: "50%",
+                transform: "translateX(-50%)",
+                whiteSpace: "nowrap" as const,
+              }}
+            >
+              {label}
+            </span>
+          )}
+          {/* Front layer: colored fill */}
+          <span
+            style={{
+              fontFamily: caption.style.fontFamily,
+              fontSize: `${caption.style.fontSize * (theme === "velocity" ? 0.85 : 0.75)}px`,
+              fontWeight: 900,
+              fontStyle: theme === "velocity" ? "italic" : "normal",
+              color: colors.keywordColor,
+              letterSpacing: theme === "velocity" ? "-0.03em" : "-0.02em",
+              lineHeight: 1,
+              textTransform: "uppercase" as const,
+              whiteSpace: "nowrap" as const,
+              textShadow: `0 2px ${theme === "velocity" ? 10 : 8}px rgba(0,0,0,0.7), 0 0 ${theme === "velocity" ? 20 : 16}px ${colors.highlightGlow}`,
+            }}
+          >
+            {label}
+          </span>
+        </motion.div>
+      </div>
+    </div>
+  );
+}
+
 function CaptionDisplay({
   caption,
   currentTime,
-  stableKeywordKey,
+  hideKeyword,
 }: {
   caption: Caption;
   currentTime: number;
-  stableKeywordKey: string | null;
+  hideKeyword?: boolean;
 }) {
-  // Track if the keyword was already shown (same text) to skip re-animation
-  const prevKeywordRef = useRef<string | null>(null);
-  const keywordAlreadyShown = stableKeywordKey !== null && prevKeywordRef.current === stableKeywordKey;
-  if (stableKeywordKey !== prevKeywordRef.current) {
-    prevKeywordRef.current = stableKeywordKey;
-  }
   const duration = caption.endTime - caption.startTime;
   const progress = Math.min(
     Math.max((currentTime - caption.startTime) / duration, 0),
@@ -232,22 +333,19 @@ function CaptionDisplay({
         )}
 
         {/* Dual-layer: Large keyword ABOVE caption (Ember/Velocity/Authority) */}
-        {/* Uses keywordAlreadyShown to skip re-animation when only subtitle changes */}
-        {keywordLabel && (
+        {/* When hideKeyword is true, keyword is rendered by StableKeywordOverlay instead */}
+        {keywordLabel && !hideKeyword && (
           <motion.div
             className="mb-2 flex flex-col items-center justify-center"
-            initial={keywordAlreadyShown ? false : { opacity: 0, scale: theme === "velocity" ? 0.5 : (theme === "authority" ? 0.85 : 0.7), y: theme === "velocity" ? 15 : (theme === "authority" ? 6 : 10) }}
+            initial={{ opacity: 0, scale: theme === "velocity" ? 0.5 : (theme === "authority" ? 0.85 : 0.7), y: theme === "velocity" ? 15 : (theme === "authority" ? 6 : 10) }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={keywordAlreadyShown
-              ? { duration: 0 }
-              : {
-                  type: theme === "authority" ? "tween" as const : "spring" as const,
-                  ...(theme === "authority"
-                    ? { duration: 0.25, ease: "easeOut" as const }
-                    : { damping: theme === "velocity" ? 12 : 14, stiffness: theme === "velocity" ? 320 : 280 }),
-                  delay: 0.02,
-                }
-            }
+            transition={{
+              type: theme === "authority" ? "tween" as const : "spring" as const,
+              ...(theme === "authority"
+                ? { duration: 0.25, ease: "easeOut" as const }
+                : { damping: theme === "velocity" ? 12 : 14, stiffness: theme === "velocity" ? 320 : 280 }),
+              delay: 0.02,
+            }}
             style={{
               lineHeight: 1,
             }}

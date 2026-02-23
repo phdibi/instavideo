@@ -1059,10 +1059,10 @@ export default function Timeline() {
                         hovered: "bg-red-500/50 border-red-400/80 text-white z-10",
                       },
                       "talking-head": {
-                        base: "bg-blue-500/30 border-blue-400/50 text-blue-200",
-                        active: "bg-blue-500/50 border-blue-400 text-white shadow-sm shadow-blue-500/30 z-10",
-                        selected: "bg-blue-500/70 border-blue-400 text-white shadow-md shadow-blue-500/40 z-20 ring-2 ring-white/40",
-                        hovered: "bg-blue-500/40 border-blue-400/80 text-white z-10",
+                        base: "bg-blue-500/50 border-blue-400/70 text-blue-100",
+                        active: "bg-blue-500/65 border-blue-400 text-white shadow-sm shadow-blue-500/30 z-10",
+                        selected: "bg-blue-500/80 border-blue-400 text-white shadow-md shadow-blue-500/40 z-20 ring-2 ring-white/40",
+                        hovered: "bg-blue-500/55 border-blue-400/90 text-white z-10",
                       },
                       "talking-head-broll": {
                         base: "bg-orange-500/35 border-orange-400/55 text-orange-200",
@@ -1400,8 +1400,8 @@ export default function Timeline() {
                         }
                       />
                       {itemWidth > 30 && (
-                        <span className="truncate mx-3 md:mx-1.5">
-                          {b.url ? "B-Roll" : "Pendente"}
+                        <span className={`truncate mx-3 md:mx-1.5 ${!b.url ? "animate-pulse" : ""}`}>
+                          {b.url ? "B-Roll" : "Pende..."}
                         </span>
                       )}
                       <ResizeHandle

@@ -819,6 +819,7 @@ function applyTalkingHeadPreset(
 
   // Varied zoom/movement per segment for visual interest.
   // Use segment ID hash to deterministically alternate between zoom styles.
+  // ALL segments get effects — even short ones — so the video always has movement.
   const hash = Math.abs(segment.id.charCodeAt(segment.id.length - 1));
   const zoomVariant = hash % 4;
 
@@ -865,13 +866,16 @@ function applyTalkingHeadPreset(
         });
         break;
     }
-  } else if (duration > 1.5) {
+  } else if (duration > 0.3) {
+    // Short segments still get visual movement — zoom-pulse for 0.3-3s
+    // Scale adapts to duration: shorter = subtler, to avoid jarring effects
+    const pulseScale = duration > 1.5 ? 1.05 : 1.04;
     newEffects.push({
       id: `preset_th_zoom_${segment.id}`,
       type: "zoom-pulse",
       startTime: segment.startTime,
       endTime: segment.endTime,
-      params: { scale: 1.05 },
+      params: { scale: pulseScale },
     });
   }
 

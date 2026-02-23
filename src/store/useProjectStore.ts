@@ -143,11 +143,56 @@ export const useProjectStore = create<ProjectStore>((set) => ({
     })),
   setSegments: (segments) => set({ segments }),
   updateSegment: (id, updates) =>
-    set((state) => ({
-      segments: state.segments.map((s) =>
+    set((state) => {
+      const oldSeg = state.segments.find((s) => s.id === id);
+      const updatedSegments = state.segments.map((s) =>
         s.id === id ? { ...s, ...updates } : s
-      ),
-    })),
+      );
+
+      // CASCADE: When a segment's time range changes, proportionally rescale
+      // all effects and B-roll items that were generated for this segment.
+      // Preset-generated items have IDs like "preset_*_${segmentId}".
+      if (oldSeg && ('startTime' in updates || 'endTime' in updates)) {
+        const newStart = updates.startTime ?? oldSeg.startTime;
+        const newEnd = updates.endTime ?? oldSeg.endTime;
+        const oldStart = oldSeg.startTime;
+        const oldEnd = oldSeg.endTime;
+        const oldDuration = oldEnd - oldStart;
+        const newDuration = newEnd - newStart;
+
+        // Only cascade if there's a meaningful time change
+        if (oldDuration > 0.01 && (Math.abs(oldStart - newStart) > 0.01 || Math.abs(oldEnd - newEnd) > 0.01)) {
+          // Proportional rescale: map [oldStart, oldEnd] → [newStart, newEnd]
+          const rescale = (t: number) => {
+            const progress = (t - oldStart) / oldDuration;
+            return newStart + progress * newDuration;
+          };
+
+          const segIdSuffix = `_${id}`;
+          const updatedEffects = state.effects.map((e) => {
+            if (!e.id.includes(segIdSuffix)) return e;
+            return {
+              ...e,
+              startTime: Math.max(0, rescale(e.startTime)),
+              endTime: Math.min(state.videoDuration || 9999, rescale(e.endTime)),
+            };
+          });
+
+          const updatedBRoll = state.bRollImages.map((b) => {
+            if (!b.id.includes(segIdSuffix)) return b;
+            return {
+              ...b,
+              startTime: Math.max(0, rescale(b.startTime)),
+              endTime: Math.min(state.videoDuration || 9999, rescale(b.endTime)),
+            };
+          });
+
+          return { segments: updatedSegments, effects: updatedEffects, bRollImages: updatedBRoll };
+        }
+      }
+
+      return { segments: updatedSegments };
+    }),
   setEditPlan: (plan) => set({ editPlan: plan }),
   setCurrentTime: (time) => set({ currentTime: time }),
   setIsPlaying: (playing) => set({ isPlaying: playing }),

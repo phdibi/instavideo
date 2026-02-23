@@ -34,34 +34,65 @@ export async function POST(request: NextRequest) {
 
     console.log(`[CineAI] Generating B-roll: "${enhancedPrompt.slice(0, 80)}..."`);
 
-    const response = await ai.models.generateImages({
-      model: "imagen-4.0-generate-001",
-      prompt: `Cinematic, high quality, 16:9 aspect ratio, professional photography style: ${enhancedPrompt}`,
-      config: {
-        numberOfImages: 1,
-        aspectRatio: "16:9",
-      },
-    });
+    const fullPrompt = `Cinematic, high quality, 16:9 aspect ratio, professional photography style: ${enhancedPrompt}`;
 
-    if (response.generatedImages && response.generatedImages.length > 0) {
-      const imageData = response.generatedImages[0].image;
-      if (imageData?.imageBytes) {
-        const base64 =
-          typeof imageData.imageBytes === "string"
-            ? imageData.imageBytes
-            : Buffer.from(imageData.imageBytes).toString("base64");
+    // Try Imagen 4 first, fall back to Imagen 3 if unavailable
+    const MODELS = [
+      "imagen-4.0-generate-001",
+      "imagen-3.0-generate-002",
+      "imagen-3.0-fast-generate-001",
+    ];
 
-        console.log(`[CineAI] B-roll generated successfully (${Math.round(base64.length / 1024)}KB)`);
-        return NextResponse.json({
-          imageUrl: `data:image/png;base64,${base64}`,
+    let lastError: string = "";
+    for (const model of MODELS) {
+      try {
+        console.log(`[CineAI] Trying model: ${model}`);
+        const response = await ai.models.generateImages({
+          model,
+          prompt: fullPrompt,
+          config: {
+            numberOfImages: 1,
+            aspectRatio: "16:9",
+          },
         });
+
+        if (response.generatedImages && response.generatedImages.length > 0) {
+          const imageData = response.generatedImages[0].image;
+          if (imageData?.imageBytes) {
+            const base64 =
+              typeof imageData.imageBytes === "string"
+                ? imageData.imageBytes
+                : Buffer.from(imageData.imageBytes).toString("base64");
+
+            console.log(`[CineAI] B-roll generated successfully with ${model} (${Math.round(base64.length / 1024)}KB)`);
+            return NextResponse.json({
+              imageUrl: `data:image/png;base64,${base64}`,
+            });
+          }
+          lastError = `${model}: response had no imageBytes`;
+          console.warn(`[CineAI] ${lastError}`);
+        } else {
+          lastError = `${model}: no generatedImages in response`;
+          console.warn(`[CineAI] ${lastError}:`, JSON.stringify(response).slice(0, 200));
+        }
+      } catch (modelErr) {
+        const errMsg = modelErr instanceof Error ? modelErr.message : String(modelErr);
+        lastError = `${model}: ${errMsg}`;
+        console.warn(`[CineAI] Model ${model} failed:`, errMsg);
+        // If it's a quota/rate limit error, don't try other models — the issue is account-level
+        if (errMsg.includes("429") || errMsg.includes("quota")) {
+          break;
+        }
+        // Otherwise try the next model
+        continue;
       }
-      console.error("[CineAI] B-roll response had no imageBytes:", JSON.stringify(response.generatedImages[0]).slice(0, 200));
-    } else {
-      console.error("[CineAI] B-roll response had no generatedImages:", JSON.stringify(response).slice(0, 200));
     }
 
-    return NextResponse.json({ error: "No image generated - check API quota and model availability" }, { status: 500 });
+    console.error(`[CineAI] All Imagen models failed. Last error: ${lastError}`);
+    return NextResponse.json(
+      { error: `B-roll generation failed across all models. Last error: ${lastError}` },
+      { status: 500 }
+    );
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     console.error("[CineAI] B-roll generation error:", errorMessage);

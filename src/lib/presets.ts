@@ -115,27 +115,32 @@ const AUTHORITY_RESULTS_KEYWORDS = new Set([
 ]);
 
 // ===== Detect preset for a segment =====
-// PROFESSIONAL APPROACH: Precise scene cuts, not constant visual noise.
-// Target: 3-6 B-Roll cuts per video (depending on length), acting as deliberate
+// PROFESSIONAL APPROACH: Sparse, deliberate scene cuts — NOT constant visual noise.
+// Target: 2-4 B-Roll cuts per video (depending on length), acting as intentional
 // "scene breaks" — like a professional editor would place them.
 // Each cut is meaningful and tied to visual content keywords.
+// This creates breathing room between B-rolls, making each one impactful.
 let _segmentCounter = 0;
 let _lastBrollTime = -Infinity;
 let _brollCount = 0;
-let _maxBrolls = 4; // Will be calculated from video duration
+let _maxBrolls = 3; // Will be calculated from video duration
 export function resetSegmentCounter() { _segmentCounter = 0; _lastBrollTime = -Infinity; _brollCount = 0; }
+
+/** Returns the calculated max B-rolls for the current video */
+export function getMaxBrolls(): number { return _maxBrolls; }
 
 export function detectPreset(
   segment: { startTime: number; endTime: number; text: string },
   videoDuration: number,
   isFirst: boolean,
-  hasBrollAvailable: boolean
+  _hasBrollAvailable: boolean
 ): PresetType {
   _segmentCounter++;
 
   // Calculate max B-rolls based on video length:
-  // ~1 B-roll per 10-12s, clamped to 3-6 total
-  _maxBrolls = Math.max(3, Math.min(6, Math.round(videoDuration / 12)));
+  // ~1 B-roll per 15-20s, clamped to 2-4 total.
+  // Short videos (< 30s): 2 cuts max. Medium (30-60s): 3. Long (> 60s): 4.
+  _maxBrolls = Math.max(2, Math.min(4, Math.floor(videoDuration / 18)));
 
   // Rule 1: First segment within 5s = HOOK
   if (isFirst && segment.startTime < 5) {
@@ -154,11 +159,11 @@ export function detectPreset(
   const remainingBrolls = _maxBrolls - _brollCount;
   const remainingTime = videoDuration - segment.startTime;
   const idealSpacing = remainingBrolls > 0 ? remainingTime / remainingBrolls : 999;
-  // Minimum 8s between cuts, but prefer the ideal spacing
-  const minSpacing = Math.max(8, Math.min(idealSpacing * 0.7, 20));
+  // Minimum 12s between cuts — creates real breathing room
+  const minSpacing = Math.max(12, Math.min(idealSpacing * 0.8, 25));
 
-  // Rule 2: B-Roll as deliberate scene cuts
-  if (timeSinceLastBroll >= minSpacing && segDuration > 1.5) {
+  // Rule 2: B-Roll as deliberate scene cuts — STRICT visual relevance required
+  if (timeSinceLastBroll >= minSpacing && segDuration > 1.8) {
     const textLower = segment.text.toLowerCase();
     const words = textLower.split(/\s+/);
     let visualScore = 0;
@@ -166,8 +171,9 @@ export function detectPreset(
       const cleaned = word.replace(/[.,!?;:'"()]/g, "");
       if (VISUAL_CONTENT_KEYWORDS.has(cleaned)) visualScore++;
     }
-    // Require visual relevance — each B-roll should be contextual
-    if (visualScore >= 1 || (hasBrollAvailable && timeSinceLastBroll >= minSpacing * 1.5)) {
+    // Require at least 2 visual keywords for contextual relevance
+    // No fallback — every B-roll MUST be justified by content
+    if (visualScore >= 2) {
       _lastBrollTime = segment.startTime;
       _brollCount++;
       return "talking-head-broll";
@@ -794,12 +800,12 @@ function applyTalkingHeadPreset(
   const newEffects: EditEffect[] = [];
   const duration = segment.endTime - segment.startTime;
 
-  // Only ~30% of TH segments get a subtle zoom — selective, not constant.
+  // Only ~15% of TH segments get a subtle zoom — very selective.
   // Professional approach: zooms should feel like intentional reframes,
   // not every-segment motion that becomes visual noise.
   // Use character code to deterministically select which segments get zooms.
   const charSum = segment.id.split("").reduce((sum, c) => sum + c.charCodeAt(0), 0);
-  const shouldZoom = (charSum % 10) < 3; // ~30% probability
+  const shouldZoom = (charSum % 20) < 3; // ~15% probability
 
   if (shouldZoom && duration >= 0.5) {
     const isEven = charSum % 2 === 0;

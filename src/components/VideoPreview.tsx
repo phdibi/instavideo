@@ -9,6 +9,7 @@ import CTAOverlay from "./CTAOverlay";
 import WatermarkOverlay from "./WatermarkOverlay";
 import KeywordOverlay from "./KeywordOverlay";
 import SFXController from "./SFXController";
+import { initSFX } from "@/lib/sfx";
 import { useState } from "react";
 
 export default function VideoPreview() {
@@ -495,6 +496,11 @@ export default function VideoPreview() {
     const vid = videoRef.current;
     if (!vid) return;
     if (vid.paused) {
+      // Unlock AudioContext on first user gesture (click) —
+      // this is REQUIRED by browser autoplay policy before SFXController
+      // can play sounds from useEffect during playback.
+      initSFX();
+
       // Set BOTH ref AND state IMMEDIATELY — don't wait for play() promise.
       // This ensures the RAF loop starts on the next render cycle.
       isPlayingRef.current = true;

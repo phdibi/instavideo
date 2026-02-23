@@ -16,7 +16,7 @@ import type {
   VideoSegment,
   PresetType,
 } from "@/types";
-import { buildSegmentsFromTranscription, applyAllPresets, forceThemeFromPillar, isAuthorityTheme, getAuthorityLean } from "@/lib/presets";
+import { buildSegmentsFromTranscription, applyAllPresets, forceThemeFromPillar, isAuthorityTheme, getAuthorityLean, getMaxBrolls } from "@/lib/presets";
 
 const defaultCaptionStyle: CaptionStyle = {
   fontFamily: "Inter",
@@ -847,6 +847,10 @@ export default function ProcessingScreen() {
           const presetData = await presetRes.json();
           const aiSegments = presetData.segments || [];
 
+          // Cap how many B-roll segments the AI can assign — respect heuristic limits
+          const maxAiBrolls = getMaxBrolls();
+          let aiBrollCount = 0;
+
           for (let i = 0; i < videoSegments.length && i < aiSegments.length; i++) {
             const aiSeg = aiSegments.find((a: { index: number }) => a.index === i);
             if (aiSeg) {
@@ -855,8 +859,14 @@ export default function ProcessingScreen() {
               if (preset === "hook" && i !== 0) {
                 preset = "talking-head";
               }
-              // NO force-conversion: respect the heuristic detection from detectPreset.
-              // The simplified detectPreset already limits B-roll to every ~15-20 seconds.
+              // Cap B-roll count: AI cannot exceed the heuristic max
+              if (preset === "talking-head-broll") {
+                if (aiBrollCount >= maxAiBrolls) {
+                  preset = "talking-head";
+                } else {
+                  aiBrollCount++;
+                }
+              }
               videoSegments[i].preset = preset;
               videoSegments[i].keywordHighlight = aiSeg.keywordHighlight || videoSegments[i].keywordHighlight;
               videoSegments[i].brollQuery = aiSeg.brollQuery || videoSegments[i].brollQuery;
@@ -924,7 +934,12 @@ export default function ProcessingScreen() {
           (pb) => ai.startTime < pb.endTime && ai.endTime > pb.startTime
         )
       );
-      const allBRollItems = [...dedupedAiBroll, ...presetBrollItems];
+      // HARD CAP: Total B-rolls must not exceed maxBrolls.
+      // Preset B-rolls take priority, then fill remaining slots with AI suggestions.
+      const maxTotalBrolls = getMaxBrolls();
+      const remainingSlots = Math.max(0, maxTotalBrolls - presetBrollItems.length);
+      const cappedAiBroll = dedupedAiBroll.slice(0, remainingSlots);
+      const allBRollItems = [...cappedAiBroll, ...presetBrollItems];
       setBRollImages(allBRollItems);
       setEditPlan(editPlan as unknown as import("@/types").EditPlan);
 

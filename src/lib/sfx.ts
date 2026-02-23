@@ -29,6 +29,31 @@ function getAudioContext(): AudioContext {
   return audioCtx;
 }
 
+/**
+ * Initialize/unlock the AudioContext — MUST be called from a user gesture
+ * (e.g., a click handler like the Play button). This ensures that
+ * subsequent calls to playSFX() from useEffect hooks won't be blocked
+ * by the browser's autoplay policy.
+ */
+export function initSFX(): void {
+  try {
+    const ctx = getAudioContext();
+    // Create and immediately stop a silent oscillator to unlock the context
+    if (ctx.state === "suspended") {
+      ctx.resume();
+    }
+    const silent = ctx.createOscillator();
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    silent.connect(gain);
+    gain.connect(ctx.destination);
+    silent.start();
+    silent.stop(ctx.currentTime + 0.001);
+  } catch {
+    // Non-critical — silently fail
+  }
+}
+
 export type SFXType =
   | "whoosh"
   | "swoosh-in"

@@ -12,6 +12,10 @@ import {
   Layers,
   LayoutPanelLeft,
   PictureInPicture2,
+  PanelLeft,
+  PanelTop,
+  PanelBottom,
+  Focus,
 } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { formatTime } from "@/lib/formatTime";
@@ -19,8 +23,12 @@ import type { BRollAnimation, BRollPosition } from "@/types";
 
 const positionOptions: { value: BRollPosition; label: string; icon: React.ReactNode }[] = [
   { value: "fullscreen", label: "Tela Cheia", icon: <Maximize className="w-3 h-3" /> },
+  { value: "split", label: "Split Dir.", icon: <LayoutPanelLeft className="w-3 h-3" /> },
+  { value: "split-left", label: "Split Esq.", icon: <PanelLeft className="w-3 h-3" /> },
   { value: "overlay", label: "Sobreposição", icon: <Layers className="w-3 h-3" /> },
-  { value: "split", label: "Split", icon: <LayoutPanelLeft className="w-3 h-3" /> },
+  { value: "top-half", label: "Metade Sup.", icon: <PanelTop className="w-3 h-3" /> },
+  { value: "bottom-half", label: "Metade Inf.", icon: <PanelBottom className="w-3 h-3" /> },
+  { value: "center-inset", label: "Centro", icon: <Focus className="w-3 h-3" /> },
   { value: "pip", label: "PiP", icon: <PictureInPicture2 className="w-3 h-3" /> },
 ];
 
@@ -277,17 +285,17 @@ export default function BRollPanel() {
                       </div>
                     )}
 
-                    {/* Position mode selector */}
+                    {/* Position mode selector — 2 rows of 4 */}
                     <div>
                       <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
                         Enquadramento
                       </label>
-                      <div className="flex gap-1 mt-0.5">
+                      <div className="grid grid-cols-4 gap-1 mt-0.5">
                         {positionOptions.map((opt) => (
                           <button
                             key={opt.value}
                             onClick={() => updateBRollImage(img.id, { position: opt.value })}
-                            className={`flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] rounded-lg transition-colors ${
+                            className={`flex items-center justify-center gap-0.5 py-1.5 px-1 text-[9px] rounded-lg transition-colors ${
                               img.position === opt.value
                                 ? "bg-[var(--accent)] text-white"
                                 : "bg-[var(--background)] border border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)]/50"
@@ -295,7 +303,7 @@ export default function BRollPanel() {
                             title={opt.label}
                           >
                             {opt.icon}
-                            <span className="hidden sm:inline">{opt.label}</span>
+                            <span className="truncate">{opt.label}</span>
                           </button>
                         ))}
                       </div>

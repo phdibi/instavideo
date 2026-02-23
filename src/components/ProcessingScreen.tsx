@@ -201,15 +201,15 @@ function buildCaptionsFromTranscription(
   if (allWords.length === 0) return [];
 
   // ── Step 2: Group words into caption cards ──
-  // Captions-app style: sentence-level groups (6-10 words) displayed as a
-  // horizontal word bar. The current word highlights in real-time (karaoke).
-  // This gives viewers time to read ahead and feel perfectly in-sync.
+  // Captions-app style: 2-3 words per card, appearing fluidly one group at a time.
+  // On the video, only 1-2 words appear at once — they pop in smoothly as spoken.
+  // The animation between cards creates the fluid feel.
   // Rules:
   //  • Pause > threshold between words ALWAYS triggers a new card
   //  • Never exceed MAX_WORDS per card
   //  • A trailing filler word won't start a new card alone — attach to previous
-  const MAX_WORDS = 8; // Sentence-level: show 6-8 words at once
-  const PAUSE_THRESHOLD = 0.5; // Only break on natural pauses (0.5s+)
+  const MAX_WORDS = 3; // Short punchy groups like Captions app
+  const PAUSE_THRESHOLD = 0.3; // Break on natural pauses
   const SHORT_FILLERS = new Set([
     "a", "o", "e", "é", "de", "do", "da", "em", "no", "na",
     "um", "os", "as", "se", "ou", "que", "por", "ao", "dos",

@@ -7,6 +7,8 @@ import { formatTime } from "@/lib/formatTime";
 import CaptionOverlay from "./CaptionOverlay";
 import CTAOverlay from "./CTAOverlay";
 import WatermarkOverlay from "./WatermarkOverlay";
+import KeywordOverlay from "./KeywordOverlay";
+import SFXController from "./SFXController";
 import { useState } from "react";
 
 export default function VideoPreview() {
@@ -255,6 +257,56 @@ export default function VideoPreview() {
         return "absolute inset-0";
     }
   }, [activeBRoll]);
+
+  // B-Roll entrance/exit animation — driven per-frame for fluid motion
+  // Split: slides in/out from the right edge
+  // Fullscreen: scales up with a cinematic fade
+  const bRollSlideStyle = useMemo(() => {
+    if (!activeBRoll) return {};
+    const duration = activeBRoll.endTime - activeBRoll.startTime;
+    const progress = Math.min(
+      Math.max((currentTime - activeBRoll.startTime) / duration, 0),
+      1
+    );
+
+    if (activeBRoll.position === "split") {
+      // Split mode: slide in/out from right edge
+      let slideX = 0;
+      if (progress < 0.12) {
+        const entryProgress = progress / 0.12;
+        slideX = (1 - easeOutCubic(entryProgress)) * 100;
+      } else if (progress > 0.88) {
+        const exitProgress = (progress - 0.88) / 0.12;
+        slideX = easeOutCubic(exitProgress) * 100;
+      }
+      return {
+        transform: `translateX(${slideX}%)`,
+        transition: "none",
+      };
+    }
+
+    if (activeBRoll.position === "fullscreen") {
+      // Fullscreen mode: cinematic scale + fade entrance
+      let scale = 1;
+      let opacity = 1;
+      if (progress < 0.1) {
+        const entryProgress = easeOutCubic(progress / 0.1);
+        scale = 1.05 - 0.05 * entryProgress;
+        opacity = entryProgress;
+      } else if (progress > 0.9) {
+        const exitProgress = easeOutCubic((progress - 0.9) / 0.1);
+        scale = 1 + 0.03 * exitProgress;
+        opacity = 1 - exitProgress;
+      }
+      return {
+        transform: `scale(${scale})`,
+        opacity,
+        transition: "none",
+      };
+    }
+
+    return {};
+  }, [activeBRoll, currentTime]);
 
   // B-Roll cinematic gradient overlay (auto-enabled)
   const showCinematicOverlay = activeBRoll && (activeBRoll.cinematicOverlay !== false);
@@ -542,7 +594,7 @@ export default function VideoPreview() {
 
           {/* B-Roll overlay - supports position modes + cinematic overlay */}
           {activeBRoll && bRollStyle && (
-            <div className={`${bRollPositionClass} z-10`}>
+            <div className={`${bRollPositionClass} z-10`} style={bRollSlideStyle}>
               {/* B-Roll image with animation */}
               <div
                 className="absolute inset-0"
@@ -602,6 +654,11 @@ export default function VideoPreview() {
           <WatermarkOverlay currentTime={currentTime} videoDuration={videoDuration} />
         </div>
 
+        {/* Keyword overlay - z-44, large keyword during hook (Captions app style) */}
+        <div className="absolute inset-0 z-[44] pointer-events-none">
+          <KeywordOverlay currentTime={currentTime} />
+        </div>
+
         {/* CTA overlay - z-45, final seconds (kept, user branding) */}
         <div className="absolute inset-0 z-[45] pointer-events-none">
           <CTAOverlay currentTime={currentTime} videoDuration={videoDuration} />
@@ -611,6 +668,9 @@ export default function VideoPreview() {
         <div className="absolute inset-0 z-50 pointer-events-none">
           <CaptionOverlay currentTime={currentTime} />
         </div>
+
+        {/* SFX Controller — cinematic sound effects during playback */}
+        <SFXController />
       </div>
 
       {/* Controls */}

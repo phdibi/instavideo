@@ -115,11 +115,13 @@ const AUTHORITY_RESULTS_KEYWORDS = new Set([
 ]);
 
 // ===== Detect preset for a segment =====
-// SIMPLIFIED: Professional approach — mostly talking-head with sparse B-Roll.
-// Research shows pro apps use B-roll every 15-30s, not every 3rd segment.
+// Captions-app approach: frequent but contextual B-Roll alternating between
+// fullscreen and split positions. Analysis of the app shows ~3-5 B-rolls
+// per 40 seconds of video, placed every 8-12 seconds.
 let _segmentCounter = 0;
 let _lastBrollTime = -Infinity;
-export function resetSegmentCounter() { _segmentCounter = 0; _lastBrollTime = -Infinity; }
+let _brollCount = 0;
+export function resetSegmentCounter() { _segmentCounter = 0; _lastBrollTime = -Infinity; _brollCount = 0; }
 
 export function detectPreset(
   segment: { startTime: number; endTime: number; text: string },
@@ -129,7 +131,7 @@ export function detectPreset(
 ): PresetType {
   _segmentCounter++;
 
-  // Rule 1: First segment within 5s = HOOK (only visual difference: slightly stronger zoom)
+  // Rule 1: First segment within 5s = HOOK (stronger zoom + keyword overlay)
   if (isFirst && segment.startTime < 5) {
     return "hook";
   }
@@ -137,9 +139,10 @@ export function detectPreset(
   const segDuration = segment.endTime - segment.startTime;
   const timeSinceLastBroll = segment.startTime - _lastBrollTime;
 
-  // Rule 2: B-Roll only every ~20 seconds, only for segments with visual content.
-  // Captions app uses ~2 B-rolls per 40 seconds — very sparse and contextual.
-  if (timeSinceLastBroll >= 20 && segDuration > 2) {
+  // Rule 2: B-Roll every ~10 seconds — more frequent, like Captions app.
+  // The app uses 3-5 B-rolls per 40s with variety in position (fullscreen/split).
+  // Only trigger for segments with some visual relevance.
+  if (timeSinceLastBroll >= 10 && segDuration > 1.5) {
     const textLower = segment.text.toLowerCase();
     const words = textLower.split(/\s+/);
     let visualScore = 0;
@@ -147,9 +150,16 @@ export function detectPreset(
       const cleaned = word.replace(/[.,!?;:'"()]/g, "");
       if (VISUAL_CONTENT_KEYWORDS.has(cleaned)) visualScore++;
     }
-    // Only add B-roll if there's meaningful visual content to illustrate
-    if (visualScore >= 2 || (hasBrollAvailable && visualScore >= 1)) {
+    // More lenient: even 1 keyword triggers B-roll (Captions app uses them liberally)
+    if (visualScore >= 1 || (hasBrollAvailable && timeSinceLastBroll >= 15)) {
       _lastBrollTime = segment.startTime;
+      _brollCount++;
+      return "talking-head-broll";
+    }
+    // Fallback: if it's been > 15s, force a B-roll for visual variety
+    if (timeSinceLastBroll >= 15 && segDuration > 2) {
+      _lastBrollTime = segment.startTime;
+      _brollCount++;
       return "talking-head-broll";
     }
   }
@@ -157,6 +167,9 @@ export function detectPreset(
   // Rule 3: Everything else is talking-head (the consistent, clean look)
   return "talking-head";
 }
+
+/** Returns the current B-Roll count (for alternating positions) */
+export function getBrollCount(): number { return _brollCount; }
 
 // ===== Extract the most important keyword from text =====
 export function extractKeywordHighlight(text: string): string {
@@ -713,18 +726,30 @@ function applyHookPreset(
   const duration = segment.endTime - segment.startTime;
   const newEffects: EditEffect[] = [];
 
-  // Subtle hook zoom — barely perceptible, like Captions app (1.08x)
+  // Hook: noticeable punch-in zoom to face — creates immediate visual impact.
+  // This is the ONE moment where a stronger zoom is justified.
   newEffects.push({
     id: `preset_hook_zoom_${segment.id}`,
     type: "zoom-in",
     startTime: segment.startTime,
     endTime: segment.endTime,
     params: {
-      scale: 1.08,
+      scale: 1.18,
       focusX: 0.5,
-      focusY: 0.38,
+      focusY: 0.35,
     },
   });
+
+  // Quick flash at the very start of hook — attention-grabbing moment
+  if (duration > 0.3) {
+    newEffects.push({
+      id: `preset_hook_flash_${segment.id}`,
+      type: "flash",
+      startTime: segment.startTime,
+      endTime: segment.startTime + 0.3,
+      params: {},
+    });
+  }
 
   return { updatedCaptions, newEffects, newBroll: [] };
 }
@@ -755,6 +780,25 @@ function applyTalkingHeadPreset(
   }));
 
   const newEffects: EditEffect[] = [];
+  const duration = segment.endTime - segment.startTime;
+
+  // Every TH segment gets a subtle zoom so the video feels alive.
+  // Alternate between zoom-in and zoom-out for visual variety.
+  if (duration >= 0.3) {
+    const charCode = segment.id.charCodeAt(segment.id.length - 1);
+    const isEven = charCode % 2 === 0;
+    newEffects.push({
+      id: `preset_th_zoom_${segment.id}`,
+      type: isEven ? "zoom-in" : "zoom-out",
+      startTime: segment.startTime,
+      endTime: segment.endTime,
+      params: {
+        scale: 1.06,
+        ...(isEven ? { focusX: 0.5, focusY: 0.38 } : {}),
+      },
+    });
+  }
+
   return { updatedCaptions, newEffects, newBroll: [] };
 }
 
@@ -787,33 +831,43 @@ function applyTalkingHeadBrollPreset(
   const newBroll: BRollImage[] = [];
   const duration = segment.endTime - segment.startTime;
 
-  // B-Roll in the middle ~40-60% of segment
-  const brollStart = segment.startTime + duration * 0.2;
-  const brollEnd = segment.startTime + duration * 0.75;
+  // B-Roll covers more of the segment (like Captions app — B-roll is prominent)
+  const brollStart = segment.startTime + duration * 0.1;
+  const brollEnd = segment.startTime + duration * 0.85;
   const brollDuration = brollEnd - brollStart;
 
   if (brollDuration > 0.5) {
-    // Captions-app style: B-roll as split-screen (person still visible on left).
-    // Ken-burns is the cleanest animation — subtle, professional movement.
+    // Alternate between FULLSCREEN and SPLIT positions for visual variety.
+    // Captions app uses both: fullscreen for cinematic moments, split for
+    // maintaining presenter presence. Alternate based on segment ID hash.
+    const charCode = segment.id.charCodeAt(segment.id.length - 1);
+    const useFullscreen = charCode % 2 === 0;
+    const position: "fullscreen" | "split" = useFullscreen ? "fullscreen" : "split";
+
+    // Vary animation based on position
+    const animation: "ken-burns" | "cinematic-reveal" | "fade" = useFullscreen
+      ? (charCode % 4 < 2 ? "cinematic-reveal" : "ken-burns")
+      : "ken-burns";
+
     newBroll.push({
       id: `preset_broll_${segment.id}`,
       url: "", // Will be generated
       prompt: segment.brollQuery,
       startTime: brollStart,
       endTime: brollEnd,
-      animation: "ken-burns",
-      opacity: 0.95,
-      position: "split", // Split-screen: person on left, B-roll on right
+      animation,
+      opacity: useFullscreen ? 0.92 : 0.95,
+      position,
       cinematicOverlay: true,
     });
 
-    // Very subtle zoom on B-Roll — let the ken-burns animation do the work
+    // Subtle zoom on B-Roll — complement the main animation
     newEffects.push({
       id: `preset_thbr_zoom_${segment.id}`,
       type: "zoom-in",
       startTime: brollStart,
       endTime: brollEnd,
-      params: { scale: 1.03, focusX: 0.5, focusY: 0.5 },
+      params: { scale: useFullscreen ? 1.05 : 1.03, focusX: 0.5, focusY: 0.5 },
     });
   }
 
@@ -945,67 +999,31 @@ export function applyAllPresets(
     allNewBroll.push(...result.newBroll);
   }
 
-  // Step 2: SELECTIVE ZOOMS — only ~20-25% of segments get zoom effects.
-  // Professional standard: 2-4 zooms per minute, triggered by content importance.
-  // Score each segment, pick the top ~25%, apply varied zoom styles.
-  const zoomCandidates = segments
-    .filter(s => s.preset !== "hook") // Hook already has its own zoom
-    .map((seg, _idx) => {
-      let score = 0;
-      const dur = seg.endTime - seg.startTime;
-      const wordCount = seg.text.trim().split(/\s+/).length;
-      const textLower = seg.text.toLowerCase();
+  // Step 2: ZOOMS are now applied per-segment by each preset function.
+  // Hook gets 1.18x, TH gets 1.06x alternating in/out, TH+BR gets B-roll zoom.
+  // No centralized zoom selection needed — every segment has its own subtle movement.
 
-      // Short punchy phrases are zoom-worthy
-      if (dur < 2.5 && wordCount <= 6) score += 4;
-      // Longer segments need keyword justification
-      if (dur > 4) score -= 1;
-      // Keywords indicate importance
-      for (const word of textLower.split(/\s+/)) {
-        const cleaned = word.replace(/[.,!?;:'"()]/g, "");
-        if (AUTHORITY_AI_KEYWORDS.has(cleaned) || AUTHORITY_PSYCH_KEYWORDS.has(cleaned)) score += 2;
-        if (AUTHORITY_RESULTS_KEYWORDS.has(cleaned)) score += 2;
-        if (FUTURISTIC_KEYWORDS.has(cleaned)) score += 1;
+  // Step 3: Add smooth FADE transitions when segment TYPE changes.
+  // This creates the "marcante" (noticeable) transitions the user wants,
+  // especially at the boundaries between TH ↔ B-Roll segments.
+  for (let i = 0; i < segments.length - 1; i++) {
+    const currentSeg = segments[i];
+    const nextSeg = segments[i + 1];
+    // Only add transition when segment type changes
+    if (currentSeg.preset !== nextSeg.preset) {
+      const transitionStart = currentSeg.endTime - 0.15;
+      const transitionEnd = nextSeg.startTime + 0.15;
+      if (transitionEnd > transitionStart) {
+        allNewEffects.push({
+          id: `preset_transition_${currentSeg.id}_${nextSeg.id}`,
+          type: "transition-fade",
+          startTime: Math.max(0, transitionStart),
+          endTime: Math.min(videoDuration, transitionEnd),
+          params: { duration: 0.3 },
+        });
       }
-      // Segments too short to notice
-      if (dur < 0.5) score -= 10;
-      return { seg, score, dur };
-    });
-
-  // Pick top ~15% for zooms (min 1) — Captions app uses very few zooms
-  const maxZooms = Math.max(1, Math.ceil(segments.length * 0.15));
-  const zoomWinners = new Set(
-    zoomCandidates
-      .filter(c => c.score > 0 && c.dur >= 0.5)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, maxZooms)
-      .map(c => c.seg.id)
-  );
-
-  // Apply zoom effects only to winners
-  // Subtle zoom scales — barely perceptible, professional feel
-  const zoomStyles: Array<{ type: "zoom-in" | "zoom-out" | "zoom-pulse"; params: Record<string, number> }> = [
-    { type: "zoom-in", params: { scale: 1.06, focusX: 0.5, focusY: 0.38 } },
-    { type: "zoom-out", params: { scale: 1.05 } },
-    { type: "zoom-in", params: { scale: 1.05, focusX: 0.48, focusY: 0.38 } },
-  ];
-
-  let zoomIdx = 0;
-  for (const seg of segments) {
-    if (!zoomWinners.has(seg.id)) continue;
-    const style = zoomStyles[zoomIdx % zoomStyles.length];
-    allNewEffects.push({
-      id: `preset_th_zoom_${seg.id}`,
-      type: style.type,
-      startTime: seg.startTime,
-      endTime: seg.endTime,
-      params: style.params,
-    });
-    zoomIdx++;
+    }
   }
-
-  // Step 3: NO auto-transitions. Professional standard: hard cuts 90% of the time.
-  // Users can manually add transitions via the editor if desired.
 
   // Step 4: Global effects — single consistent look for the whole video
   allNewEffects.push({

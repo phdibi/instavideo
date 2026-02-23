@@ -879,10 +879,11 @@ export default function ProcessingScreen() {
               if (preset === "hook" && i !== 0) {
                 preset = "talking-head-broll";
               }
-              // AI often over-assigns "talking-head" — convert to "talking-head-broll"
-              // for any segment longer than 1.5s to maintain visual richness
+              // Respect AI's talking-head assignments — they create visual rhythm.
+              // Only convert to TH+BR if segment is very long (>6s) and would
+              // benefit from visual variety to avoid monotony.
               const segDuration = videoSegments[i].endTime - videoSegments[i].startTime;
-              if (preset === "talking-head" && segDuration > 1.5) {
+              if (preset === "talking-head" && segDuration > 6) {
                 preset = "talking-head-broll";
               }
               videoSegments[i].preset = preset;
@@ -960,32 +961,66 @@ export default function ProcessingScreen() {
       const brollToGenerate = allBRollItems.filter(item => !item.url);
       if (brollToGenerate.length > 0) {
         setStatus("generating-broll");
-        const batchSize = 3;
+        const batchSize = 2; // Smaller batches for more reliable generation
+        const MAX_RETRIES = 2;
+        let successCount = 0;
+        let failCount = 0;
+
         for (let i = 0; i < brollToGenerate.length; i += batchSize) {
           const batch = brollToGenerate.slice(i, i + batchSize);
-          await Promise.allSettled(
+          const results = await Promise.allSettled(
             batch.map(async (item) => {
-              try {
-                const brollStyle = isAuthorityTheme()
-                  ? `authority-${getAuthorityLean()}`
-                  : undefined;
-                const brollRes = await fetch("/api/generate-broll", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ prompt: item.prompt, style: brollStyle }),
-                });
-                if (brollRes.ok) {
-                  const data = await brollRes.json();
-                  if (data.imageUrl) {
-                    updateBRollImage(item.id, { url: data.imageUrl });
+              const brollStyle = isAuthorityTheme()
+                ? `authority-${getAuthorityLean()}`
+                : undefined;
+
+              for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+                try {
+                  const brollRes = await fetch("/api/generate-broll", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ prompt: item.prompt, style: brollStyle }),
+                  });
+
+                  if (brollRes.ok) {
+                    const data = await brollRes.json();
+                    if (data.imageUrl) {
+                      updateBRollImage(item.id, { url: data.imageUrl });
+                      return true;
+                    }
+                  }
+
+                  const errorData = await brollRes.json().catch(() => ({ error: `HTTP ${brollRes.status}` }));
+                  console.warn(
+                    `[CineAI] B-roll generation attempt ${attempt + 1}/${MAX_RETRIES + 1} failed for "${item.prompt.slice(0, 50)}...":`,
+                    errorData.error || `HTTP ${brollRes.status}`
+                  );
+
+                  // Wait before retry (exponential backoff)
+                  if (attempt < MAX_RETRIES) {
+                    await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+                  }
+                } catch (err) {
+                  console.warn(
+                    `[CineAI] B-roll generation network error (attempt ${attempt + 1}):`,
+                    err instanceof Error ? err.message : err
+                  );
+                  if (attempt < MAX_RETRIES) {
+                    await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
                   }
                 }
-              } catch (err) {
-                console.warn("B-roll generation failed for:", item.prompt, err);
               }
+              return false;
             })
           );
+
+          for (const r of results) {
+            if (r.status === "fulfilled" && r.value) successCount++;
+            else failCount++;
+          }
         }
+
+        console.log(`[CineAI] B-roll generation complete: ${successCount} succeeded, ${failCount} failed out of ${brollToGenerate.length}`);
       }
 
       setStatus("ready");

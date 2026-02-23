@@ -115,12 +115,18 @@ const AUTHORITY_RESULTS_KEYWORDS = new Set([
 ]);
 
 // ===== Detect preset for a segment =====
+// Track segment index for alternating pattern (set by buildSegmentsFromTranscription)
+let _segmentCounter = 0;
+export function resetSegmentCounter() { _segmentCounter = 0; }
+
 export function detectPreset(
   segment: { startTime: number; endTime: number; text: string },
   videoDuration: number,
   isFirst: boolean,
   hasBrollAvailable: boolean
 ): PresetType {
+  _segmentCounter++;
+
   // Rule 1: First segment within 5s = HOOK
   if (isFirst && segment.startTime < 5) {
     return "hook";
@@ -149,7 +155,9 @@ export function detectPreset(
     return "futuristic-hud";
   }
 
-  // Rule 3: Check for visual content that warrants B-Roll
+  const segDuration = segment.endTime - segment.startTime;
+
+  // Rule 3: Check for visual content that warrants B-Roll (require stronger signal)
   let visualScore = 0;
   for (const word of words) {
     const cleaned = word.replace(/[.,!?;:'"()]/g, "");
@@ -158,18 +166,20 @@ export function detectPreset(
     }
   }
 
-  if (visualScore >= 1 || hasBrollAvailable) {
+  // Only use TH+B-Roll when there's a strong visual signal (2+ visual keywords)
+  // or when B-Roll was specifically provided for this timestamp
+  if (visualScore >= 2 || (hasBrollAvailable && visualScore >= 1)) {
     return "talking-head-broll";
   }
 
-  // Rule 4: Default to talking-head-broll for any non-trivial segment.
-  // Only very short transitional moments (<1.5s) stay as plain talking-head.
-  // This ensures the video has consistent visual richness.
-  const segDuration = segment.endTime - segment.startTime;
-  if (segDuration > 1.5) {
+  // Rule 4: Alternating pattern for variety — every 3rd segment gets B-Roll
+  // to create a professional rhythm: TH → TH → TH+BR → TH → TH → TH+BR
+  // This mimics professional video editing where B-roll is used sparingly.
+  if (segDuration > 2.5 && _segmentCounter % 3 === 0) {
     return "talking-head-broll";
   }
 
+  // Rule 5: Short transitional moments stay as talking-head
   return "talking-head";
 }
 
@@ -257,6 +267,7 @@ export function buildSegmentsFromTranscription(
   existingBroll: { startTime: number; endTime: number }[]
 ): VideoSegment[] {
   if (transcriptionSegments.length === 0) return [];
+  resetSegmentCounter();
 
   const segments: VideoSegment[] = [];
 
@@ -780,7 +791,6 @@ function applyTalkingHeadPreset(
   newEffects: EditEffect[];
   newBroll: BRollImage[];
 } {
-  // Keep "pop" for 1-2 word short captions; only use "karaoke" for longer ones
   const captionStyle = useAuthorityTheme
     ? authorityTalkingHeadCaptionStyle
     : useVelocityTheme
@@ -789,11 +799,9 @@ function applyTalkingHeadPreset(
   const usesDualLayer = useEmberTheme || useVelocityTheme || useAuthorityTheme;
   const updatedCaptions = segCaptions.map(c => {
     const wordCount = c.text.trim().split(/\s+/).length;
-    // Ember/Velocity: For 1-2 word punchy captions, show the keyword as large dual-layer
     const isKeywordCaption = !!(usesDualLayer && wordCount <= 2
       && segment.keywordHighlight
       && c.text.toLowerCase().includes(segment.keywordHighlight.toLowerCase()));
-    // Clean, calm animations for all themes — "fade" for short, "slide-up" for longer
     const animation = wordCount <= 2 ? "fade" as const : "slide-up" as const;
     return {
       ...c,
@@ -809,23 +817,61 @@ function applyTalkingHeadPreset(
   const newEffects: EditEffect[] = [];
   const duration = segment.endTime - segment.startTime;
 
-  // Single gentle zoom per segment — calm, conversational
+  // Varied zoom/movement per segment for visual interest.
+  // Use segment ID hash to deterministically alternate between zoom styles.
+  const hash = Math.abs(segment.id.charCodeAt(segment.id.length - 1));
+  const zoomVariant = hash % 4;
+
   if (duration > 3) {
-    newEffects.push({
-      id: `preset_th_zoom_${segment.id}`,
-      type: "zoom-in",
-      startTime: segment.startTime,
-      endTime: segment.endTime,
-      params: { scale: 1.06, focusX: 0.5, focusY: 0.38 },
-    });
+    switch (zoomVariant) {
+      case 0:
+        // Slow zoom-in on face
+        newEffects.push({
+          id: `preset_th_zoom_${segment.id}`,
+          type: "zoom-in",
+          startTime: segment.startTime,
+          endTime: segment.endTime,
+          params: { scale: 1.08, focusX: 0.5, focusY: 0.35 },
+        });
+        break;
+      case 1:
+        // Gentle zoom-out (widen frame)
+        newEffects.push({
+          id: `preset_th_zoom_${segment.id}`,
+          type: "zoom-out",
+          startTime: segment.startTime,
+          endTime: segment.endTime,
+          params: { scale: 1.10 },
+        });
+        break;
+      case 2:
+        // Subtle pan left during segment
+        newEffects.push({
+          id: `preset_th_zoom_${segment.id}`,
+          type: "zoom-in",
+          startTime: segment.startTime,
+          endTime: segment.endTime,
+          params: { scale: 1.06, focusX: 0.45, focusY: 0.38 },
+        });
+        break;
+      default:
+        // Subtle pan right during segment
+        newEffects.push({
+          id: `preset_th_zoom_${segment.id}`,
+          type: "zoom-in",
+          startTime: segment.startTime,
+          endTime: segment.endTime,
+          params: { scale: 1.06, focusX: 0.55, focusY: 0.38 },
+        });
+        break;
+    }
   } else if (duration > 1.5) {
-    // Short segment: very subtle zoom-pulse
     newEffects.push({
       id: `preset_th_zoom_${segment.id}`,
       type: "zoom-pulse",
       startTime: segment.startTime,
       endTime: segment.endTime,
-      params: { scale: 1.04 },
+      params: { scale: 1.05 },
     });
   }
 
@@ -1044,16 +1090,41 @@ export function applyAllPresets(
 
     allNewEffects.push(...result.newEffects);
 
-    // Rate-limit B-roll: only keep every other TH-broll segment's B-roll
+    // Keep all B-roll from TH-broll segments (detection is now more selective)
     if (segment.preset === "talking-head-broll" && result.newBroll.length > 0) {
       thBrollCount++;
-      if (thBrollCount % 2 === 1) {
-        // Keep this one (1st, 3rd, 5th, etc.)
-        allNewBroll.push(...result.newBroll);
-      }
-      // Skip even-numbered — they get the TH-broll caption style but no image
+      allNewBroll.push(...result.newBroll);
     } else {
       allNewBroll.push(...result.newBroll);
+    }
+  }
+
+  // Add smooth transitions between segments with different preset types.
+  // Professional editors use micro-transitions (fade/cut) at preset boundaries
+  // to create visual flow and avoid jarring cuts.
+  for (let i = 0; i < segments.length - 1; i++) {
+    const current = segments[i];
+    const next = segments[i + 1];
+    const presetChanged = current.preset !== next.preset;
+    const hasBrollTransition = current.preset === "talking-head-broll" || next.preset === "talking-head-broll";
+
+    // Add fade transition when preset type changes (TH → TH+BR, TH → HUD, etc.)
+    if (presetChanged || hasBrollTransition) {
+      const transitionId = `preset_transition_${i}`;
+      // Only add if no transition already exists near this boundary
+      const hasExistingTransition = allNewEffects.some(
+        e => e.type.startsWith("transition-") &&
+          Math.abs(e.startTime - current.endTime) < 0.5
+      );
+      if (!hasExistingTransition) {
+        allNewEffects.push({
+          id: transitionId,
+          type: "transition-fade",
+          startTime: current.endTime - 0.15,
+          endTime: current.endTime + 0.15,
+          params: { duration: 0.3 },
+        });
+      }
     }
   }
 

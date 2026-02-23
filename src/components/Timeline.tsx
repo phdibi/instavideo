@@ -314,9 +314,10 @@ export default function Timeline() {
       e.stopPropagation();
       e.preventDefault();
 
-      // Shift+mouseDown → toggle multi-select, do NOT start drag
+      // Shift+mouseDown → do NOT start drag, let onClick handle multi-select.
+      // IMPORTANT: we must NOT call toggleMultiSelect here because onClick
+      // will also fire and call it — double-toggling cancels the selection.
       if (e.shiftKey && type !== "playhead") {
-        toggleMultiSelect(type, id);
         return;
       }
 
@@ -363,7 +364,7 @@ export default function Timeline() {
         setSelectedItem({ type, id });
       }
     },
-    [pauseForDrag, snapshotEffectRowMap, multiSelected, parseKey, makeKey, captions, effects, bRollImages, segments, toggleMultiSelect, clearMultiSelect, setSelectedItem]
+    [pauseForDrag, snapshotEffectRowMap, multiSelected, parseKey, makeKey, captions, effects, bRollImages, segments, clearMultiSelect, setSelectedItem]
   );
 
   // Auto-scroll timeline when dragging near edges (like CapCut)

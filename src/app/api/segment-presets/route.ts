@@ -49,8 +49,8 @@ ${segmentList}
 
 AVAILABLE PRESETS:
 1. "hook" — ONLY the first segment (first 3-5 seconds). Goal: confident opening. Clean zoom-in, no B-Roll.
-2. "talking-head" — RARE. Only for very short transitional moments (<3 seconds) with no visual concepts. Gentle zoom, no B-Roll.
-3. "talking-head-broll" — DEFAULT for most segments. Goal: illustrate what's being said with cinematic B-Roll. Use this for any segment longer than 3 seconds, or when the speaker mentions ANY concept that could be visually represented.
+2. "talking-head" — EXTREMELY RARE. Only for segments shorter than 1.5 seconds that are purely transitional filler. Almost never used.
+3. "talking-head-broll" — DEFAULT for 80-90% of segments. Goal: illustrate what's being said with cinematic B-Roll. Use this for ANY segment longer than 1.5 seconds.
 4. "futuristic-hud" — Abstract/conceptual content about technology, AI, science, data, code, systems. Goal: tech visual impact. HUD overlay, cold color palette, tech B-Roll.
 
 STYLE: The editing should feel calm, elegant, and conversational — like a professional consultant speaking confidently. Avoid excessive variety. Prefer "talking-head-broll" over "talking-head" for visual richness.
@@ -58,8 +58,8 @@ STYLE: The editing should feel calm, elegant, and conversational — like a prof
 RULES:
 - Segment 1 MUST be "hook" if it starts within the first 5 seconds. NO other segment should be "hook".
 - Use "futuristic-hud" when 2+ tech/science keywords appear (AI, technology, neural, algorithm, code, data, system, future, digital, automation, etc.)
-- Use "talking-head-broll" as the DEFAULT for most segments — this is the preferred preset for professional content
-- Use "talking-head" SPARINGLY — only for very short segments (<3s) that are purely transitional
+- Use "talking-head-broll" as the DEFAULT for 80-90% of all segments — this is the preferred preset for professional content
+- Use "talking-head" EXTREMELY RARELY — only for segments shorter than 1.5s that are purely filler/transitional. In most videos, 0-2 segments should be "talking-head"
 - Extract the SINGLE most important keyword from each segment text (the word that should be visually highlighted)
 
 Return ONLY valid JSON (no markdown, no code blocks):

@@ -721,6 +721,77 @@ export default function ProcessingScreen() {
         }
       }
 
+      // LAYER 3: Piecewise progressive drift correction.
+      // Gemini often produces timestamps that are accurate at the start but
+      // drift progressively in the second half. A single linear scale can't
+      // fix this — we need to apply different corrections to each half.
+      //
+      // Strategy: Find the midpoint segment, compare its timestamp position
+      // against where it SHOULD be (proportional to video duration), and
+      // apply separate linear scales to first-half and second-half.
+      if (segments.length >= 4 && effectiveDuration > 5) {
+        // Collect all word timestamps for midpoint analysis
+        const allWordTimestamps: number[] = [];
+        for (const seg of segments) {
+          if (seg.words) {
+            for (const w of seg.words) allWordTimestamps.push(w.start);
+          } else {
+            allWordTimestamps.push(seg.start);
+          }
+        }
+        allWordTimestamps.sort((a, b) => a - b);
+
+        if (allWordTimestamps.length >= 4) {
+          const midIdx = Math.floor(allWordTimestamps.length / 2);
+          const transcriptionMidTime = allWordTimestamps[midIdx];
+          // Expected: midpoint should be at ~50% of video
+          const expectedMidTime = effectiveDuration * 0.5;
+          const midDriftRatio = transcriptionMidTime / expectedMidTime;
+          const midDriftPercent = Math.abs(1 - midDriftRatio) * 100;
+
+          console.log(
+            `[CineAI] Layer 3 midpoint check: transcription mid=${transcriptionMidTime.toFixed(2)}s, ` +
+            `expected=${expectedMidTime.toFixed(2)}s, ratio=${midDriftRatio.toFixed(4)} (${midDriftPercent.toFixed(1)}% off)`
+          );
+
+          // Only apply piecewise correction if midpoint is noticeably off (>3%)
+          // and the drift suggests non-linear behavior
+          if (midDriftPercent > 3 && midDriftPercent < 40) {
+            const splitPoint = expectedMidTime;
+            // Scale for first half: should map [0, transcriptionMidTime] → [0, expectedMidTime]
+            const firstHalfScale = expectedMidTime / transcriptionMidTime;
+            // Scale for second half: should map [transcriptionMidTime, end] → [expectedMidTime, effectiveDuration]
+            const lastTime = Math.max(...segments.map(s => s.end), ...segments.flatMap(s => (s.words || []).map(w => w.end)));
+            const secondHalfScale = (effectiveDuration - expectedMidTime) / (lastTime - transcriptionMidTime);
+
+            console.log(
+              `[CineAI] Applying piecewise correction: ` +
+              `firstHalf ×${firstHalfScale.toFixed(4)}, secondHalf ×${secondHalfScale.toFixed(4)}`
+            );
+
+            const correctTime = (t: number): number => {
+              if (t <= transcriptionMidTime) {
+                return t * firstHalfScale;
+              } else {
+                return splitPoint + (t - transcriptionMidTime) * secondHalfScale;
+              }
+            };
+
+            for (const seg of segments) {
+              seg.start = Math.max(0, correctTime(seg.start));
+              seg.end = Math.min(effectiveDuration, correctTime(seg.end));
+              if (seg.words) {
+                for (const w of seg.words) {
+                  w.start = Math.max(0, correctTime(w.start));
+                  w.end = Math.min(effectiveDuration, correctTime(w.end));
+                }
+              }
+            }
+            console.log(`[CineAI] Piecewise drift correction applied`);
+          }
+        }
+      }
+
       // Step 3: Build captions deterministically from transcription segments
       // Read content pillar early to enable authority mode (fewer words, no emojis)
       const pillar = useProjectStore.getState().brandingConfig.contentPillar;
@@ -803,10 +874,15 @@ export default function ProcessingScreen() {
           for (let i = 0; i < videoSegments.length && i < aiSegments.length; i++) {
             const aiSeg = aiSegments.find((a: { index: number }) => a.index === i);
             if (aiSeg) {
-              // Only the FIRST segment (index 0) can be "hook".
-              // The AI sometimes assigns "hook" to multiple early segments — prevent that.
               let preset = aiSeg.preset as PresetType;
+              // Only the FIRST segment (index 0) can be "hook".
               if (preset === "hook" && i !== 0) {
+                preset = "talking-head-broll";
+              }
+              // AI often over-assigns "talking-head" — convert to "talking-head-broll"
+              // for any segment longer than 1.5s to maintain visual richness
+              const segDuration = videoSegments[i].endTime - videoSegments[i].startTime;
+              if (preset === "talking-head" && segDuration > 1.5) {
                 preset = "talking-head-broll";
               }
               videoSegments[i].preset = preset;

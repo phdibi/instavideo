@@ -162,10 +162,11 @@ export function detectPreset(
     return "talking-head-broll";
   }
 
-  // Rule 4: Longer segments (>3s) default to talking-head-broll for visual variety.
-  // Only short transitional moments stay as plain talking-head.
+  // Rule 4: Default to talking-head-broll for any non-trivial segment.
+  // Only very short transitional moments (<1.5s) stay as plain talking-head.
+  // This ensures the video has consistent visual richness.
   const segDuration = segment.endTime - segment.startTime;
-  if (segDuration > 3) {
+  if (segDuration > 1.5) {
     return "talking-head-broll";
   }
 

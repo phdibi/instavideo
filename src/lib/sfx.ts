@@ -1,22 +1,21 @@
 /**
- * CineAI SFX Engine — Cinematic sound effects using Web Audio API.
+ * CineAI SFX Engine — Professional cinematic sound effects via Web Audio API.
  *
- * Generates procedural sounds for element transitions, inspired by
- * the Captions app which uses "clicks", "whooshes", and other
- * cinematic sounds to introduce elements.
+ * Redesigned for a serious, corporate/professional tone. Sounds are:
+ * - Deep, low-frequency based (not bright/childish)
+ * - Short and subtle (never overpowering the content)
+ * - Inspired by broadcast TV and corporate video production
  *
- * Available effects:
- * - whoosh: Filtered noise sweep — for B-Roll transitions
- * - swoosh-in: Ascending tone — element sliding in
- * - swoosh-out: Descending tone — element sliding out
- * - pop: Short sine burst — caption group change
- * - click: Very short impulse — subtle accent
- * - rise: Ascending dual tone — keyword/hook reveal
- * - impact: Deep thud + noise — hook start punch
+ * Supports SFX profiles:
+ * - "corporate": Clean, subtle — like a Bloomberg/CNBC transition
+ * - "minimal": Ultra-subtle — barely-there accents
+ * - "cinematic": Film-style — deeper, more dramatic
+ * - "none": All sounds disabled
  *
- * No external audio files needed — everything is synthesized in real-time.
- * Sounds are designed to be subtle and cinematic, never distracting.
+ * All sounds are procedurally generated — no external audio files.
  */
+
+import type { SFXProfile } from "@/types";
 
 let audioCtx: AudioContext | null = null;
 
@@ -39,70 +38,104 @@ export type SFXType =
   | "rise"
   | "impact";
 
+// Profile volume multipliers — shape the intensity per profile
+const PROFILE_MULTIPLIER: Record<SFXProfile, number> = {
+  corporate: 1.0,
+  minimal: 0.5,
+  cinematic: 1.4,
+  none: 0,
+};
+
+// Profile frequency shift — corporate = neutral, cinematic = deeper
+const PROFILE_FREQ_SHIFT: Record<SFXProfile, number> = {
+  corporate: 1.0,
+  minimal: 1.1,  // slightly higher = thinner = more subtle
+  cinematic: 0.7, // lower frequencies = more dramatic
+  none: 1.0,
+};
+
 /**
- * Play a cinematic sound effect.
+ * Play a professional sound effect.
  * @param type - The type of sound to play
- * @param volume - Volume from 0-1 (default: 0.15 — subtle, non-intrusive)
+ * @param volume - Base volume 0-1 (will be modified by profile)
+ * @param profile - SFX profile to use (default: "corporate")
  */
-export function playSFX(type: SFXType, volume: number = 0.15): void {
+export function playSFX(
+  type: SFXType,
+  volume: number = 0.12,
+  profile: SFXProfile = "corporate"
+): void {
+  if (profile === "none") return;
+
   try {
     const ctx = getAudioContext();
     const now = ctx.currentTime;
+    const vol = volume * PROFILE_MULTIPLIER[profile];
+    const freqShift = PROFILE_FREQ_SHIFT[profile];
 
     switch (type) {
       case "whoosh":
-        playWhoosh(ctx, now, volume);
+        playWhoosh(ctx, now, vol, freqShift);
         break;
       case "swoosh-in":
-        playSwooshIn(ctx, now, volume);
+        playSwooshIn(ctx, now, vol, freqShift);
         break;
       case "swoosh-out":
-        playSwooshOut(ctx, now, volume);
+        playSwooshOut(ctx, now, vol, freqShift);
         break;
       case "pop":
-        playPop(ctx, now, volume);
+        playPop(ctx, now, vol, freqShift);
         break;
       case "click":
-        playClick(ctx, now, volume);
+        playClick(ctx, now, vol, freqShift);
         break;
       case "rise":
-        playRise(ctx, now, volume);
+        playRise(ctx, now, vol, freqShift);
         break;
       case "impact":
-        playImpact(ctx, now, volume);
+        playImpact(ctx, now, vol, freqShift);
         break;
     }
   } catch {
-    // Silently fail — SFX are non-essential enhancements
+    // Silently fail — SFX are non-essential
   }
 }
 
-// ── Whoosh — filtered white noise with frequency sweep ──
-// Used for B-Roll transitions, segment changes
-function playWhoosh(ctx: AudioContext, now: number, volume: number) {
-  const duration = 0.3;
+/**
+ * Preview a specific SFX for the settings panel.
+ */
+export function previewSFX(type: SFXType, volume: number, profile: SFXProfile): void {
+  playSFX(type, volume, profile);
+}
+
+// ── Whoosh — deep filtered noise sweep ──
+// Corporate: clean air movement. Cinematic: deeper rumble.
+function playWhoosh(ctx: AudioContext, now: number, vol: number, freq: number) {
+  const duration = 0.25;
   const bufferSize = Math.floor(ctx.sampleRate * duration);
   const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
   const data = buffer.getChannelData(0);
 
   for (let i = 0; i < bufferSize; i++) {
     const t = i / bufferSize;
-    const envelope = Math.sin(t * Math.PI) * Math.exp(-t * 2);
+    // Asymmetric envelope — fast attack, slow release (professional feel)
+    const envelope = Math.pow(Math.sin(t * Math.PI), 0.5) * Math.exp(-t * 3);
     data[i] = (Math.random() * 2 - 1) * envelope;
   }
 
   const source = ctx.createBufferSource();
   source.buffer = buffer;
 
+  // Low-frequency focused bandpass — deep, serious
   const filter = ctx.createBiquadFilter();
   filter.type = "bandpass";
-  filter.Q.value = 2;
-  filter.frequency.setValueAtTime(200, now);
-  filter.frequency.exponentialRampToValueAtTime(2500, now + duration * 0.4);
-  filter.frequency.exponentialRampToValueAtTime(400, now + duration);
+  filter.Q.value = 1.5;
+  filter.frequency.setValueAtTime(150 * freq, now);
+  filter.frequency.exponentialRampToValueAtTime(800 * freq, now + duration * 0.3);
+  filter.frequency.exponentialRampToValueAtTime(200 * freq, now + duration);
 
   const gain = ctx.createGain();
-  gain.gain.setValueAtTime(volume * 0.5, now);
+  gain.gain.setValueAtTime(vol * 0.4, now);
   gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
 
   source.connect(filter);
@@ -112,182 +145,17 @@ function playWhoosh(ctx: AudioContext, now: number, volume: number) {
   source.stop(now + duration);
 }
 
-// ── Swoosh In — ascending frequency sweep ──
-// Used when elements slide into view
-function playSwooshIn(ctx: AudioContext, now: number, volume: number) {
-  const duration = 0.2;
-
-  // Filtered noise component
+// ── Swoosh In — low rumble sweep ──
+// Professional air movement for element entrance
+function playSwooshIn(ctx: AudioContext, now: number, vol: number, freq: number) {
+  const duration = 0.18;
   const bufferSize = Math.floor(ctx.sampleRate * duration);
   const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
   const data = buffer.getChannelData(0);
+
   for (let i = 0; i < bufferSize; i++) {
     const t = i / bufferSize;
-    data[i] = (Math.random() * 2 - 1) * Math.sin(t * Math.PI) * 0.5;
-  }
-
-  const noise = ctx.createBufferSource();
-  noise.buffer = buffer;
-
-  const filter = ctx.createBiquadFilter();
-  filter.type = "bandpass";
-  filter.Q.value = 3;
-  filter.frequency.setValueAtTime(300, now);
-  filter.frequency.exponentialRampToValueAtTime(2000, now + duration);
-
-  // Sine tone component
-  const osc = ctx.createOscillator();
-  osc.type = "sine";
-  osc.frequency.setValueAtTime(150, now);
-  osc.frequency.exponentialRampToValueAtTime(600, now + duration);
-
-  const gain = ctx.createGain();
-  gain.gain.setValueAtTime(volume * 0.3, now);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
-
-  noise.connect(filter);
-  filter.connect(gain);
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-
-  noise.start(now);
-  osc.start(now);
-  noise.stop(now + duration);
-  osc.stop(now + duration);
-}
-
-// ── Swoosh Out — descending frequency sweep ──
-// Used when elements slide out of view
-function playSwooshOut(ctx: AudioContext, now: number, volume: number) {
-  const duration = 0.2;
-
-  const bufferSize = Math.floor(ctx.sampleRate * duration);
-  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) {
-    const t = i / bufferSize;
-    data[i] = (Math.random() * 2 - 1) * (1 - t) * 0.5;
-  }
-
-  const noise = ctx.createBufferSource();
-  noise.buffer = buffer;
-
-  const filter = ctx.createBiquadFilter();
-  filter.type = "bandpass";
-  filter.Q.value = 3;
-  filter.frequency.setValueAtTime(2000, now);
-  filter.frequency.exponentialRampToValueAtTime(200, now + duration);
-
-  const osc = ctx.createOscillator();
-  osc.type = "sine";
-  osc.frequency.setValueAtTime(600, now);
-  osc.frequency.exponentialRampToValueAtTime(100, now + duration);
-
-  const gain = ctx.createGain();
-  gain.gain.setValueAtTime(volume * 0.3, now);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
-
-  noise.connect(filter);
-  filter.connect(gain);
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-
-  noise.start(now);
-  osc.start(now);
-  noise.stop(now + duration);
-  osc.stop(now + duration);
-}
-
-// ── Pop — short sine burst ──
-// Used for caption group transitions, subtle accent
-function playPop(ctx: AudioContext, now: number, volume: number) {
-  const duration = 0.08;
-  const osc = ctx.createOscillator();
-  osc.type = "sine";
-  osc.frequency.setValueAtTime(500, now);
-  osc.frequency.exponentialRampToValueAtTime(180, now + duration);
-
-  const gain = ctx.createGain();
-  gain.gain.setValueAtTime(volume * 0.4, now);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
-
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.start(now);
-  osc.stop(now + duration);
-}
-
-// ── Click — very short impulse ──
-// Used for subtle transition accents
-function playClick(ctx: AudioContext, now: number, volume: number) {
-  const duration = 0.025;
-  const osc = ctx.createOscillator();
-  osc.type = "square";
-  osc.frequency.setValueAtTime(1000, now);
-  osc.frequency.exponentialRampToValueAtTime(300, now + duration);
-
-  const gain = ctx.createGain();
-  gain.gain.setValueAtTime(volume * 0.25, now);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
-
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.start(now);
-  osc.stop(now + duration);
-}
-
-// ── Rise — ascending dual tone for keyword reveal ──
-// Used when the hook keyword appears with a cinematic reveal
-function playRise(ctx: AudioContext, now: number, volume: number) {
-  const duration = 0.35;
-
-  const osc1 = ctx.createOscillator();
-  osc1.type = "sine";
-  osc1.frequency.setValueAtTime(200, now);
-  osc1.frequency.exponentialRampToValueAtTime(1000, now + duration * 0.7);
-
-  const osc2 = ctx.createOscillator();
-  osc2.type = "sine";
-  osc2.frequency.setValueAtTime(300, now);
-  osc2.frequency.exponentialRampToValueAtTime(1500, now + duration * 0.7);
-
-  const gain = ctx.createGain();
-  gain.gain.setValueAtTime(0.001, now);
-  gain.gain.linearRampToValueAtTime(volume * 0.2, now + duration * 0.3);
-  gain.gain.linearRampToValueAtTime(volume * 0.12, now + duration * 0.7);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
-
-  osc1.connect(gain);
-  osc2.connect(gain);
-  gain.connect(ctx.destination);
-
-  osc1.start(now);
-  osc2.start(now);
-  osc1.stop(now + duration);
-  osc2.stop(now + duration);
-}
-
-// ── Impact — deep thud + noise burst ──
-// Used at the very start of the hook for a cinematic punch
-function playImpact(ctx: AudioContext, now: number, volume: number) {
-  const duration = 0.25;
-
-  // Low sine thud
-  const osc = ctx.createOscillator();
-  osc.type = "sine";
-  osc.frequency.setValueAtTime(70, now);
-  osc.frequency.exponentialRampToValueAtTime(25, now + duration);
-
-  const oscGain = ctx.createGain();
-  oscGain.gain.setValueAtTime(volume * 0.5, now);
-  oscGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
-
-  // Short noise burst
-  const noiseLen = Math.floor(ctx.sampleRate * 0.08);
-  const buffer = ctx.createBuffer(1, noiseLen, ctx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < noiseLen; i++) {
-    data[i] = (Math.random() * 2 - 1) * Math.exp((-i / noiseLen) * 6);
+    data[i] = (Math.random() * 2 - 1) * Math.pow(t, 0.3) * Math.exp(-t * 2) * 0.6;
   }
 
   const noise = ctx.createBufferSource();
@@ -295,11 +163,169 @@ function playImpact(ctx: AudioContext, now: number, volume: number) {
 
   const filter = ctx.createBiquadFilter();
   filter.type = "lowpass";
-  filter.frequency.value = 400;
+  filter.Q.value = 1;
+  filter.frequency.setValueAtTime(200 * freq, now);
+  filter.frequency.exponentialRampToValueAtTime(1200 * freq, now + duration);
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.001, now);
+  gain.gain.linearRampToValueAtTime(vol * 0.3, now + duration * 0.4);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+  noise.connect(filter);
+  filter.connect(gain);
+  gain.connect(ctx.destination);
+  noise.start(now);
+  noise.stop(now + duration);
+}
+
+// ── Swoosh Out — descending low rumble ──
+function playSwooshOut(ctx: AudioContext, now: number, vol: number, freq: number) {
+  const duration = 0.18;
+  const bufferSize = Math.floor(ctx.sampleRate * duration);
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+
+  for (let i = 0; i < bufferSize; i++) {
+    const t = i / bufferSize;
+    data[i] = (Math.random() * 2 - 1) * (1 - t) * Math.exp(-t) * 0.6;
+  }
+
+  const noise = ctx.createBufferSource();
+  noise.buffer = buffer;
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.Q.value = 1;
+  filter.frequency.setValueAtTime(1200 * freq, now);
+  filter.frequency.exponentialRampToValueAtTime(150 * freq, now + duration);
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(vol * 0.25, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+  noise.connect(filter);
+  filter.connect(gain);
+  gain.connect(ctx.destination);
+  noise.start(now);
+  noise.stop(now + duration);
+}
+
+// ── Pop — deep, short thump ──
+// Like a professional camera shutter or light switch
+function playPop(ctx: AudioContext, now: number, vol: number, freq: number) {
+  const duration = 0.06;
+  const osc = ctx.createOscillator();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(200 * freq, now);
+  osc.frequency.exponentialRampToValueAtTime(60 * freq, now + duration);
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(vol * 0.35, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(now);
+  osc.stop(now + duration);
+}
+
+// ── Click — crisp, short impulsion ──
+// Like a professional broadcast transition marker
+function playClick(ctx: AudioContext, now: number, vol: number, freq: number) {
+  const duration = 0.02;
+
+  // Very short noise burst — like a relay click
+  const bufferSize = Math.floor(ctx.sampleRate * duration);
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    const t = i / bufferSize;
+    data[i] = (Math.random() * 2 - 1) * Math.exp(-t * 15);
+  }
+
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = "highpass";
+  filter.frequency.value = 400 * freq;
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(vol * 0.2, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+  source.connect(filter);
+  filter.connect(gain);
+  gain.connect(ctx.destination);
+  source.start(now);
+  source.stop(now + duration);
+}
+
+// ── Rise — deep ascending tone ──
+// Professional reveal sound — like a corporate logo stinger
+function playRise(ctx: AudioContext, now: number, vol: number, freq: number) {
+  const duration = 0.3;
+
+  const osc = ctx.createOscillator();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(80 * freq, now);
+  osc.frequency.exponentialRampToValueAtTime(400 * freq, now + duration * 0.8);
+
+  // Subtle harmonic layer
+  const osc2 = ctx.createOscillator();
+  osc2.type = "sine";
+  osc2.frequency.setValueAtTime(120 * freq, now);
+  osc2.frequency.exponentialRampToValueAtTime(600 * freq, now + duration * 0.8);
+
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.001, now);
+  gain.gain.linearRampToValueAtTime(vol * 0.15, now + duration * 0.4);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+  osc.connect(gain);
+  osc2.connect(gain);
+  gain.connect(ctx.destination);
+
+  osc.start(now);
+  osc2.start(now);
+  osc.stop(now + duration);
+  osc2.stop(now + duration);
+}
+
+// ── Impact — deep sub-bass hit ──
+// Like a cinematic title card reveal — felt more than heard
+function playImpact(ctx: AudioContext, now: number, vol: number, freq: number) {
+  const duration = 0.2;
+
+  // Deep sub-bass oscillator
+  const osc = ctx.createOscillator();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(50 * freq, now);
+  osc.frequency.exponentialRampToValueAtTime(20 * freq, now + duration);
+
+  const oscGain = ctx.createGain();
+  oscGain.gain.setValueAtTime(vol * 0.4, now);
+  oscGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+  // Tight noise transient (like a muted kick drum)
+  const noiseLen = Math.floor(ctx.sampleRate * 0.04);
+  const buffer = ctx.createBuffer(1, noiseLen, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < noiseLen; i++) {
+    data[i] = (Math.random() * 2 - 1) * Math.exp((-i / noiseLen) * 10);
+  }
+
+  const noise = ctx.createBufferSource();
+  noise.buffer = buffer;
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.value = 300 * freq;
 
   const noiseGain = ctx.createGain();
-  noiseGain.gain.setValueAtTime(volume * 0.25, now);
-  noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+  noiseGain.gain.setValueAtTime(vol * 0.2, now);
+  noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
 
   osc.connect(oscGain);
   oscGain.connect(ctx.destination);
@@ -310,11 +336,11 @@ function playImpact(ctx: AudioContext, now: number, volume: number) {
   osc.start(now);
   noise.start(now);
   osc.stop(now + duration);
-  noise.stop(now + 0.08);
+  noise.stop(now + 0.04);
 }
 
 /**
- * Cleanup — close the AudioContext when no longer needed.
+ * Cleanup AudioContext when no longer needed.
  */
 export function disposeSFX(): void {
   if (audioCtx && audioCtx.state !== "closed") {

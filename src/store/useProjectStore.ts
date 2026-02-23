@@ -8,6 +8,7 @@ import type {
   TeleprompterSettings,
   VideoSegment,
   BrandingConfig,
+  SFXConfig,
 } from "@/types";
 
 interface ProjectStore {
@@ -26,6 +27,7 @@ interface ProjectStore {
   selectedItem: { type: "caption" | "effect" | "broll" | "segment"; id: string } | null;
   teleprompterSettings: TeleprompterSettings;
   brandingConfig: BrandingConfig;
+  sfxConfig: SFXConfig;
 
   setSegments: (segments: VideoSegment[]) => void;
   updateSegment: (id: string, updates: Partial<VideoSegment>) => void;
@@ -49,6 +51,7 @@ interface ProjectStore {
   setSelectedItem: (item: { type: "caption" | "effect" | "broll" | "segment"; id: string } | null) => void;
   setTeleprompterSettings: (settings: Partial<TeleprompterSettings>) => void;
   setBrandingConfig: (config: Partial<BrandingConfig>) => void;
+  setSFXConfig: (config: Partial<SFXConfig>) => void;
   /** Batch offset multiple items by a time delta — for Shift multi-select bulk editing */
   batchOffsetItems: (items: { type: "caption" | "effect" | "broll" | "segment"; id: string }[], deltaTime: number) => void;
   reset: () => void;
@@ -78,6 +81,17 @@ const defaultBrandingConfig: BrandingConfig = {
   contentPillar: "ia-tech",
 };
 
+const defaultSFXConfig: SFXConfig = {
+  profile: "corporate",
+  masterVolume: 0.15,
+  hookImpact: true,
+  hookRise: true,
+  brollEnter: true,
+  brollExit: false,
+  segmentChange: false,
+};
+
+
 const initialState = {
   videoFile: null,
   videoUrl: "",
@@ -94,6 +108,7 @@ const initialState = {
   selectedItem: null,
   teleprompterSettings: { ...defaultTeleprompterSettings },
   brandingConfig: { ...defaultBrandingConfig },
+  sfxConfig: { ...defaultSFXConfig },
 };
 
 export const useProjectStore = create<ProjectStore>((set) => ({
@@ -215,6 +230,10 @@ export const useProjectStore = create<ProjectStore>((set) => ({
   setBrandingConfig: (config) =>
     set((state) => ({
       brandingConfig: { ...state.brandingConfig, ...config },
+    })),
+  setSFXConfig: (config) =>
+    set((state) => ({
+      sfxConfig: { ...state.sfxConfig, ...config },
     })),
   batchOffsetItems: (items, deltaTime) =>
     set((state) => {

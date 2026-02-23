@@ -12,8 +12,12 @@ import {
   ChevronUp,
   RefreshCw,
   Sparkles,
+  Volume2,
+  Play,
 } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
+import { previewSFX } from "@/lib/sfx";
+import type { SFXProfile, SFXConfig } from "@/types";
 import { formatTime } from "@/lib/formatTime";
 import {
   PRESET_INFO,
@@ -54,6 +58,8 @@ export default function PresetPanel() {
     setCurrentTime,
     brandingConfig,
     setBrandingConfig,
+    sfxConfig,
+    setSFXConfig,
   } = useProjectStore();
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -360,43 +366,47 @@ export default function PresetPanel() {
         </div>
       )}
 
-      {/* Personal Branding */}
-      <div className="p-3 border-b border-[var(--border)] space-y-2">
-        <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide font-semibold">
-          Branding Pessoal
-        </p>
-        <div className="grid grid-cols-1 gap-2">
-          <div>
-            <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
-              Nome
-            </label>
-            <input
-              type="text"
-              value={brandingConfig.name}
-              onChange={(e) => setBrandingConfig({ name: e.target.value })}
-              className="w-full mt-0.5 p-2 text-sm bg-[var(--background)] border border-[var(--border)] rounded-lg focus:border-[var(--accent)] focus:outline-none"
-              placeholder="Seu Nome"
-            />
-          </div>
-          <div>
-            <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
-              Título / Profissão
-            </label>
-            <input
-              type="text"
-              value={brandingConfig.title}
-              onChange={(e) => setBrandingConfig({ title: e.target.value })}
-              className="w-full mt-0.5 p-2 text-sm bg-[var(--background)] border border-[var(--border)] rounded-lg focus:border-[var(--accent)] focus:outline-none"
-              placeholder="Consultor de IA | Psicólogo"
-            />
+      {/* Scrollable content: Branding + SFX + Segments */}
+      <div className="flex-1 overflow-y-auto">
+        {/* Personal Branding */}
+        <div className="p-3 border-b border-[var(--border)] space-y-2">
+          <p className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide font-semibold">
+            Branding Pessoal
+          </p>
+          <div className="grid grid-cols-1 gap-2">
+            <div>
+              <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
+                Nome
+              </label>
+              <input
+                type="text"
+                value={brandingConfig.name}
+                onChange={(e) => setBrandingConfig({ name: e.target.value })}
+                className="w-full mt-0.5 p-2 text-sm bg-[var(--background)] border border-[var(--border)] rounded-lg focus:border-[var(--accent)] focus:outline-none"
+                placeholder="Seu Nome"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
+                Título / Profissão
+              </label>
+              <input
+                type="text"
+                value={brandingConfig.title}
+                onChange={(e) => setBrandingConfig({ title: e.target.value })}
+                className="w-full mt-0.5 p-2 text-sm bg-[var(--background)] border border-[var(--border)] rounded-lg focus:border-[var(--accent)] focus:outline-none"
+                placeholder="Consultor de IA | Psicólogo"
+              />
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Segment list */}
-      <div className="flex-1 overflow-y-auto">
+        {/* SFX Settings */}
+        <SFXSettings sfxConfig={sfxConfig} setSFXConfig={setSFXConfig} />
+
+        {/* Segment list */}
         {segments.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] text-sm p-4">
+          <div className="flex flex-col items-center justify-center py-12 text-[var(--text-secondary)] text-sm p-4">
             <Wand2 className="w-8 h-8 mb-2 opacity-50" />
             <p className="text-center">
               Clique em &quot;Analisar com IA&quot; para detectar automaticamente os segmentos
@@ -423,6 +433,124 @@ export default function PresetPanel() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ===== SFX Settings Panel =====
+const SFX_PROFILES: { value: SFXProfile; label: string; desc: string }[] = [
+  { value: "corporate", label: "Corporativo", desc: "Limpo e profissional" },
+  { value: "minimal", label: "Minimal", desc: "Ultra-sutil" },
+  { value: "cinematic", label: "Cinematográfico", desc: "Dramático e profundo" },
+  { value: "none", label: "Desativado", desc: "Sem efeitos sonoros" },
+];
+
+const SFX_TOGGLES: { key: keyof Pick<SFXConfig, "hookImpact" | "hookRise" | "brollEnter" | "brollExit" | "segmentChange">; label: string; sfxType: "impact" | "rise" | "swoosh-in" | "swoosh-out" | "click" }[] = [
+  { key: "hookImpact", label: "Impacto do Hook", sfxType: "impact" },
+  { key: "hookRise", label: "Reveal da Keyword", sfxType: "rise" },
+  { key: "brollEnter", label: "Entrada de B-Roll", sfxType: "swoosh-in" },
+  { key: "brollExit", label: "Saída de B-Roll", sfxType: "swoosh-out" },
+  { key: "segmentChange", label: "Mudança de Cena", sfxType: "click" },
+];
+
+function SFXSettings({ sfxConfig, setSFXConfig }: { sfxConfig: SFXConfig; setSFXConfig: (config: Partial<SFXConfig>) => void }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="border-b border-[var(--border)]">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between p-3 hover:bg-[var(--surface-hover)] transition-colors"
+      >
+        <span className="flex items-center gap-2">
+          <Volume2 className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+          <span className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide font-semibold">
+            Efeitos Sonoros
+          </span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--surface)] text-[var(--text-secondary)]">
+            {SFX_PROFILES.find(p => p.value === sfxConfig.profile)?.label || "Corporate"}
+          </span>
+        </span>
+        {expanded ? (
+          <ChevronUp className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+        ) : (
+          <ChevronDown className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+        )}
+      </button>
+
+      {expanded && (
+        <div className="px-3 pb-3 space-y-3">
+          {/* Profile selector */}
+          <div>
+            <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
+              Perfil
+            </label>
+            <div className="grid grid-cols-2 gap-1.5 mt-1">
+              {SFX_PROFILES.map(profile => (
+                <button
+                  key={profile.value}
+                  onClick={() => setSFXConfig({ profile: profile.value })}
+                  className={`flex flex-col items-start px-2 py-1.5 rounded-lg text-[11px] border transition-colors ${
+                    sfxConfig.profile === profile.value
+                      ? "bg-[var(--accent)]/10 border-[var(--accent)]/40 text-[var(--text)]"
+                      : "bg-[var(--background)] border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent)]/30"
+                  }`}
+                >
+                  <span className="font-medium">{profile.label}</span>
+                  <span className="text-[9px] opacity-70">{profile.desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Master volume */}
+          {sfxConfig.profile !== "none" && (
+            <>
+              <div>
+                <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
+                  Volume: {Math.round(sfxConfig.masterVolume * 100)}%
+                </label>
+                <input
+                  type="range"
+                  min={0}
+                  max={0.5}
+                  step={0.01}
+                  value={sfxConfig.masterVolume}
+                  onChange={(e) => setSFXConfig({ masterVolume: parseFloat(e.target.value) })}
+                  className="w-full mt-1"
+                />
+              </div>
+
+              {/* Individual SFX toggles with preview */}
+              <div className="space-y-1">
+                <label className="text-[10px] text-[var(--text-secondary)] uppercase tracking-wide">
+                  Sons individuais
+                </label>
+                {SFX_TOGGLES.map(toggle => (
+                  <div key={toggle.key} className="flex items-center justify-between py-1">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={sfxConfig[toggle.key]}
+                        onChange={(e) => setSFXConfig({ [toggle.key]: e.target.checked })}
+                        className="w-3.5 h-3.5 rounded accent-[var(--accent)]"
+                      />
+                      <span className="text-[11px]">{toggle.label}</span>
+                    </label>
+                    <button
+                      onClick={() => previewSFX(toggle.sfxType, sfxConfig.masterVolume, sfxConfig.profile)}
+                      className="p-1 rounded hover:bg-[var(--surface-hover)] transition-colors"
+                      title="Preview"
+                    >
+                      <Play className="w-3 h-3 text-[var(--text-secondary)]" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

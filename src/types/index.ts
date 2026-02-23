@@ -96,7 +96,7 @@ export type BRollAnimation =
   | "glitch-in"         // Quick digital glitch effect on entry
   | "parallax";         // Multi-layer parallax depth movement
 
-export type BRollPosition = "fullscreen" | "overlay" | "split" | "pip";
+export type BRollPosition = "fullscreen" | "overlay" | "split" | "split-left" | "top-half" | "bottom-half" | "center-inset" | "pip";
 
 export interface BRollImage {
   id: string;
@@ -223,6 +223,19 @@ export type ContentPillar =
   | "intersection"      // IA + Comportamento Humano
   | "cases"             // Cases & Resultados
   | "quick-tips";       // Dicas Rápidas
+
+// ===== SFX System =====
+export type SFXProfile = "corporate" | "minimal" | "cinematic" | "none";
+
+export interface SFXConfig {
+  profile: SFXProfile;
+  masterVolume: number; // 0-1
+  hookImpact: boolean;
+  hookRise: boolean;
+  brollEnter: boolean;
+  brollExit: boolean;
+  segmentChange: boolean;
+}
 
 // ===== CTA System =====
 export type CTATemplate =

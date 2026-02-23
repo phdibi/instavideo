@@ -241,7 +241,7 @@ export default function VideoPreview() {
     } as React.CSSProperties;
   }, [activeBRoll, currentTime]);
 
-  // B-Roll position mode class names (fullscreen, overlay, split, pip)
+  // B-Roll position mode class names
   const bRollPositionClass = useMemo(() => {
     if (!activeBRoll) return "absolute inset-0";
     switch (activeBRoll.position) {
@@ -250,8 +250,15 @@ export default function VideoPreview() {
       case "overlay":
         return "absolute inset-[8%] rounded-2xl overflow-hidden shadow-2xl";
       case "split":
-        // Captions-app style: B-roll takes right half with subtle rounded edge
         return "absolute top-0 right-0 w-[50%] h-full rounded-l-2xl overflow-hidden";
+      case "split-left":
+        return "absolute top-0 left-0 w-[50%] h-full rounded-r-2xl overflow-hidden";
+      case "top-half":
+        return "absolute top-0 left-0 right-0 h-[50%] rounded-b-2xl overflow-hidden";
+      case "bottom-half":
+        return "absolute bottom-0 left-0 right-0 h-[50%] rounded-t-2xl overflow-hidden";
+      case "center-inset":
+        return "absolute inset-[12%] rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10";
       case "fullscreen":
       default:
         return "absolute inset-0";
@@ -259,8 +266,7 @@ export default function VideoPreview() {
   }, [activeBRoll]);
 
   // B-Roll entrance/exit animation — driven per-frame for fluid motion
-  // Split: slides in/out from the right edge
-  // Fullscreen: scales up with a cinematic fade
+  // Each position type gets its own entrance animation for professional feel
   const bRollSlideStyle = useMemo(() => {
     if (!activeBRoll) return {};
     const duration = activeBRoll.endTime - activeBRoll.startTime;
@@ -268,41 +274,65 @@ export default function VideoPreview() {
       Math.max((currentTime - activeBRoll.startTime) / duration, 0),
       1
     );
+    const pos = activeBRoll.position || "fullscreen";
 
-    if (activeBRoll.position === "split") {
-      // Split mode: slide in/out from right edge
+    // Shared entry/exit timing
+    const entryPct = 0.12;
+    const exitPct = 0.88;
+
+    if (pos === "split") {
       let slideX = 0;
-      if (progress < 0.12) {
-        const entryProgress = progress / 0.12;
-        slideX = (1 - easeOutCubic(entryProgress)) * 100;
-      } else if (progress > 0.88) {
-        const exitProgress = (progress - 0.88) / 0.12;
-        slideX = easeOutCubic(exitProgress) * 100;
+      if (progress < entryPct) {
+        slideX = (1 - easeOutCubic(progress / entryPct)) * 100;
+      } else if (progress > exitPct) {
+        slideX = easeOutCubic((progress - exitPct) / (1 - exitPct)) * 100;
       }
-      return {
-        transform: `translateX(${slideX}%)`,
-        transition: "none",
-      };
+      return { transform: `translateX(${slideX}%)`, transition: "none" };
     }
 
-    if (activeBRoll.position === "fullscreen") {
-      // Fullscreen mode: cinematic scale + fade entrance
+    if (pos === "split-left") {
+      let slideX = 0;
+      if (progress < entryPct) {
+        slideX = (easeOutCubic(progress / entryPct) - 1) * 100;
+      } else if (progress > exitPct) {
+        slideX = -easeOutCubic((progress - exitPct) / (1 - exitPct)) * 100;
+      }
+      return { transform: `translateX(${slideX}%)`, transition: "none" };
+    }
+
+    if (pos === "top-half") {
+      let slideY = 0;
+      if (progress < entryPct) {
+        slideY = (easeOutCubic(progress / entryPct) - 1) * 100;
+      } else if (progress > exitPct) {
+        slideY = -easeOutCubic((progress - exitPct) / (1 - exitPct)) * 100;
+      }
+      return { transform: `translateY(${slideY}%)`, transition: "none" };
+    }
+
+    if (pos === "bottom-half") {
+      let slideY = 0;
+      if (progress < entryPct) {
+        slideY = (1 - easeOutCubic(progress / entryPct)) * 100;
+      } else if (progress > exitPct) {
+        slideY = easeOutCubic((progress - exitPct) / (1 - exitPct)) * 100;
+      }
+      return { transform: `translateY(${slideY}%)`, transition: "none" };
+    }
+
+    if (pos === "fullscreen" || pos === "center-inset" || pos === "overlay") {
       let scale = 1;
       let opacity = 1;
       if (progress < 0.1) {
-        const entryProgress = easeOutCubic(progress / 0.1);
-        scale = 1.05 - 0.05 * entryProgress;
-        opacity = entryProgress;
+        const entry = easeOutCubic(progress / 0.1);
+        scale = 1.04 - 0.04 * entry;
+        opacity = entry;
       } else if (progress > 0.9) {
-        const exitProgress = easeOutCubic((progress - 0.9) / 0.1);
-        scale = 1 + 0.03 * exitProgress;
-        opacity = 1 - exitProgress;
+        const exit = easeOutCubic((progress - 0.9) / 0.1);
+        scale = 1 + 0.02 * exit;
+        opacity = 1 - exit;
       }
-      return {
-        transform: `scale(${scale})`,
-        opacity,
-        transition: "none",
-      };
+      return { transform: `scale(${scale})`, opacity, transition: "none" };
     }
 
     return {};

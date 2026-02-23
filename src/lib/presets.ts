@@ -115,12 +115,14 @@ const AUTHORITY_RESULTS_KEYWORDS = new Set([
 ]);
 
 // ===== Detect preset for a segment =====
-// Captions-app approach: frequent but contextual B-Roll alternating between
-// fullscreen and split positions. Analysis of the app shows ~3-5 B-rolls
-// per 40 seconds of video, placed every 8-12 seconds.
+// PROFESSIONAL APPROACH: Precise scene cuts, not constant visual noise.
+// Target: 3-6 B-Roll cuts per video (depending on length), acting as deliberate
+// "scene breaks" — like a professional editor would place them.
+// Each cut is meaningful and tied to visual content keywords.
 let _segmentCounter = 0;
 let _lastBrollTime = -Infinity;
 let _brollCount = 0;
+let _maxBrolls = 4; // Will be calculated from video duration
 export function resetSegmentCounter() { _segmentCounter = 0; _lastBrollTime = -Infinity; _brollCount = 0; }
 
 export function detectPreset(
@@ -131,18 +133,32 @@ export function detectPreset(
 ): PresetType {
   _segmentCounter++;
 
-  // Rule 1: First segment within 5s = HOOK (stronger zoom + keyword overlay)
+  // Calculate max B-rolls based on video length:
+  // ~1 B-roll per 10-12s, clamped to 3-6 total
+  _maxBrolls = Math.max(3, Math.min(6, Math.round(videoDuration / 12)));
+
+  // Rule 1: First segment within 5s = HOOK
   if (isFirst && segment.startTime < 5) {
     return "hook";
+  }
+
+  // If we've hit the B-roll cap, no more B-rolls
+  if (_brollCount >= _maxBrolls) {
+    return "talking-head";
   }
 
   const segDuration = segment.endTime - segment.startTime;
   const timeSinceLastBroll = segment.startTime - _lastBrollTime;
 
-  // Rule 2: B-Roll every ~10 seconds — more frequent, like Captions app.
-  // The app uses 3-5 B-rolls per 40s with variety in position (fullscreen/split).
-  // Only trigger for segments with some visual relevance.
-  if (timeSinceLastBroll >= 10 && segDuration > 1.5) {
+  // Calculate dynamic spacing: distribute B-rolls evenly across video
+  const remainingBrolls = _maxBrolls - _brollCount;
+  const remainingTime = videoDuration - segment.startTime;
+  const idealSpacing = remainingBrolls > 0 ? remainingTime / remainingBrolls : 999;
+  // Minimum 8s between cuts, but prefer the ideal spacing
+  const minSpacing = Math.max(8, Math.min(idealSpacing * 0.7, 20));
+
+  // Rule 2: B-Roll as deliberate scene cuts
+  if (timeSinceLastBroll >= minSpacing && segDuration > 1.5) {
     const textLower = segment.text.toLowerCase();
     const words = textLower.split(/\s+/);
     let visualScore = 0;
@@ -150,21 +166,15 @@ export function detectPreset(
       const cleaned = word.replace(/[.,!?;:'"()]/g, "");
       if (VISUAL_CONTENT_KEYWORDS.has(cleaned)) visualScore++;
     }
-    // More lenient: even 1 keyword triggers B-roll (Captions app uses them liberally)
-    if (visualScore >= 1 || (hasBrollAvailable && timeSinceLastBroll >= 15)) {
-      _lastBrollTime = segment.startTime;
-      _brollCount++;
-      return "talking-head-broll";
-    }
-    // Fallback: if it's been > 15s, force a B-roll for visual variety
-    if (timeSinceLastBroll >= 15 && segDuration > 2) {
+    // Require visual relevance — each B-roll should be contextual
+    if (visualScore >= 1 || (hasBrollAvailable && timeSinceLastBroll >= minSpacing * 1.5)) {
       _lastBrollTime = segment.startTime;
       _brollCount++;
       return "talking-head-broll";
     }
   }
 
-  // Rule 3: Everything else is talking-head (the consistent, clean look)
+  // Rule 3: Everything else is talking-head
   return "talking-head";
 }
 
@@ -223,8 +233,9 @@ export function extractKeywordHighlight(text: string): string {
 }
 
 // ===== Generate B-Roll query from segment text =====
+// Targeted at small/medium business and professional audience.
+// B-Roll should feel corporate, trustworthy, and aspirational.
 export function generateBrollQuery(text: string, preset: PresetType): string {
-  // Extract nouns and meaningful words
   const words = text.split(/\s+/);
   const meaningful = words
     .map(w => w.replace(/[.,!?;:'"()]/g, ""))
@@ -234,18 +245,19 @@ export function generateBrollQuery(text: string, preset: PresetType): string {
   if (useAuthorityTheme) {
     const segLean = detectSegmentLean(text);
     if (segLean === "teal") {
-      return `futuristic professional office with AI dashboard, holographic neural network interface, cool blue-teal cinematic lighting, data analytics visualization, modern technology, ${meaningful.join(" ")}`;
+      return `professional business workspace with modern technology, clean desk with laptop and data dashboard, cool blue lighting, corporate office environment, small business productivity, ${meaningful.join(" ")}`;
     } else if (segLean === "amber") {
-      return `cinematic brain neural pathways visualization, warm amber golden lighting, professional psychology consultation, human connection, neuroscience concept art, ${meaningful.join(" ")}`;
+      return `professional consultation meeting, warm ambient office lighting, business coaching session, confident professional at work, human connection in corporate setting, ${meaningful.join(" ")}`;
     }
-    return `modern professional consulting environment, AI and human collaboration, cinematic lighting, data-driven insights, ${meaningful.join(" ")}`;
+    return `modern professional office, business strategy meeting, clean corporate environment, entrepreneurial workspace, data-driven decision making, ${meaningful.join(" ")}`;
   }
 
   if (preset === "futuristic-hud") {
-    return `futuristic technology HUD interface, digital hologram, neural network visualization, cinematic, blue cyan glow`;
+    return `futuristic business technology interface, digital dashboard, corporate data visualization, professional blue tones`;
   }
 
-  return `cinematic ${meaningful.join(" ")}, professional photography, high quality, 16:9`;
+  // Default: professional business imagery for SMB/professional audience
+  return `professional business ${meaningful.join(" ")}, corporate photography, clean modern office, aspirational, 16:9`;
 }
 
 // ===== Build segments from transcription =====
@@ -782,18 +794,22 @@ function applyTalkingHeadPreset(
   const newEffects: EditEffect[] = [];
   const duration = segment.endTime - segment.startTime;
 
-  // Every TH segment gets a subtle zoom so the video feels alive.
-  // Alternate between zoom-in and zoom-out for visual variety.
-  if (duration >= 0.3) {
-    const charCode = segment.id.charCodeAt(segment.id.length - 1);
-    const isEven = charCode % 2 === 0;
+  // Only ~30% of TH segments get a subtle zoom — selective, not constant.
+  // Professional approach: zooms should feel like intentional reframes,
+  // not every-segment motion that becomes visual noise.
+  // Use character code to deterministically select which segments get zooms.
+  const charSum = segment.id.split("").reduce((sum, c) => sum + c.charCodeAt(0), 0);
+  const shouldZoom = (charSum % 10) < 3; // ~30% probability
+
+  if (shouldZoom && duration >= 0.5) {
+    const isEven = charSum % 2 === 0;
     newEffects.push({
       id: `preset_th_zoom_${segment.id}`,
       type: isEven ? "zoom-in" : "zoom-out",
       startTime: segment.startTime,
       endTime: segment.endTime,
       params: {
-        scale: 1.06,
+        scale: 1.05,
         ...(isEven ? { focusX: 0.5, focusY: 0.38 } : {}),
       },
     });
@@ -837,17 +853,28 @@ function applyTalkingHeadBrollPreset(
   const brollDuration = brollEnd - brollStart;
 
   if (brollDuration > 0.5) {
-    // Alternate between FULLSCREEN and SPLIT positions for visual variety.
-    // Captions app uses both: fullscreen for cinematic moments, split for
-    // maintaining presenter presence. Alternate based on segment ID hash.
-    const charCode = segment.id.charCodeAt(segment.id.length - 1);
-    const useFullscreen = charCode % 2 === 0;
-    const position: "fullscreen" | "split" = useFullscreen ? "fullscreen" : "split";
+    // Rotate through different B-Roll positions for visual variety.
+    // Each position creates a different "scene cut" feel, keeping the
+    // video dynamic without being repetitive.
+    const charSum = segment.id.split("").reduce((sum, c) => sum + c.charCodeAt(0), 0);
+    const positionIndex = charSum % 6;
 
-    // Vary animation based on position
-    const animation: "ken-burns" | "cinematic-reveal" | "fade" = useFullscreen
-      ? (charCode % 4 < 2 ? "cinematic-reveal" : "ken-burns")
-      : "ken-burns";
+    type BRollPos = "fullscreen" | "split" | "split-left" | "center-inset" | "top-half" | "bottom-half";
+    const positions: BRollPos[] = [
+      "fullscreen",
+      "split",
+      "split-left",
+      "center-inset",
+      "fullscreen",
+      "split",
+    ];
+    const position = positions[positionIndex];
+
+    // Vary animation based on position type
+    const isFullType = position === "fullscreen" || position === "center-inset";
+    const animation = isFullType
+      ? (charSum % 3 === 0 ? "cinematic-reveal" as const : "ken-burns" as const)
+      : "ken-burns" as const;
 
     newBroll.push({
       id: `preset_broll_${segment.id}`,
@@ -856,18 +883,18 @@ function applyTalkingHeadBrollPreset(
       startTime: brollStart,
       endTime: brollEnd,
       animation,
-      opacity: useFullscreen ? 0.92 : 0.95,
+      opacity: isFullType ? 0.92 : 0.95,
       position,
       cinematicOverlay: true,
     });
 
-    // Subtle zoom on B-Roll — complement the main animation
+    // Subtle zoom complement
     newEffects.push({
       id: `preset_thbr_zoom_${segment.id}`,
       type: "zoom-in",
       startTime: brollStart,
       endTime: brollEnd,
-      params: { scale: useFullscreen ? 1.05 : 1.03, focusX: 0.5, focusY: 0.5 },
+      params: { scale: isFullType ? 1.04 : 1.02, focusX: 0.5, focusY: 0.5 },
     });
   }
 

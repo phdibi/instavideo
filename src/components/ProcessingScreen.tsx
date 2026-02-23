@@ -201,14 +201,15 @@ function buildCaptionsFromTranscription(
   if (allWords.length === 0) return [];
 
   // ── Step 2: Group words into caption cards ──
-  // Authority mode: 2 words per card (tight, punchy sync)
-  // Default mode: 3 words per card
+  // Captions-app style: sentence-level groups (6-10 words) displayed as a
+  // horizontal word bar. The current word highlights in real-time (karaoke).
+  // This gives viewers time to read ahead and feel perfectly in-sync.
   // Rules:
   //  • Pause > threshold between words ALWAYS triggers a new card
   //  • Never exceed MAX_WORDS per card
   //  • A trailing filler word won't start a new card alone — attach to previous
-  const MAX_WORDS = authorityMode ? 2 : 3;
-  const PAUSE_THRESHOLD = authorityMode ? 0.25 : 0.35; // Tighter grouping for natural flow
+  const MAX_WORDS = 8; // Sentence-level: show 6-8 words at once
+  const PAUSE_THRESHOLD = 0.5; // Only break on natural pauses (0.5s+)
   const SHORT_FILLERS = new Set([
     "a", "o", "e", "é", "de", "do", "da", "em", "no", "na",
     "um", "os", "as", "se", "ou", "que", "por", "ao", "dos",
@@ -307,8 +308,8 @@ function buildCaptionsFromTranscription(
 
     const wordTexts = cap.wordIndices.map((wi) => allWords[wi].word);
     const text = wordTexts.join(" ").toUpperCase();
-    // Authority mode: no emojis — they reduce credibility for professional content
-    const emoji = authorityMode ? undefined : getEmojiForCaption(wordTexts.join(" "));
+    // Clean professional captions: no emojis (like Captions app)
+    const emoji = undefined;
 
     captions.push({
       id: uuid(),
@@ -372,8 +373,8 @@ function buildSpeechDrivenEffects(
     return { seg, index: i, score, segDuration, wordCount };
   });
 
-  // Step 2: Select top ~25% of segments for zooms — calm, selective, professional
-  const targetZoomCount = Math.max(2, Math.ceil(segments.length * 0.25));
+  // Step 2: Select top ~15% of segments for zooms — minimal, elegant
+  const targetZoomCount = Math.max(1, Math.ceil(segments.length * 0.15));
   const zoomCandidates = scoredSegments
     .filter((s) => s.score > -5 && s.segDuration >= 0.3)
     .sort((a, b) => b.score - a.score)
@@ -390,28 +391,28 @@ function buildSpeechDrivenEffects(
     const isHookZone = seg.start < 3;
     const isShortPunchy = segDuration < 2 && wordCount <= 5;
 
-    // Calm, elegant zoom scales — conversational, not aggressive
+    // Ultra-subtle zoom scales — barely perceptible, like Captions app
     let params: Record<string, unknown>;
     switch (zoomType) {
       case "zoom-in":
         params = {
-          scale: isHookZone ? 1.25 : isShortPunchy ? 1.10 : 1.06,
+          scale: isHookZone ? 1.08 : 1.05,
           focusX: 0.5,
-          focusY: 0.35,
+          focusY: 0.38,
         };
         break;
       case "zoom-out":
         params = {
-          scale: isHookZone ? 1.15 : 1.06,
+          scale: isHookZone ? 1.06 : 1.04,
         };
         break;
       case "zoom-pulse":
         params = {
-          scale: isShortPunchy ? 1.08 : 1.05,
+          scale: 1.04,
         };
         break;
       default:
-        params = { scale: 1.06 };
+        params = { scale: 1.04 };
     }
 
     effects.push({
@@ -434,24 +435,8 @@ function buildSpeechDrivenEffects(
     }
   }
 
-  // Step 4: Add transition-fade at major pauses (improved detection)
-  // Look for significant pauses > 0.6s to insert transitions
-  for (let i = 0; i < segments.length - 1; i++) {
-    const currentSeg = segments[i];
-    const nextSeg = segments[i + 1];
-    const gap = nextSeg.start - currentSeg.end;
-
-    // Only add transition if there's a meaningful gap
-    if (gap > 0.6) {
-      effects.push({
-        id: `effect_fade_${i}`,
-        type: "transition-fade",
-        startTime: currentSeg.end - 0.1, // Start slightly before end
-        endTime: nextSeg.start + 0.1,    // End slightly after start
-        params: { duration: Math.min(gap, 0.5) }, // Dynamic duration
-      });
-    }
-  }
+  // Step 4: NO auto-transitions — Captions app uses hard cuts exclusively.
+  // Professional standard: clean hard cuts, no fades/wipes/etc.
 
   // Add cinematic color grade for full duration
   if (effectiveDuration > 0) {

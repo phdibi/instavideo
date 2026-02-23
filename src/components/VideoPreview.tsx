@@ -5,7 +5,6 @@ import { Play, Pause, RotateCcw, Volume2, VolumeX, Download } from "lucide-react
 import { useProjectStore } from "@/store/useProjectStore";
 import { formatTime } from "@/lib/formatTime";
 import CaptionOverlay from "./CaptionOverlay";
-import DecorativeTextOverlay from "./DecorativeTextOverlay";
 import CTAOverlay from "./CTAOverlay";
 import WatermarkOverlay from "./WatermarkOverlay";
 import { useState } from "react";
@@ -249,7 +248,8 @@ export default function VideoPreview() {
       case "overlay":
         return "absolute inset-[8%] rounded-2xl overflow-hidden shadow-2xl";
       case "split":
-        return "absolute top-0 right-0 w-[50%] h-full";
+        // Captions-app style: B-roll takes right half with subtle rounded edge
+        return "absolute top-0 right-0 w-[50%] h-full rounded-l-2xl overflow-hidden";
       case "fullscreen":
       default:
         return "absolute inset-0";
@@ -597,17 +597,12 @@ export default function VideoPreview() {
           onClick={togglePlay}
         />
 
-        {/* Decorative text overlay - z-35, behind captions but above video */}
-        <div className="absolute inset-0 z-[35] pointer-events-none">
-          <DecorativeTextOverlay currentTime={currentTime} />
-        </div>
-
-        {/* Watermark overlay - z-42, subtle name/title */}
+        {/* Watermark overlay - z-42, subtle name/title (kept, user branding) */}
         <div className="absolute inset-0 z-[42] pointer-events-none">
           <WatermarkOverlay currentTime={currentTime} videoDuration={videoDuration} />
         </div>
 
-        {/* CTA overlay - z-45, final seconds */}
+        {/* CTA overlay - z-45, final seconds (kept, user branding) */}
         <div className="absolute inset-0 z-[45] pointer-events-none">
           <CTAOverlay currentTime={currentTime} videoDuration={videoDuration} />
         </div>

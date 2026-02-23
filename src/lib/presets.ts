@@ -137,9 +137,9 @@ export function detectPreset(
   const segDuration = segment.endTime - segment.startTime;
   const timeSinceLastBroll = segment.startTime - _lastBrollTime;
 
-  // Rule 2: B-Roll only every ~15-20 seconds, and only for segments with visual content.
-  // This matches professional standards (2-3 B-roll per minute max).
-  if (timeSinceLastBroll >= 15 && segDuration > 2) {
+  // Rule 2: B-Roll only every ~20 seconds, only for segments with visual content.
+  // Captions app uses ~2 B-rolls per 40 seconds — very sparse and contextual.
+  if (timeSinceLastBroll >= 20 && segDuration > 2) {
     const textLower = segment.text.toLowerCase();
     const words = textLower.split(/\s+/);
     let visualScore = 0;
@@ -692,42 +692,37 @@ function applyHookPreset(
   newEffects: EditEffect[];
   newBroll: BRollImage[];
 } {
-  // Style captions: large bold centered with keyword highlight
-  // Keep "pop" animation for 1-2 word captions (best for punchy short text)
-  const topicLabel = segment.keywordHighlight?.toUpperCase() || "";
+  // Clean caption styling — Captions-app approach: no decorative elements,
+  // just well-synchronized word-bar with keyword emphasis.
   const captionStyle = useAuthorityTheme
     ? authorityHookCaptionStyle
     : useVelocityTheme
       ? velocityHookCaptionStyle
       : useEmberTheme ? emberHookCaptionStyle : hookCaptionStyle;
-  const usesDualLayer = useEmberTheme || useVelocityTheme || useAuthorityTheme;
-  // Controlled, confident entrance for all themes — calm and elegant
-  const hookAnimation = "slide-up" as const;
   const updatedCaptions = segCaptions.map(c => ({
     ...c,
     style: { ...c.style, ...captionStyle },
-    animation: hookAnimation,
+    animation: "karaoke" as const, // Word-bar karaoke style
     emphasis: segment.keywordHighlight ? [segment.keywordHighlight] : c.emphasis,
-    emoji: c.emoji,
-    // Ember/Velocity: show keyword as large dual-layer label with decorative quotes
-    keywordLabel: usesDualLayer && topicLabel.length >= 3 ? topicLabel : undefined,
-    keywordQuotes: (usesDualLayer && topicLabel.length >= 3) || undefined,
-    topicLabel: !usesDualLayer && topicLabel.length >= 3 ? topicLabel : undefined,
+    emoji: undefined, // No emojis — clean professional look
+    keywordLabel: undefined, // No decorative keyword labels
+    keywordQuotes: undefined,
+    topicLabel: undefined,
   }));
 
   const duration = segment.endTime - segment.startTime;
   const newEffects: EditEffect[] = [];
 
-  // Professional punch-in zoom on face — noticeable but not aggressive (1.15x, not 1.25x)
+  // Subtle hook zoom — barely perceptible, like Captions app (1.08x)
   newEffects.push({
     id: `preset_hook_zoom_${segment.id}`,
     type: "zoom-in",
     startTime: segment.startTime,
     endTime: segment.endTime,
     params: {
-      scale: 1.15,
+      scale: 1.08,
       focusX: 0.5,
-      focusY: 0.35,
+      focusY: 0.38,
     },
   });
 
@@ -748,32 +743,18 @@ function applyTalkingHeadPreset(
     : useVelocityTheme
       ? velocityTalkingHeadCaptionStyle
       : useEmberTheme ? emberTalkingHeadCaptionStyle : talkingHeadCaptionStyle;
-  const usesDualLayer = useEmberTheme || useVelocityTheme || useAuthorityTheme;
-  const updatedCaptions = segCaptions.map(c => {
-    const wordCount = c.text.trim().split(/\s+/).length;
-    const isKeywordCaption = !!(usesDualLayer && wordCount <= 2
-      && segment.keywordHighlight
-      && c.text.toLowerCase().includes(segment.keywordHighlight.toLowerCase()));
-    const animation = wordCount <= 2 ? "fade" as const : "slide-up" as const;
-    return {
-      ...c,
-      style: { ...c.style, ...captionStyle },
-      animation,
-      emphasis: segment.keywordHighlight ? [segment.keywordHighlight] : c.emphasis,
-      emoji: c.emoji,
-      keywordLabel: isKeywordCaption ? segment.keywordHighlight.toUpperCase() : undefined,
-      keywordQuotes: isKeywordCaption || undefined,
-    };
-  });
+  const updatedCaptions = segCaptions.map(c => ({
+    ...c,
+    style: { ...c.style, ...captionStyle },
+    animation: "karaoke" as const, // Word-bar karaoke — clean, synchronized
+    emphasis: segment.keywordHighlight ? [segment.keywordHighlight] : c.emphasis,
+    emoji: undefined,
+    keywordLabel: undefined,
+    keywordQuotes: undefined,
+    topicLabel: undefined,
+  }));
 
   const newEffects: EditEffect[] = [];
-
-  // IMPORTANT: Zooms are NOT applied per-segment here.
-  // Instead, applyAllPresets selects the top ~20-25% of segments for zooms
-  // to match professional editing standards (2-4 zooms per minute).
-  // Individual segments only get effects if explicitly scored as "zoom-worthy"
-  // by the parent function. This prevents visual clutter.
-
   return { updatedCaptions, newEffects, newBroll: [] };
 }
 
@@ -786,31 +767,21 @@ function applyTalkingHeadBrollPreset(
   newEffects: EditEffect[];
   newBroll: BRollImage[];
 } {
-  const topicLabel = segment.keywordHighlight?.toUpperCase() || "";
   const captionStyle = useAuthorityTheme
     ? authorityTalkingHeadBrollCaptionStyle
     : useVelocityTheme
       ? velocityTalkingHeadBrollCaptionStyle
       : useEmberTheme ? emberTalkingHeadBrollCaptionStyle : talkingHeadBrollCaptionStyle;
-  const usesDualLayer = useEmberTheme || useVelocityTheme || useAuthorityTheme;
-  const updatedCaptions = segCaptions.map(c => {
-    const wordCount = c.text.trim().split(/\s+/).length;
-    const isKeywordCaption = !!(usesDualLayer && wordCount <= 2
-      && segment.keywordHighlight
-      && c.text.toLowerCase().includes(segment.keywordHighlight.toLowerCase()));
-    // Clean, calm animations — "fade" for short, "slide-up" for longer
-    const animation = wordCount <= 2 ? "fade" as const : "slide-up" as const;
-    return {
-      ...c,
-      style: { ...c.style, ...captionStyle },
-      animation,
-      emphasis: segment.keywordHighlight ? [segment.keywordHighlight] : c.emphasis,
-      emoji: c.emoji,
-      keywordLabel: isKeywordCaption ? segment.keywordHighlight.toUpperCase() : undefined,
-      keywordQuotes: isKeywordCaption || undefined,
-      topicLabel: !usesDualLayer && topicLabel.length >= 3 ? topicLabel : undefined,
-    };
-  });
+  const updatedCaptions = segCaptions.map(c => ({
+    ...c,
+    style: { ...c.style, ...captionStyle },
+    animation: "karaoke" as const,
+    emphasis: segment.keywordHighlight ? [segment.keywordHighlight] : c.emphasis,
+    emoji: undefined,
+    keywordLabel: undefined,
+    keywordQuotes: undefined,
+    topicLabel: undefined,
+  }));
 
   const newEffects: EditEffect[] = [];
   const newBroll: BRollImage[] = [];
@@ -822,28 +793,27 @@ function applyTalkingHeadBrollPreset(
   const brollDuration = brollEnd - brollStart;
 
   if (brollDuration > 0.5) {
-    // Professional animation variety: alternate between cinematic styles
-    const brollAnims = ["cinematic-reveal", "ken-burns", "parallax", "zoom"] as const;
-    const animIdx = Math.abs(segment.id.charCodeAt(segment.id.length - 1)) % brollAnims.length;
+    // Captions-app style: B-roll as split-screen (person still visible on left).
+    // Ken-burns is the cleanest animation — subtle, professional movement.
     newBroll.push({
       id: `preset_broll_${segment.id}`,
       url: "", // Will be generated
       prompt: segment.brollQuery,
       startTime: brollStart,
       endTime: brollEnd,
-      animation: brollAnims[animIdx],
+      animation: "ken-burns",
       opacity: 0.95,
-      position: "fullscreen",
+      position: "split", // Split-screen: person on left, B-roll on right
       cinematicOverlay: true,
     });
 
-    // Gentle zoom on B-Roll — subtle camera movement, let the image speak
+    // Very subtle zoom on B-Roll — let the ken-burns animation do the work
     newEffects.push({
       id: `preset_thbr_zoom_${segment.id}`,
       type: "zoom-in",
       startTime: brollStart,
       endTime: brollEnd,
-      params: { scale: 1.06, focusX: 0.5, focusY: 0.5 },
+      params: { scale: 1.03, focusX: 0.5, focusY: 0.5 },
     });
   }
 
@@ -859,18 +829,16 @@ function applyFuturisticHudPreset(
   newEffects: EditEffect[];
   newBroll: BRollImage[];
 } {
-  const topicLabel = segment.keywordHighlight?.toUpperCase() || "";
-  const updatedCaptions = segCaptions.map(c => {
-    const wordCount = c.text.trim().split(/\s+/).length;
-    return {
-      ...c,
-      style: { ...c.style, ...futuristicHudCaptionStyle },
-      animation: wordCount <= 2 ? "fade" as const : "glow" as const,
-      emphasis: segment.keywordHighlight ? [segment.keywordHighlight] : c.emphasis,
-      emoji: c.emoji,
-      topicLabel: topicLabel.length >= 3 ? topicLabel : undefined,
-    };
-  });
+  const updatedCaptions = segCaptions.map(c => ({
+    ...c,
+    style: { ...c.style, ...futuristicHudCaptionStyle },
+    animation: "karaoke" as const,
+    emphasis: segment.keywordHighlight ? [segment.keywordHighlight] : c.emphasis,
+    emoji: undefined,
+    keywordLabel: undefined,
+    keywordQuotes: undefined,
+    topicLabel: undefined,
+  }));
 
   const newEffects: EditEffect[] = [];
   const newBroll: BRollImage[] = [];
@@ -1004,8 +972,8 @@ export function applyAllPresets(
       return { seg, score, dur };
     });
 
-  // Pick top ~25% for zooms (min 1, max ~4 per minute)
-  const maxZooms = Math.max(1, Math.ceil(segments.length * 0.25));
+  // Pick top ~15% for zooms (min 1) — Captions app uses very few zooms
+  const maxZooms = Math.max(1, Math.ceil(segments.length * 0.15));
   const zoomWinners = new Set(
     zoomCandidates
       .filter(c => c.score > 0 && c.dur >= 0.5)
@@ -1015,11 +983,11 @@ export function applyAllPresets(
   );
 
   // Apply zoom effects only to winners
+  // Subtle zoom scales — barely perceptible, professional feel
   const zoomStyles: Array<{ type: "zoom-in" | "zoom-out" | "zoom-pulse"; params: Record<string, number> }> = [
-    { type: "zoom-in", params: { scale: 1.12, focusX: 0.5, focusY: 0.35 } },
-    { type: "zoom-out", params: { scale: 1.08 } },
-    { type: "zoom-in", params: { scale: 1.08, focusX: 0.45, focusY: 0.38 } },
-    { type: "zoom-in", params: { scale: 1.08, focusX: 0.55, focusY: 0.38 } },
+    { type: "zoom-in", params: { scale: 1.06, focusX: 0.5, focusY: 0.38 } },
+    { type: "zoom-out", params: { scale: 1.05 } },
+    { type: "zoom-in", params: { scale: 1.05, focusX: 0.48, focusY: 0.38 } },
   ];
 
   let zoomIdx = 0;
@@ -1053,7 +1021,7 @@ export function applyAllPresets(
     type: "vignette",
     startTime: 0,
     endTime: videoDuration,
-    params: { intensity: useAuthorityTheme ? 0.18 : 0.15 },
+    params: { intensity: 0.12 }, // Very subtle — barely noticeable, professional feel
   });
 
   return {

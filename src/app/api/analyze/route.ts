@@ -45,31 +45,30 @@ ${segmentList}
 Return ONLY valid JSON (no markdown, no code blocks).
 
 EFFECTS INSTRUCTIONS:
-Add zoom effects SELECTIVELY — NOT on every segment. Zooms should emphasize key moments:
-- The HOOK (first 3 seconds): One zoom-in with stronger scale (1.25-1.35)
-- Key emotional/impactful moments: zoom-in or zoom-pulse
-- Topic transitions/Pauses: zoom-out to "reset" framing or insert transition-fade
-- Short punchy phrases (< 2 seconds, ≤ 5 words): zoom-pulse for emphasis
+Add zoom effects VERY SELECTIVELY — the video should feel calm, elegant, and conversational.
+- The HOOK (first 3 seconds): One gentle zoom-in (scale ~1.20)
+- Key emotional moments: subtle zoom-in or zoom-pulse
+- Topic transitions/Pauses: zoom-out to "reset" or transition-fade
+- Most segments should have NO zoom — let the speaker's presence carry the content.
 
 PAUSE & TRANSITION DETECTION:
-- Look for gaps between segments (e.g. Seg 1 ends at 5.0s, Seg 2 starts at 6.0s = 1.0s pause).
-- If pause > 0.8s, SUGGEST a transition-fade or a B-roll insertion.
-- If pause is a "topic change", suggest a zoom-out effect on the next segment.
+- Gaps > 0.8s between segments: suggest a transition-fade or B-roll insertion.
+- Topic changes: suggest a subtle zoom-out on the next segment.
 
-IMPORTANT: Only add zooms to roughly 30-40% of segments. Leave most segments WITHOUT zoom for a clean, professional look. Too many zooms feels amateur and distracting.
+IMPORTANT: Only add zooms to roughly 20-25% of segments. The editing should be barely noticeable — professional and confident. Too many zooms feels amateur and distracting.
 
-Zoom params:
-- zoom-in: scale 1.15-1.25, focusX 0.5, focusY 0.35
-- zoom-out: scale 1.10-1.20
-- zoom-pulse: scale 1.05-1.12
+Zoom params (keep subtle):
+- zoom-in: scale 1.06-1.20, focusX 0.5, focusY 0.35
+- zoom-out: scale 1.05-1.10
+- zoom-pulse: scale 1.04-1.08
 
 Also add these GLOBAL effects:
 - One color-grade from 0 to ${videoDuration.toFixed(1)}: {"preset":"cinematic-warm"}
-- One vignette from 0 to ${videoDuration.toFixed(1)}: {"intensity":0.2}
+- One vignette from 0 to ${videoDuration.toFixed(1)}: {"intensity":0.18}
 
 Add transition-fade (0.3s) at gaps between segments where silence > 0.5s.
 
-EXPECTED: ~${Math.max(2, Math.ceil(numSegments * 0.35))} zooms + 2 globals + a few transitions.
+EXPECTED: ~${Math.max(2, Math.ceil(numSegments * 0.25))} zooms + 2 globals + a few transitions.
 
 B-ROLL INSTRUCTIONS:
 Suggest 3-5 b-roll images spaced evenly across the video.
@@ -80,10 +79,10 @@ Suggest 3-5 b-roll images spaced evenly across the video.
 RETURN THIS JSON:
 {
   "effects": [
-    {"id":"e1","type":"zoom-in","startTime":0.0,"endTime":2.5,"params":{"scale":1.25,"focusX":0.5,"focusY":0.35}},
-    {"id":"e2","type":"zoom-out","startTime":8.0,"endTime":10.5,"params":{"scale":1.15}},
+    {"id":"e1","type":"zoom-in","startTime":0.0,"endTime":2.5,"params":{"scale":1.15,"focusX":0.5,"focusY":0.35}},
+    {"id":"e2","type":"zoom-out","startTime":8.0,"endTime":10.5,"params":{"scale":1.06}},
     {"id":"cg","type":"color-grade","startTime":0,"endTime":${videoDuration.toFixed(1)},"params":{"preset":"cinematic-warm"}},
-    {"id":"vig","type":"vignette","startTime":0,"endTime":${videoDuration.toFixed(1)},"params":{"intensity":0.2}}
+    {"id":"vig","type":"vignette","startTime":0,"endTime":${videoDuration.toFixed(1)},"params":{"intensity":0.18}}
   ],
   "bRollSuggestions": [
     {"id":"b1","timestamp":5.0,"duration":2.0,"prompt":"cinematic close-up description","reason":"context"}

@@ -363,8 +363,8 @@ function buildSpeechDrivenEffects(
     return { seg, index: i, score, segDuration, wordCount };
   });
 
-  // Step 2: Select top ~35% of segments for zooms (minimum 2, max based on count)
-  const targetZoomCount = Math.max(2, Math.ceil(segments.length * 0.35));
+  // Step 2: Select top ~25% of segments for zooms — calm, selective, professional
+  const targetZoomCount = Math.max(2, Math.ceil(segments.length * 0.25));
   const zoomCandidates = scoredSegments
     .filter((s) => s.score > -5 && s.segDuration >= 0.3)
     .sort((a, b) => b.score - a.score)
@@ -381,27 +381,28 @@ function buildSpeechDrivenEffects(
     const isHookZone = seg.start < 3;
     const isShortPunchy = segDuration < 2 && wordCount <= 5;
 
+    // Calm, elegant zoom scales — conversational, not aggressive
     let params: Record<string, unknown>;
     switch (zoomType) {
       case "zoom-in":
         params = {
-          scale: isHookZone ? 1.50 : isShortPunchy ? 1.30 : 1.20,
+          scale: isHookZone ? 1.25 : isShortPunchy ? 1.10 : 1.06,
           focusX: 0.5,
-          focusY: 0.30,
+          focusY: 0.35,
         };
         break;
       case "zoom-out":
         params = {
-          scale: isHookZone ? 1.35 : 1.20,
+          scale: isHookZone ? 1.15 : 1.06,
         };
         break;
       case "zoom-pulse":
         params = {
-          scale: isShortPunchy ? 1.18 : 1.12,
+          scale: isShortPunchy ? 1.08 : 1.05,
         };
         break;
       default:
-        params = { scale: 1.15 };
+        params = { scale: 1.06 };
     }
 
     effects.push({
@@ -797,7 +798,7 @@ export default function ProcessingScreen() {
               // The AI sometimes assigns "hook" to multiple early segments — prevent that.
               let preset = aiSeg.preset as PresetType;
               if (preset === "hook" && i !== 0) {
-                preset = "talking-head";
+                preset = "talking-head-broll";
               }
               videoSegments[i].preset = preset;
               videoSegments[i].keywordHighlight = aiSeg.keywordHighlight || videoSegments[i].keywordHighlight;
@@ -819,12 +820,22 @@ export default function ProcessingScreen() {
       const presetResult = applyAllPresets(videoSegments, captions, effectiveDuration);
 
       // Merge preset effects with AI/speech-driven effects
-      // Remove AI-generated global color-grade/vignette since presets provide themed versions
+      // Remove AI effects that would conflict with preset effects (prevents double zooms)
       const nonPresetEffects = effects.filter(e => {
         if (e.id.startsWith("preset_")) return false;
         // Remove AI global color-grade/vignette (> 80% of duration) — presets replace them
         if ((e.type === "color-grade" || e.type === "vignette") &&
             e.endTime - e.startTime > effectiveDuration * 0.8) return false;
+        // Remove AI/speech-driven zoom/pan/shake effects that overlap with preset-generated ones.
+        // Presets already generate calibrated zooms per segment — AI zooms would stack and
+        // create excessive, aggressive movement.
+        if (e.type.startsWith("zoom") || e.type === "shake" || e.type.startsWith("pan")) {
+          const hasPresetOverlap = presetResult.presetEffects.some(pe =>
+            (pe.type.startsWith("zoom") || pe.type === "shake" || pe.type.startsWith("pan")) &&
+            e.startTime < pe.endTime && e.endTime > pe.startTime
+          );
+          if (hasPresetOverlap) return false;
+        }
         return true;
       });
       const mergedEffects = [

@@ -858,8 +858,9 @@ export default function ProcessingScreen() {
       setEffects(mergedEffects);
 
       // Combine B-Roll from AI suggestions + preset-generated B-Roll
+      // Deduplicate: if an AI suggestion overlaps with a preset B-roll, drop the AI one
       const presetBrollItems = presetResult.presetBroll;
-      const bRollItems = bRollSuggestions.map((s: BRollSuggestion) => ({
+      const aiBRollItems = bRollSuggestions.map((s: BRollSuggestion) => ({
         id: s.id || uuid(),
         url: "",
         prompt: s.prompt,
@@ -869,7 +870,13 @@ export default function ProcessingScreen() {
         opacity: 0.9,
         position: "fullscreen" as const,
       }));
-      const allBRollItems = [...bRollItems, ...presetBrollItems];
+      // Remove AI B-roll that overlaps with preset B-roll (preset is better positioned)
+      const dedupedAiBroll = aiBRollItems.filter((ai) =>
+        !presetBrollItems.some(
+          (pb) => ai.startTime < pb.endTime && ai.endTime > pb.startTime
+        )
+      );
+      const allBRollItems = [...dedupedAiBroll, ...presetBrollItems];
       setBRollImages(allBRollItems);
       setEditPlan(editPlan as unknown as import("@/types").EditPlan);
 

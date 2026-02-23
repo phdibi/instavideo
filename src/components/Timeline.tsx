@@ -313,11 +313,22 @@ export default function Timeline() {
     ) => {
       e.stopPropagation();
       e.preventDefault();
+
+      // Shift+mouseDown → toggle multi-select, do NOT start drag
+      if (e.shiftKey && type !== "playhead") {
+        toggleMultiSelect(type, id);
+        return;
+      }
+
       pauseForDrag();
       // Snapshot effect row assignments for stable drag
       if (type === "effect") {
         frozenEffectRowMapRef.current = snapshotEffectRowMap();
       }
+
+      const dragKey = makeKey(type, id);
+      const isPartOfMultiSelect = multiSelected.has(dragKey);
+
       setDragState({
         type,
         id,
@@ -329,8 +340,7 @@ export default function Timeline() {
       setActiveDragId(id);
 
       // Snapshot positions of all multi-selected items for coordinated drag
-      const dragKey = `${type}:${id}`;
-      if (multiSelected.has(dragKey) && field === "move") {
+      if (isPartOfMultiSelect && field === "move" && multiSelected.size > 1) {
         const posMap = new Map<string, { startTime: number; endTime: number }>();
         for (const key of multiSelected) {
           const parsed = parseKey(key);
@@ -346,9 +356,14 @@ export default function Timeline() {
         multiDragInitialRef.current = null;
       }
 
-      if (type !== "playhead") handleItemClick(type, id);
+      // Only update single selection if this item is NOT part of multi-select
+      // (otherwise we'd clear the multi-select when trying to drag the group)
+      if (type !== "playhead" && !isPartOfMultiSelect) {
+        if (multiSelected.size > 0) clearMultiSelect();
+        setSelectedItem({ type, id });
+      }
     },
-    [handleItemClick, pauseForDrag, snapshotEffectRowMap, multiSelected, parseKey, captions, effects, bRollImages, segments]
+    [pauseForDrag, snapshotEffectRowMap, multiSelected, parseKey, makeKey, captions, effects, bRollImages, segments, toggleMultiSelect, clearMultiSelect, setSelectedItem]
   );
 
   // Auto-scroll timeline when dragging near edges (like CapCut)

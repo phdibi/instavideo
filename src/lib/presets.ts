@@ -1020,8 +1020,10 @@ export function applyAllPresets(
   const allNewEffects: EditEffect[] = [];
   const allNewBroll: BRollImage[] = [];
 
-  // Remove old preset-generated effects (they start with "preset_")
-  // Keep user-added and AI-generated effects
+  // Track TH-broll segments to limit B-roll frequency.
+  // Only every OTHER talking-head-broll segment gets actual B-roll imagery
+  // to avoid excessive visual breaks that interrupt the conversational flow.
+  let thBrollCount = 0;
 
   for (const segment of segments) {
     const result = applyPresetToSegment(
@@ -1040,7 +1042,18 @@ export function applyAllPresets(
     );
 
     allNewEffects.push(...result.newEffects);
-    allNewBroll.push(...result.newBroll);
+
+    // Rate-limit B-roll: only keep every other TH-broll segment's B-roll
+    if (segment.preset === "talking-head-broll" && result.newBroll.length > 0) {
+      thBrollCount++;
+      if (thBrollCount % 2 === 1) {
+        // Keep this one (1st, 3rd, 5th, etc.)
+        allNewBroll.push(...result.newBroll);
+      }
+      // Skip even-numbered — they get the TH-broll caption style but no image
+    } else {
+      allNewBroll.push(...result.newBroll);
+    }
   }
 
   // Add global effects that aren't already present

@@ -71,7 +71,7 @@ Add transition-fade (0.3s) at gaps between segments where silence > 0.5s.
 EXPECTED: ~${Math.max(2, Math.ceil(numSegments * 0.25))} zooms + 2 globals + a few transitions.
 
 B-ROLL INSTRUCTIONS:
-Suggest 3-5 b-roll images spaced evenly across the video.
+Suggest 2-3 b-roll images spaced evenly across the video. Less is more — b-roll should enhance key moments, not overwhelm.
 - timestamp = a segment's start time
 - duration: 1.5-2.5s
 - prompt: cinematic image description (subject, style, lighting, mood)

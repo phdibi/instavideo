@@ -74,7 +74,7 @@ TIMESTAMP RULES (CRITICAL — each word will be displayed as an individual subti
 
 1. TIMING PRECISION: Each word's start time = EXACT moment the speaker begins articulating it. Each word's end time = EXACT moment they finish. Target 30ms accuracy. This is the MOST important requirement.
 
-2. LISTEN CAREFULLY TO SPEECH ONSET: The most common error is placing timestamps TOO EARLY. The word start time must be when the speaker's mouth actually produces the first sound of the word. If in doubt, bias 50ms LATE rather than early. Early subtitles look broken.
+2. LISTEN CAREFULLY TO SPEECH ONSET: The word start time must be when the speaker's mouth actually produces the first sound of the word. Aim for EXACT timing — do NOT bias early or late. Precise timestamps are critical for professional subtitle sync.
 
 3. PORTUGUESE WORD DURATIONS (sanity check):
    - Single-syllable: "eu", "que", "de", "é", "não" → 100-250ms

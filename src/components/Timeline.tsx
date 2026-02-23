@@ -55,6 +55,11 @@ export default function Timeline() {
   // Frozen row map for effects — prevents row jumping during drag
   const frozenEffectRowMapRef = useRef<Map<string, number> | null>(null);
 
+  // === MULTI-SELECT STATE (Shift+Click bulk editing) ===
+  const [multiSelected, setMultiSelected] = useState<Set<string>>(new Set());
+  // Track initial positions for multi-select drag
+  const multiDragInitialRef = useRef<Map<string, { startTime: number; endTime: number }> | null>(null);
+
   const {
     videoDuration,
     currentTime,
@@ -71,6 +76,7 @@ export default function Timeline() {
     updateEffect,
     updateBRollImage,
     updateSegment,
+    batchOffsetItems,
   } = useProjectStore();
 
   // Helper: compute effect row map from current effects (same algo as effectRows memo)
@@ -180,6 +186,69 @@ export default function Timeline() {
     }
   }, [updateCaption, updateEffect, updateBRollImage, updateSegment]);
 
+  // === MULTI-SELECT HELPERS ===
+  const makeKey = useCallback((type: string, id: string) => `${type}:${id}`, []);
+  const parseKey = useCallback((key: string): { type: "caption" | "effect" | "broll" | "segment"; id: string } => {
+    const [type, ...rest] = key.split(":");
+    return { type: type as "caption" | "effect" | "broll" | "segment", id: rest.join(":") };
+  }, []);
+
+  const toggleMultiSelect = useCallback(
+    (type: "caption" | "effect" | "broll" | "segment", id: string) => {
+      const key = makeKey(type, id);
+      setMultiSelected((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) {
+          next.delete(key);
+        } else {
+          next.add(key);
+        }
+        return next;
+      });
+    },
+    [makeKey]
+  );
+
+  const clearMultiSelect = useCallback(() => {
+    setMultiSelected(new Set());
+    multiDragInitialRef.current = null;
+  }, []);
+
+  // Parse multi-selected items for batch operations
+  const multiSelectedItems = useMemo(
+    () => Array.from(multiSelected).map(parseKey),
+    [multiSelected, parseKey]
+  );
+
+  // Keyboard shortcuts: Escape clears multi-selection, Ctrl+A selects all captions
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && multiSelected.size > 0) {
+        clearMultiSelect();
+      }
+      // Ctrl+A or Cmd+A — select all captions (only if timeline is focused area)
+      if ((e.ctrlKey || e.metaKey) && e.key === "a") {
+        const isInput = (e.target as HTMLElement)?.tagName === "INPUT" || (e.target as HTMLElement)?.tagName === "TEXTAREA";
+        if (!isInput && captions.length > 0) {
+          e.preventDefault();
+          const allCaptionKeys = new Set(captions.map((c) => makeKey("caption", c.id)));
+          setMultiSelected(allCaptionKeys);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [multiSelected, clearMultiSelect, captions, makeKey]);
+
+  // Batch offset with buttons
+  const handleBatchOffset = useCallback(
+    (delta: number) => {
+      if (multiSelectedItems.length === 0) return;
+      batchOffsetItems(multiSelectedItems, delta);
+    },
+    [multiSelectedItems, batchOffsetItems]
+  );
+
   // Only seek the playhead when clicking on the RULER area (top time bar),
   // NOT when clicking on the track items area below it
   const handleRulerClick = useCallback(
@@ -193,10 +262,18 @@ export default function Timeline() {
   );
 
   const handleItemClick = useCallback(
-    (type: "caption" | "effect" | "broll" | "segment", id: string) => {
+    (type: "caption" | "effect" | "broll" | "segment", id: string, shiftKey?: boolean) => {
+      if (shiftKey) {
+        toggleMultiSelect(type, id);
+        return;
+      }
+      // Normal click clears multi-select and selects single item
+      if (multiSelected.size > 0) {
+        clearMultiSelect();
+      }
       setSelectedItem({ type, id });
     },
-    [setSelectedItem]
+    [setSelectedItem, toggleMultiSelect, clearMultiSelect, multiSelected]
   );
 
   // === PAUSE VIDEO DURING DRAG ===
@@ -250,9 +327,28 @@ export default function Timeline() {
         initialEnd: endTime,
       });
       setActiveDragId(id);
+
+      // Snapshot positions of all multi-selected items for coordinated drag
+      const dragKey = `${type}:${id}`;
+      if (multiSelected.has(dragKey) && field === "move") {
+        const posMap = new Map<string, { startTime: number; endTime: number }>();
+        for (const key of multiSelected) {
+          const parsed = parseKey(key);
+          let item: { startTime: number; endTime: number } | undefined;
+          if (parsed.type === "caption") item = captions.find((c) => c.id === parsed.id);
+          else if (parsed.type === "effect") item = effects.find((e) => e.id === parsed.id);
+          else if (parsed.type === "broll") item = bRollImages.find((b) => b.id === parsed.id);
+          else if (parsed.type === "segment") item = segments.find((s) => s.id === parsed.id);
+          if (item) posMap.set(key, { startTime: item.startTime, endTime: item.endTime });
+        }
+        multiDragInitialRef.current = posMap;
+      } else {
+        multiDragInitialRef.current = null;
+      }
+
       if (type !== "playhead") handleItemClick(type, id);
     },
-    [handleItemClick, pauseForDrag, snapshotEffectRowMap]
+    [handleItemClick, pauseForDrag, snapshotEffectRowMap, multiSelected, parseKey, captions, effects, bRollImages, segments]
   );
 
   // Auto-scroll timeline when dragging near edges (like CapCut)
@@ -286,6 +382,25 @@ export default function Timeline() {
 
       // Auto-scroll when near edges
       autoScroll(e.clientX);
+
+      // === MULTI-SELECT DRAG: move all selected items together ===
+      if (field === "move" && multiDragInitialRef.current && multiDragInitialRef.current.size > 1) {
+        for (const [key, initial] of multiDragInitialRef.current) {
+          const parsed = parseKey(key);
+          const dur = initial.endTime - initial.startTime;
+          let ns = Math.max(0, initial.startTime + deltaTime);
+          let ne = ns + dur;
+          if (ne > videoDuration) { ne = videoDuration; ns = videoDuration - dur; }
+          const updates = { startTime: ns, endTime: ne };
+          if (parsed.type === "caption") updateCaption(parsed.id, updates);
+          else if (parsed.type === "effect") updateEffect(parsed.id, updates);
+          else if (parsed.type === "broll") updateBRollImage(parsed.id, updates);
+          else if (parsed.type === "segment") updateSegment(parsed.id, updates);
+        }
+        // Update playhead to follow the dragged item
+        setCurrentTime(Math.max(0, initialStart + deltaTime));
+        return;
+      }
 
       let newStart = initialStart;
       let newEnd = initialEnd;
@@ -346,6 +461,7 @@ export default function Timeline() {
       updateEffect,
       updateBRollImage,
       updateSegment,
+      parseKey,
     ]
   );
 
@@ -357,6 +473,7 @@ export default function Timeline() {
     setDragState(null);
     setActiveDragId(null);
     frozenEffectRowMapRef.current = null;
+    multiDragInitialRef.current = null;
   }, [dragState, flushPendingUpdate, resumeAfterDrag]);
 
   // === TOUCH GESTURE DISAMBIGUATION ===
@@ -488,6 +605,24 @@ export default function Timeline() {
       // Auto-scroll when near edges
       autoScroll(touch.clientX);
 
+      // === MULTI-SELECT TOUCH DRAG ===
+      if (field === "move" && multiDragInitialRef.current && multiDragInitialRef.current.size > 1) {
+        for (const [key, initial] of multiDragInitialRef.current) {
+          const parsed = parseKey(key);
+          const dur = initial.endTime - initial.startTime;
+          let ns = Math.max(0, initial.startTime + deltaTime);
+          let ne = ns + dur;
+          if (ne > videoDuration) { ne = videoDuration; ns = videoDuration - dur; }
+          const updates = { startTime: ns, endTime: ne };
+          if (parsed.type === "caption") updateCaption(parsed.id, updates);
+          else if (parsed.type === "effect") updateEffect(parsed.id, updates);
+          else if (parsed.type === "broll") updateBRollImage(parsed.id, updates);
+          else if (parsed.type === "segment") updateSegment(parsed.id, updates);
+        }
+        setCurrentTime(Math.max(0, initialStart + deltaTime));
+        return;
+      }
+
       let newStart = initialStart;
       let newEnd = initialEnd;
 
@@ -539,6 +674,11 @@ export default function Timeline() {
       autoScroll,
       snapTime,
       flushPendingUpdate,
+      parseKey,
+      updateCaption,
+      updateEffect,
+      updateBRollImage,
+      updateSegment,
     ]
   );
 
@@ -558,6 +698,7 @@ export default function Timeline() {
     setDragState(null);
     setActiveDragId(null);
     frozenEffectRowMapRef.current = null;
+    multiDragInitialRef.current = null;
   }, [
     clearLongPress,
     dragState,
@@ -765,12 +906,65 @@ export default function Timeline() {
       onTouchCancel={handleContainerTouchEnd}
       style={{ touchAction: isDragging ? "none" : "pan-x pan-y" }}
     >
+      {/* Multi-select toolbar — Shift+Click bulk editing */}
+      {multiSelected.size > 0 && !isDragging && (
+        <div className="shrink-0 bg-sky-500/15 border-b border-sky-400/30 px-3 py-1.5 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-sky-300 font-medium">
+              ⇧ {multiSelected.size} selecionado{multiSelected.size > 1 ? "s" : ""}
+            </span>
+            <span className="text-[9px] text-white/40">|</span>
+            <span className="text-[9px] text-white/50">Shift+Click para adicionar</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-sky-500/30 text-sky-200 hover:bg-sky-500/50 active:bg-sky-500/70 transition-colors"
+              onClick={() => handleBatchOffset(-0.5)}
+              title="Antecipar 0.5s"
+            >
+              -0.5s
+            </button>
+            <button
+              className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-sky-500/30 text-sky-200 hover:bg-sky-500/50 active:bg-sky-500/70 transition-colors"
+              onClick={() => handleBatchOffset(-0.1)}
+              title="Antecipar 0.1s"
+            >
+              -0.1s
+            </button>
+            <button
+              className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-sky-500/30 text-sky-200 hover:bg-sky-500/50 active:bg-sky-500/70 transition-colors"
+              onClick={() => handleBatchOffset(0.1)}
+              title="Atrasar 0.1s"
+            >
+              +0.1s
+            </button>
+            <button
+              className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-sky-500/30 text-sky-200 hover:bg-sky-500/50 active:bg-sky-500/70 transition-colors"
+              onClick={() => handleBatchOffset(0.5)}
+              title="Atrasar 0.5s"
+            >
+              +0.5s
+            </button>
+            <span className="text-[9px] text-white/30 mx-1">|</span>
+            <button
+              className="px-2 py-0.5 rounded text-[10px] font-medium bg-white/10 text-white/60 hover:bg-white/20 hover:text-white transition-colors"
+              onClick={clearMultiSelect}
+              title="Limpar seleção (Esc)"
+            >
+              Limpar
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Drag mode indicator with precise time display */}
       {isDragging && dragState.type !== "playhead" && (
         <div className="shrink-0 bg-[var(--accent)]/15 border-b border-[var(--accent)]/30 px-3 py-1 flex items-center justify-center gap-3">
           <span className="text-[10px] text-[var(--accent-light)] font-medium">
             {dragState.field === "move"
-              ? "↔ Mover"
+              ? multiDragInitialRef.current && multiDragInitialRef.current.size > 1
+                ? `↔ Mover ${multiDragInitialRef.current.size} itens`
+                : "↔ Mover"
               : dragState.field === "startTime"
                 ? "← Início"
                 : "→ Fim"}
@@ -876,6 +1070,7 @@ export default function Timeline() {
                     const isActive = currentTime >= seg.startTime && currentTime < seg.endTime;
                     const isHovered = hoveredItem === `segment-${seg.id}`;
                     const isSelected = selectedItem?.type === "segment" && selectedItem.id === seg.id;
+                    const isMultiSel = multiSelected.has(makeKey("segment", seg.id));
                     const isDraggingThis = activeDragId === seg.id;
                     const colors = presetColors[seg.preset] || {
                       base: "bg-gray-500/30 border-gray-400/50 text-gray-200",
@@ -883,7 +1078,7 @@ export default function Timeline() {
                       selected: "bg-gray-500/70 border-gray-400 text-white z-20 ring-2 ring-white/40",
                       hovered: "bg-gray-500/40 border-gray-400/80 text-white z-10",
                     };
-                    const colorClass = isSelected ? colors.selected : isActive ? colors.active : isHovered ? colors.hovered : colors.base;
+                    const colorClass = isMultiSel ? `${colors.active} ring-2 ring-sky-400/70 z-15` : isSelected ? colors.selected : isActive ? colors.active : isHovered ? colors.hovered : colors.base;
 
                     return (
                       <div
@@ -902,7 +1097,7 @@ export default function Timeline() {
                         onTouchStart={(e) =>
                           handleItemTouchStart(e, "segment", seg.id, "move", seg.startTime, seg.endTime)
                         }
-                        onClick={(e) => { e.stopPropagation(); handleItemClick("segment", seg.id); }}
+                        onClick={(e) => { e.stopPropagation(); handleItemClick("segment", seg.id, e.shiftKey); }}
                         onMouseEnter={() => setHoveredItem(`segment-${seg.id}`)}
                         onMouseLeave={() => setHoveredItem(null)}
                       >
@@ -969,12 +1164,15 @@ export default function Timeline() {
                   const isSelected =
                     selectedItem?.type === "caption" &&
                     selectedItem.id === c.id;
+                  const isMultiSel = multiSelected.has(makeKey("caption", c.id));
                   const isDraggingThis = activeDragId === c.id;
 
                   return (
                     <div
                       key={c.id}
-                      className={`absolute top-1 rounded-md border text-[8px] px-1 truncate flex items-center will-change-transform ${isSelected
+                      className={`absolute top-1 rounded-md border text-[8px] px-1 truncate flex items-center will-change-transform ${isMultiSel
+                        ? "bg-[var(--accent)]/70 border-[var(--accent)] text-white shadow-sm shadow-[var(--accent)]/30 z-15 ring-2 ring-sky-400/70"
+                        : isSelected
                         ? "bg-[var(--accent)]/80 border-[var(--accent)] text-white shadow-md shadow-[var(--accent)]/40 z-20 ring-2 ring-white/40"
                         : isActive
                           ? "bg-[var(--accent)]/70 border-[var(--accent)] text-white shadow-sm shadow-[var(--accent)]/30 z-10"
@@ -1012,7 +1210,7 @@ export default function Timeline() {
                       }
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleItemClick("caption", c.id);
+                        handleItemClick("caption", c.id, e.shiftKey);
                       }}
                       onMouseEnter={() => setHoveredItem(`caption-${c.id}`)}
                       onMouseLeave={() => setHoveredItem(null)}
@@ -1106,12 +1304,15 @@ export default function Timeline() {
                   const isHovered = hoveredItem === `broll-${b.id}`;
                   const isSelected =
                     selectedItem?.type === "broll" && selectedItem.id === b.id;
+                  const isMultiSel = multiSelected.has(makeKey("broll", b.id));
                   const isDraggingThis = activeDragId === b.id;
 
                   return (
                     <div
                       key={b.id}
-                      className={`absolute top-1 rounded-md border text-[8px] px-1 truncate flex items-center will-change-transform ${isSelected
+                      className={`absolute top-1 rounded-md border text-[8px] px-1 truncate flex items-center will-change-transform ${isMultiSel
+                        ? "bg-orange-500/65 border-orange-400 text-white shadow-sm z-15 ring-2 ring-sky-400/70"
+                        : isSelected
                         ? b.url
                           ? "bg-orange-500/80 border-orange-400 text-white shadow-md shadow-orange-500/40 z-20 ring-2 ring-white/40"
                           : "bg-gray-500/40 border-gray-400 border-dashed text-gray-300 z-20 ring-2 ring-white/40"
@@ -1153,7 +1354,7 @@ export default function Timeline() {
                       }
                       onClick={(ev) => {
                         ev.stopPropagation();
-                        handleItemClick("broll", b.id);
+                        handleItemClick("broll", b.id, ev.shiftKey);
                       }}
                       onMouseEnter={() => setHoveredItem(`broll-${b.id}`)}
                       onMouseLeave={() => setHoveredItem(null)}
@@ -1254,12 +1455,15 @@ export default function Timeline() {
                         const isSelected =
                           selectedItem?.type === "effect" &&
                           selectedItem.id === e.id;
+                        const isMultiSel = multiSelected.has(makeKey("effect", e.id));
                         const isDraggingThis = activeDragId === e.id;
 
                         return (
                           <div
                             key={e.id}
-                            className={`absolute rounded-md border text-[8px] px-1 truncate flex items-center will-change-transform ${color} ${isSelected
+                            className={`absolute rounded-md border text-[8px] px-1 truncate flex items-center will-change-transform ${color} ${isMultiSel
+                              ? "brightness-125 shadow-sm z-15 ring-2 ring-sky-400/70"
+                              : isSelected
                               ? "brightness-130 shadow-md z-20 ring-2 ring-white/40"
                               : isActive
                                 ? "brightness-125 shadow-sm z-10"
@@ -1298,7 +1502,7 @@ export default function Timeline() {
                             }
                             onClick={(ev) => {
                               ev.stopPropagation();
-                              handleItemClick("effect", e.id);
+                              handleItemClick("effect", e.id, ev.shiftKey);
                             }}
                             onMouseEnter={() => setHoveredItem(`effect-${e.id}`)}
                             onMouseLeave={() => setHoveredItem(null)}

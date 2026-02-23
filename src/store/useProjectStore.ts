@@ -48,6 +48,8 @@ interface ProjectStore {
   setSelectedItem: (item: { type: "caption" | "effect" | "broll" | "segment"; id: string } | null) => void;
   setTeleprompterSettings: (settings: Partial<TeleprompterSettings>) => void;
   setBrandingConfig: (config: Partial<BrandingConfig>) => void;
+  /** Batch offset multiple items by a time delta — for Shift multi-select bulk editing */
+  batchOffsetItems: (items: { type: "caption" | "effect" | "broll" | "segment"; id: string }[], deltaTime: number) => void;
   reset: () => void;
 }
 
@@ -158,5 +160,61 @@ export const useProjectStore = create<ProjectStore>((set) => ({
     set((state) => ({
       brandingConfig: { ...state.brandingConfig, ...config },
     })),
+  batchOffsetItems: (items, deltaTime) =>
+    set((state) => {
+      const dur = state.videoDuration || 9999;
+      const captionIds = new Set(items.filter((i) => i.type === "caption").map((i) => i.id));
+      const effectIds = new Set(items.filter((i) => i.type === "effect").map((i) => i.id));
+      const brollIds = new Set(items.filter((i) => i.type === "broll").map((i) => i.id));
+      const segmentIds = new Set(items.filter((i) => i.type === "segment").map((i) => i.id));
+
+      const clamp = (s: number, e: number) => ({
+        startTime: Math.max(0, Math.min(s, dur)),
+        endTime: Math.max(0, Math.min(e, dur)),
+      });
+
+      const updatedCaptions = captionIds.size > 0
+        ? state.captions.map((c) => {
+            if (!captionIds.has(c.id)) return c;
+            const { startTime, endTime } = clamp(c.startTime + deltaTime, c.endTime + deltaTime);
+            const wordTimings = c.wordTimings?.map((wt) => ({
+              start: Math.max(0, wt.start + deltaTime),
+              end: Math.max(0.02, wt.end + deltaTime),
+            }));
+            return { ...c, startTime, endTime, wordTimings };
+          }).sort((a, b) => a.startTime - b.startTime)
+        : state.captions;
+
+      const updatedEffects = effectIds.size > 0
+        ? state.effects.map((e) => {
+            if (!effectIds.has(e.id)) return e;
+            const { startTime, endTime } = clamp(e.startTime + deltaTime, e.endTime + deltaTime);
+            return { ...e, startTime, endTime };
+          })
+        : state.effects;
+
+      const updatedBRoll = brollIds.size > 0
+        ? state.bRollImages.map((b) => {
+            if (!brollIds.has(b.id)) return b;
+            const { startTime, endTime } = clamp(b.startTime + deltaTime, b.endTime + deltaTime);
+            return { ...b, startTime, endTime };
+          })
+        : state.bRollImages;
+
+      const updatedSegments = segmentIds.size > 0
+        ? state.segments.map((s) => {
+            if (!segmentIds.has(s.id)) return s;
+            const { startTime, endTime } = clamp(s.startTime + deltaTime, s.endTime + deltaTime);
+            return { ...s, startTime, endTime };
+          })
+        : state.segments;
+
+      return {
+        captions: updatedCaptions,
+        effects: updatedEffects,
+        bRollImages: updatedBRoll,
+        segments: updatedSegments,
+      };
+    }),
   reset: () => set(initialState),
 }));

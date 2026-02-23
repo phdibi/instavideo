@@ -266,17 +266,22 @@ function buildCaptionsFromTranscription(
   // Rule: EVERY caption extends EXACTLY to the start of the NEXT caption.
   // The LAST caption extends to effectiveDuration. ZERO empty frames.
   // CRITICAL: endTime NEVER exceeds the next caption's startTime — no overlaps.
+  //
+  // CAPTION ANTICIPATION: Professional subtitles appear slightly BEFORE the word
+  // is spoken so the viewer has time to read. This is standard in broadcast/film.
+  // 100ms anticipation feels perfectly in-sync to humans.
+  const ANTICIPATION = 0.10; // seconds — shift captions earlier for perceptual sync
   const MIN_DURATION = 0.3; // minimum seconds any caption stays visible
   const captions: Caption[] = [];
 
   for (let ci = 0; ci < rawCaptions.length; ci++) {
     const cap = rawCaptions[ci];
-    let startTime = Math.max(0, cap.start);
+    let startTime = Math.max(0, cap.start - ANTICIPATION);
 
     // Gapless: extend to start of next card, or to video end for the last card
     let endTime: number;
     if (ci + 1 < rawCaptions.length) {
-      endTime = rawCaptions[ci + 1].start; // seamless handoff — no gap ever
+      endTime = Math.max(0, rawCaptions[ci + 1].start - ANTICIPATION); // seamless handoff — no gap ever
     } else {
       endTime = effectiveDuration; // last card stays until video ends
     }
@@ -292,8 +297,12 @@ function buildCaptionsFromTranscription(
     if (endTime <= startTime + 0.02) continue; // skip degenerate
 
     // Build per-word timing array (for karaoke highlighting in the overlay)
+    // Also apply anticipation to word timings for consistent sync
     const wordTimings: { start: number; end: number }[] = cap.wordIndices.map(
-      (wi) => ({ start: allWords[wi].start, end: allWords[wi].end })
+      (wi) => ({
+        start: Math.max(0, allWords[wi].start - ANTICIPATION),
+        end: Math.max(0.02, allWords[wi].end - ANTICIPATION),
+      })
     );
 
     const wordTexts = cap.wordIndices.map((wi) => allWords[wi].word);

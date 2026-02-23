@@ -43,6 +43,28 @@ export default function ExportPanel() {
         video.load();
       });
 
+      // WebM fix: if duration is Infinity (common with teleprompter recordings),
+      // seek to a large time to force the browser to calculate the real duration.
+      if (!isFinite(video.duration) || video.duration <= 0) {
+        video.currentTime = Number.MAX_SAFE_INTEGER;
+        await new Promise<void>((resolve) => {
+          const t = setTimeout(resolve, 2000);
+          video.onseeked = () => { clearTimeout(t); resolve(); };
+        });
+        video.currentTime = 0;
+        await new Promise<void>((resolve) => {
+          const t = setTimeout(resolve, 500);
+          video.onseeked = () => { clearTimeout(t); resolve(); };
+        });
+      }
+
+      // Safeguard: use actual video element duration (not just store value)
+      // This ensures correct timing regardless of upload method (file upload or teleprompter)
+      const actualDuration = video.duration;
+      const exportDuration = (actualDuration && isFinite(actualDuration) && actualDuration > 0)
+        ? actualDuration
+        : videoDuration;
+
       const config = aspectRatioConfig[aspectRatio];
       const qualityMultiplier = quality === "720p" ? 720 / 1080 : 1;
       const width = Math.round(config.w * qualityMultiplier);
@@ -62,8 +84,10 @@ export default function ExportPanel() {
       const stream = canvas.captureStream(30);
 
       // Add audio from original video using a hidden video element
+      let audioVideoEl: HTMLVideoElement | null = null;
       try {
         const audioVideo = document.createElement("video");
+        audioVideoEl = audioVideo;
         audioVideo.src = videoUrl;
         audioVideo.muted = false;
         audioVideo.crossOrigin = "anonymous";
@@ -77,9 +101,8 @@ export default function ExportPanel() {
         audioSource.connect(dest);
         audioSource.connect(audioCtx.destination); // Also connect to speakers for monitoring
         dest.stream.getAudioTracks().forEach((track) => stream.addTrack(track));
-        // Play the audio video in sync — we'll seek it frame by frame alongside the main video
+        // Audio playback deferred until right before the render loop for precise sync
         audioVideo.currentTime = 0;
-        audioVideo.play().catch(() => {});
       } catch {
         // Audio extraction might fail - continue without audio
       }
@@ -126,15 +149,26 @@ export default function ExportPanel() {
         }
       }
 
-      // Render frames
+      // Start audio playback right before render loop for precise sync.
+      // Audio plays at 1x speed while we render frames at real-time pace.
+      if (audioVideoEl) {
+        audioVideoEl.currentTime = 0;
+        audioVideoEl.play().catch(() => {});
+      }
+
+      // Render frames — paced at real-time intervals for correct MediaRecorder timestamps.
+      // MediaRecorder uses wall-clock time for timestamps, so we MUST space frames
+      // at 1/fps intervals to produce a correctly-timed recording.
       const fps = 30;
-      const totalFrames = Math.ceil(videoDuration * fps);
+      const totalFrames = Math.ceil(exportDuration * fps);
+      const exportWallStart = performance.now();
 
       for (let frame = 0; frame < totalFrames; frame++) {
         const time = frame / fps;
         video.currentTime = time;
         await new Promise<void>((resolve) => {
-          video.onseeked = () => resolve();
+          const seekTimeout = setTimeout(resolve, 300); // Safety: don't hang on failed seek
+          video.onseeked = () => { clearTimeout(seekTimeout); resolve(); };
         });
 
         // Clear
@@ -688,9 +722,9 @@ export default function ExportPanel() {
         }
 
         // Draw watermark (name + title, top-left, from 2s to duration-3.5s)
-        if (brandingConfig.showWatermark && videoDuration >= 6) {
+        if (brandingConfig.showWatermark && exportDuration >= 6) {
           const wmShowStart = 2;
-          const wmShowEnd = videoDuration - 3.5;
+          const wmShowEnd = exportDuration - 3.5;
           if (time >= wmShowStart && time <= wmShowEnd) {
             const wmFadeIn = Math.min((time - wmShowStart) / 0.5, 1);
             const wmFadeOut = Math.min((wmShowEnd - time) / 0.5, 1);
@@ -733,9 +767,9 @@ export default function ExportPanel() {
         }
 
         // Draw CTA overlay (last 3 seconds)
-        if (brandingConfig.showCTA && videoDuration >= 6) {
-          const ctaStart = videoDuration - 3;
-          if (time >= ctaStart && time <= videoDuration) {
+        if (brandingConfig.showCTA && exportDuration >= 6) {
+          const ctaStart = exportDuration - 3;
+          if (time >= ctaStart && time <= exportDuration) {
             const ctaProgress = (time - ctaStart) / 3;
             const ctaFadeIn = Math.min(ctaProgress / 0.2, 1);
             const ctaSlideX = (1 - ctaFadeIn) * width * 0.03;
@@ -793,10 +827,21 @@ export default function ExportPanel() {
 
         setProgress(Math.round((frame / totalFrames) * 100));
 
-        // Small delay to allow UI updates and prevent freezing
-        if (frame % 10 === 0) {
-          await new Promise((r) => setTimeout(r, 0));
+        // Frame pacing: wait until the correct wall-clock position for this frame.
+        // This ensures the MediaRecorder records at the correct speed (not sped up).
+        // Export time ≈ video duration (real-time rendering).
+        const targetWallTime = exportWallStart + (frame + 1) * (1000 / fps);
+        const nowMs = performance.now();
+        const sleepMs = targetWallTime - nowMs;
+        if (sleepMs > 1) {
+          await new Promise(r => setTimeout(r, sleepMs));
         }
+      }
+
+      // Stop audio playback and clean up
+      if (audioVideoEl) {
+        audioVideoEl.pause();
+        audioVideoEl.src = "";
       }
 
       recorder.stop();
@@ -950,12 +995,19 @@ export default function ExportPanel() {
           </button>
 
           {exporting && (
-            <div className="mt-2 w-full bg-[var(--border)] rounded-full h-2 overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-[var(--accent)] to-purple-500 transition-all duration-300"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
+            <>
+              <div className="mt-2 w-full bg-[var(--border)] rounded-full h-2 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-[var(--accent)] to-purple-500 transition-all duration-300"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              {videoDuration > 0 && (
+                <p className="text-[10px] text-[var(--text-secondary)] mt-1 text-center">
+                  Tempo estimado: ~{Math.ceil(videoDuration)}s (renderização em tempo real)
+                </p>
+              )}
+            </>
           )}
         </div>
       </div>

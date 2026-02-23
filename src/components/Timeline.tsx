@@ -76,6 +76,10 @@ export default function Timeline() {
     updateEffect,
     updateBRollImage,
     updateSegment,
+    deleteCaption,
+    deleteEffect,
+    deleteBRollImage,
+    deleteSegment,
     batchOffsetItems,
   } = useProjectStore();
 
@@ -220,16 +224,45 @@ export default function Timeline() {
     [multiSelected, parseKey]
   );
 
-  // Keyboard shortcuts: Escape clears multi-selection, Ctrl+A selects all captions
+  // Keyboard shortcuts: Escape clears multi-selection, Delete removes selected, Ctrl+A selects all
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const isInput = (e.target as HTMLElement)?.tagName === "INPUT" || (e.target as HTMLElement)?.tagName === "TEXTAREA";
+      if (isInput) return;
+
       if (e.key === "Escape" && multiSelected.size > 0) {
         clearMultiSelect();
       }
-      // Ctrl+A or Cmd+A — select all captions (only if timeline is focused area)
+
+      // Delete or Backspace — remove selected items
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        // Delete all multi-selected items
+        if (multiSelected.size > 0) {
+          for (const key of multiSelected) {
+            const { type, id } = parseKey(key);
+            if (type === "caption") deleteCaption(id);
+            else if (type === "effect") deleteEffect(id);
+            else if (type === "broll") deleteBRollImage(id);
+            else if (type === "segment") deleteSegment(id);
+          }
+          clearMultiSelect();
+          setSelectedItem(null);
+          return;
+        }
+        // Delete single selected item
+        if (selectedItem) {
+          if (selectedItem.type === "caption") deleteCaption(selectedItem.id);
+          else if (selectedItem.type === "effect") deleteEffect(selectedItem.id);
+          else if (selectedItem.type === "broll") deleteBRollImage(selectedItem.id);
+          else if (selectedItem.type === "segment") deleteSegment(selectedItem.id);
+          setSelectedItem(null);
+        }
+      }
+
+      // Ctrl+A or Cmd+A — select all captions
       if ((e.ctrlKey || e.metaKey) && e.key === "a") {
-        const isInput = (e.target as HTMLElement)?.tagName === "INPUT" || (e.target as HTMLElement)?.tagName === "TEXTAREA";
-        if (!isInput && captions.length > 0) {
+        if (captions.length > 0) {
           e.preventDefault();
           const allCaptionKeys = new Set(captions.map((c) => makeKey("caption", c.id)));
           setMultiSelected(allCaptionKeys);
@@ -238,7 +271,7 @@ export default function Timeline() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [multiSelected, clearMultiSelect, captions, makeKey]);
+  }, [multiSelected, clearMultiSelect, captions, makeKey, parseKey, selectedItem, setSelectedItem, deleteCaption, deleteEffect, deleteBRollImage, deleteSegment]);
 
   // Batch offset with buttons
   const handleBatchOffset = useCallback(

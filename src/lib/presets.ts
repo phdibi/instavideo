@@ -115,9 +115,11 @@ const AUTHORITY_RESULTS_KEYWORDS = new Set([
 ]);
 
 // ===== Detect preset for a segment =====
-// Track segment index for alternating pattern (set by buildSegmentsFromTranscription)
+// SIMPLIFIED: Professional approach — mostly talking-head with sparse B-Roll.
+// Research shows pro apps use B-roll every 15-30s, not every 3rd segment.
 let _segmentCounter = 0;
-export function resetSegmentCounter() { _segmentCounter = 0; }
+let _lastBrollTime = -Infinity;
+export function resetSegmentCounter() { _segmentCounter = 0; _lastBrollTime = -Infinity; }
 
 export function detectPreset(
   segment: { startTime: number; endTime: number; text: string },
@@ -127,59 +129,32 @@ export function detectPreset(
 ): PresetType {
   _segmentCounter++;
 
-  // Rule 1: First segment within 5s = HOOK
+  // Rule 1: First segment within 5s = HOOK (only visual difference: slightly stronger zoom)
   if (isFirst && segment.startTime < 5) {
     return "hook";
   }
 
-  const textLower = segment.text.toLowerCase();
-  const words = textLower.split(/\s+/);
-
-  // Rule 2: Check for futuristic/tech keywords
-  let futuristicScore = 0;
-  for (const word of words) {
-    const cleaned = word.replace(/[.,!?;:'"()]/g, "");
-    if (FUTURISTIC_KEYWORDS.has(cleaned)) {
-      futuristicScore++;
-    }
-  }
-  // Also check 2-word phrases
-  for (let i = 0; i < words.length - 1; i++) {
-    const phrase = words[i].replace(/[.,!?;:'"()]/g, "") + " " + words[i + 1].replace(/[.,!?;:'"()]/g, "");
-    if (FUTURISTIC_KEYWORDS.has(phrase)) {
-      futuristicScore += 2;
-    }
-  }
-
-  if (futuristicScore >= 2) {
-    return "futuristic-hud";
-  }
-
   const segDuration = segment.endTime - segment.startTime;
+  const timeSinceLastBroll = segment.startTime - _lastBrollTime;
 
-  // Rule 3: Check for visual content that warrants B-Roll (require stronger signal)
-  let visualScore = 0;
-  for (const word of words) {
-    const cleaned = word.replace(/[.,!?;:'"()]/g, "");
-    if (VISUAL_CONTENT_KEYWORDS.has(cleaned)) {
-      visualScore++;
+  // Rule 2: B-Roll only every ~15-20 seconds, and only for segments with visual content.
+  // This matches professional standards (2-3 B-roll per minute max).
+  if (timeSinceLastBroll >= 15 && segDuration > 2) {
+    const textLower = segment.text.toLowerCase();
+    const words = textLower.split(/\s+/);
+    let visualScore = 0;
+    for (const word of words) {
+      const cleaned = word.replace(/[.,!?;:'"()]/g, "");
+      if (VISUAL_CONTENT_KEYWORDS.has(cleaned)) visualScore++;
+    }
+    // Only add B-roll if there's meaningful visual content to illustrate
+    if (visualScore >= 2 || (hasBrollAvailable && visualScore >= 1)) {
+      _lastBrollTime = segment.startTime;
+      return "talking-head-broll";
     }
   }
 
-  // Only use TH+B-Roll when there's a strong visual signal (2+ visual keywords)
-  // or when B-Roll was specifically provided for this timestamp
-  if (visualScore >= 2 || (hasBrollAvailable && visualScore >= 1)) {
-    return "talking-head-broll";
-  }
-
-  // Rule 4: Alternating pattern for variety — every 3rd segment gets B-Roll
-  // to create a professional rhythm: TH → TH → TH+BR → TH → TH → TH+BR
-  // This mimics professional video editing where B-roll is used sparingly.
-  if (segDuration > 2.5 && _segmentCounter % 3 === 0) {
-    return "talking-head-broll";
-  }
-
-  // Rule 5: Short transitional moments stay as talking-head
+  // Rule 3: Everything else is talking-head (the consistent, clean look)
   return "talking-head";
 }
 
@@ -743,40 +718,17 @@ function applyHookPreset(
   const duration = segment.endTime - segment.startTime;
   const newEffects: EditEffect[] = [];
 
-  // Gentle zoom-in on presenter face — confident, not aggressive
+  // Professional punch-in zoom on face — noticeable but not aggressive (1.15x, not 1.25x)
   newEffects.push({
     id: `preset_hook_zoom_${segment.id}`,
     type: "zoom-in",
     startTime: segment.startTime,
     endTime: segment.endTime,
     params: {
-      scale: 1.25,
+      scale: 1.15,
       focusX: 0.5,
       focusY: 0.35,
     },
-  });
-
-  // Authority: NO flash effect — too aggressive for professional content
-  // Other themes: no flash either (was only authority before)
-
-  // Fade-in at beginning
-  if (segment.startTime < 0.5) {
-    newEffects.push({
-      id: `preset_hook_fadein_${segment.id}`,
-      type: "transition-fade",
-      startTime: 0,
-      endTime: Math.min(0.5, duration * 0.3),
-      params: { duration: 0.5 },
-    });
-  }
-
-  // Clean fade transition at end — elegant, not jarring
-  newEffects.push({
-    id: `preset_hook_cut_${segment.id}`,
-    type: "transition-fade",
-    startTime: segment.endTime - 0.2,
-    endTime: segment.endTime + 0.1,
-    params: { duration: 0.3 },
   });
 
   return { updatedCaptions, newEffects, newBroll: [] };
@@ -815,69 +767,12 @@ function applyTalkingHeadPreset(
   });
 
   const newEffects: EditEffect[] = [];
-  const duration = segment.endTime - segment.startTime;
 
-  // Varied zoom/movement per segment for visual interest.
-  // Use segment ID hash to deterministically alternate between zoom styles.
-  // ALL segments get effects — even short ones — so the video always has movement.
-  const hash = Math.abs(segment.id.charCodeAt(segment.id.length - 1));
-  const zoomVariant = hash % 4;
-
-  if (duration > 3) {
-    switch (zoomVariant) {
-      case 0:
-        // Slow zoom-in on face
-        newEffects.push({
-          id: `preset_th_zoom_${segment.id}`,
-          type: "zoom-in",
-          startTime: segment.startTime,
-          endTime: segment.endTime,
-          params: { scale: 1.08, focusX: 0.5, focusY: 0.35 },
-        });
-        break;
-      case 1:
-        // Gentle zoom-out (widen frame)
-        newEffects.push({
-          id: `preset_th_zoom_${segment.id}`,
-          type: "zoom-out",
-          startTime: segment.startTime,
-          endTime: segment.endTime,
-          params: { scale: 1.10 },
-        });
-        break;
-      case 2:
-        // Subtle pan left during segment
-        newEffects.push({
-          id: `preset_th_zoom_${segment.id}`,
-          type: "zoom-in",
-          startTime: segment.startTime,
-          endTime: segment.endTime,
-          params: { scale: 1.06, focusX: 0.45, focusY: 0.38 },
-        });
-        break;
-      default:
-        // Subtle pan right during segment
-        newEffects.push({
-          id: `preset_th_zoom_${segment.id}`,
-          type: "zoom-in",
-          startTime: segment.startTime,
-          endTime: segment.endTime,
-          params: { scale: 1.06, focusX: 0.55, focusY: 0.38 },
-        });
-        break;
-    }
-  } else if (duration > 0.3) {
-    // Short segments still get visual movement — zoom-pulse for 0.3-3s
-    // Scale adapts to duration: shorter = subtler, to avoid jarring effects
-    const pulseScale = duration > 1.5 ? 1.05 : 1.04;
-    newEffects.push({
-      id: `preset_th_zoom_${segment.id}`,
-      type: "zoom-pulse",
-      startTime: segment.startTime,
-      endTime: segment.endTime,
-      params: { scale: pulseScale },
-    });
-  }
+  // IMPORTANT: Zooms are NOT applied per-segment here.
+  // Instead, applyAllPresets selects the top ~20-25% of segments for zooms
+  // to match professional editing standards (2-4 zooms per minute).
+  // Individual segments only get effects if explicitly scored as "zoom-worthy"
+  // by the parent function. This prevents visual clutter.
 
   return { updatedCaptions, newEffects, newBroll: [] };
 }
@@ -1071,96 +966,95 @@ export function applyAllPresets(
   const allNewEffects: EditEffect[] = [];
   const allNewBroll: BRollImage[] = [];
 
-  // Track TH-broll segments to limit B-roll frequency.
-  // Only every OTHER talking-head-broll segment gets actual B-roll imagery
-  // to avoid excessive visual breaks that interrupt the conversational flow.
-  let thBrollCount = 0;
-
+  // Step 1: Apply caption styling from each preset (no effects yet)
   for (const segment of segments) {
-    const result = applyPresetToSegment(
-      segment,
-      allUpdatedCaptions,
-      [],
-      videoDuration
-    );
-
-    // Replace captions that were updated
+    const result = applyPresetToSegment(segment, allUpdatedCaptions, [], videoDuration);
     const updatedIds = new Set(result.updatedCaptions.map(c => c.id));
     allUpdatedCaptions = allUpdatedCaptions.map(c =>
-      updatedIds.has(c.id)
-        ? result.updatedCaptions.find(uc => uc.id === c.id) || c
-        : c
+      updatedIds.has(c.id) ? result.updatedCaptions.find(uc => uc.id === c.id) || c : c
     );
-
     allNewEffects.push(...result.newEffects);
-
-    // Keep all B-roll from TH-broll segments (detection is now more selective)
-    if (segment.preset === "talking-head-broll" && result.newBroll.length > 0) {
-      thBrollCount++;
-      allNewBroll.push(...result.newBroll);
-    } else {
-      allNewBroll.push(...result.newBroll);
-    }
+    allNewBroll.push(...result.newBroll);
   }
 
-  // Add smooth transitions between segments with different preset types.
-  // Professional editors use micro-transitions (fade/cut) at preset boundaries
-  // to create visual flow and avoid jarring cuts.
-  for (let i = 0; i < segments.length - 1; i++) {
-    const current = segments[i];
-    const next = segments[i + 1];
-    const presetChanged = current.preset !== next.preset;
-    const hasBrollTransition = current.preset === "talking-head-broll" || next.preset === "talking-head-broll";
+  // Step 2: SELECTIVE ZOOMS — only ~20-25% of segments get zoom effects.
+  // Professional standard: 2-4 zooms per minute, triggered by content importance.
+  // Score each segment, pick the top ~25%, apply varied zoom styles.
+  const zoomCandidates = segments
+    .filter(s => s.preset !== "hook") // Hook already has its own zoom
+    .map((seg, _idx) => {
+      let score = 0;
+      const dur = seg.endTime - seg.startTime;
+      const wordCount = seg.text.trim().split(/\s+/).length;
+      const textLower = seg.text.toLowerCase();
 
-    // Add fade transition when preset type changes (TH → TH+BR, TH → HUD, etc.)
-    if (presetChanged || hasBrollTransition) {
-      const transitionId = `preset_transition_${i}`;
-      // Only add if no transition already exists near this boundary
-      const hasExistingTransition = allNewEffects.some(
-        e => e.type.startsWith("transition-") &&
-          Math.abs(e.startTime - current.endTime) < 0.5
-      );
-      if (!hasExistingTransition) {
-        allNewEffects.push({
-          id: transitionId,
-          type: "transition-fade",
-          startTime: current.endTime - 0.15,
-          endTime: current.endTime + 0.15,
-          params: { duration: 0.3 },
-        });
+      // Short punchy phrases are zoom-worthy
+      if (dur < 2.5 && wordCount <= 6) score += 4;
+      // Longer segments need keyword justification
+      if (dur > 4) score -= 1;
+      // Keywords indicate importance
+      for (const word of textLower.split(/\s+/)) {
+        const cleaned = word.replace(/[.,!?;:'"()]/g, "");
+        if (AUTHORITY_AI_KEYWORDS.has(cleaned) || AUTHORITY_PSYCH_KEYWORDS.has(cleaned)) score += 2;
+        if (AUTHORITY_RESULTS_KEYWORDS.has(cleaned)) score += 2;
+        if (FUTURISTIC_KEYWORDS.has(cleaned)) score += 1;
       }
-    }
+      // Segments too short to notice
+      if (dur < 0.5) score -= 10;
+      return { seg, score, dur };
+    });
+
+  // Pick top ~25% for zooms (min 1, max ~4 per minute)
+  const maxZooms = Math.max(1, Math.ceil(segments.length * 0.25));
+  const zoomWinners = new Set(
+    zoomCandidates
+      .filter(c => c.score > 0 && c.dur >= 0.5)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, maxZooms)
+      .map(c => c.seg.id)
+  );
+
+  // Apply zoom effects only to winners
+  const zoomStyles: Array<{ type: "zoom-in" | "zoom-out" | "zoom-pulse"; params: Record<string, number> }> = [
+    { type: "zoom-in", params: { scale: 1.12, focusX: 0.5, focusY: 0.35 } },
+    { type: "zoom-out", params: { scale: 1.08 } },
+    { type: "zoom-in", params: { scale: 1.08, focusX: 0.45, focusY: 0.38 } },
+    { type: "zoom-in", params: { scale: 1.08, focusX: 0.55, focusY: 0.38 } },
+  ];
+
+  let zoomIdx = 0;
+  for (const seg of segments) {
+    if (!zoomWinners.has(seg.id)) continue;
+    const style = zoomStyles[zoomIdx % zoomStyles.length];
+    allNewEffects.push({
+      id: `preset_th_zoom_${seg.id}`,
+      type: style.type,
+      startTime: seg.startTime,
+      endTime: seg.endTime,
+      params: style.params,
+    });
+    zoomIdx++;
   }
 
-  // Add global effects that aren't already present
-  // Full-duration color-grade
-  // Ember theme uses a warmer, more golden color grade; Volt uses cinematic-warm
-  const hasGlobalColorGrade = allNewEffects.some(
-    e => e.type === "color-grade" && e.endTime - e.startTime > videoDuration * 0.8
-  );
-  if (!hasGlobalColorGrade) {
-    allNewEffects.push({
-      id: "preset_global_colorgrade",
-      type: "color-grade",
-      startTime: 0,
-      endTime: videoDuration,
-      params: { preset: useAuthorityTheme ? "authority-deep" : useVelocityTheme ? "velocity-gold" : useEmberTheme ? "ember-warm" : "cinematic-warm" },
-    });
-  }
+  // Step 3: NO auto-transitions. Professional standard: hard cuts 90% of the time.
+  // Users can manually add transitions via the editor if desired.
 
-  // Full-duration vignette (Ember uses slightly stronger vignette for editorial feel)
-  const hasGlobalVignette = allNewEffects.some(
-    e => e.type === "vignette" && e.endTime - e.startTime > videoDuration * 0.8
-  );
-  if (!hasGlobalVignette) {
-    allNewEffects.push({
-      id: "preset_global_vignette",
-      type: "vignette",
-      startTime: 0,
-      endTime: videoDuration,
-      params: { intensity: useAuthorityTheme ? 0.20 : useVelocityTheme ? 0.22 : useEmberTheme ? 0.22 : 0.18 },
-    });
-  }
+  // Step 4: Global effects — single consistent look for the whole video
+  allNewEffects.push({
+    id: "preset_global_colorgrade",
+    type: "color-grade",
+    startTime: 0,
+    endTime: videoDuration,
+    params: { preset: useAuthorityTheme ? "authority-deep" : useVelocityTheme ? "velocity-gold" : useEmberTheme ? "ember-warm" : "cinematic-warm" },
+  });
+
+  allNewEffects.push({
+    id: "preset_global_vignette",
+    type: "vignette",
+    startTime: 0,
+    endTime: videoDuration,
+    params: { intensity: useAuthorityTheme ? 0.18 : 0.15 },
+  });
 
   return {
     updatedCaptions: allUpdatedCaptions,

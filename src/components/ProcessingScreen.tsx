@@ -475,16 +475,7 @@ function buildSpeechDrivenEffects(
     });
   }
 
-  // Add letterbox for cinematic feel in hook zone (first 3s)
-  if (effectiveDuration > 4) {
-    effects.push({
-      id: "effect_letterbox_hook",
-      type: "letterbox",
-      startTime: 0,
-      endTime: Math.min(3, effectiveDuration),
-      params: { amount: 0.06 },
-    });
-  }
+  // Letterbox removed — adds visual clutter without professional benefit.
 
   return effects;
 }
@@ -877,15 +868,10 @@ export default function ProcessingScreen() {
               let preset = aiSeg.preset as PresetType;
               // Only the FIRST segment (index 0) can be "hook".
               if (preset === "hook" && i !== 0) {
-                preset = "talking-head-broll";
+                preset = "talking-head";
               }
-              // Respect AI's talking-head assignments — they create visual rhythm.
-              // Only convert to TH+BR if segment is very long (>6s) and would
-              // benefit from visual variety to avoid monotony.
-              const segDuration = videoSegments[i].endTime - videoSegments[i].startTime;
-              if (preset === "talking-head" && segDuration > 6) {
-                preset = "talking-head-broll";
-              }
+              // NO force-conversion: respect the heuristic detection from detectPreset.
+              // The simplified detectPreset already limits B-roll to every ~15-20 seconds.
               videoSegments[i].preset = preset;
               videoSegments[i].keywordHighlight = aiSeg.keywordHighlight || videoSegments[i].keywordHighlight;
               videoSegments[i].brollQuery = aiSeg.brollQuery || videoSegments[i].brollQuery;

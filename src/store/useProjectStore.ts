@@ -29,6 +29,7 @@ interface ProjectStore {
 
   setSegments: (segments: VideoSegment[]) => void;
   updateSegment: (id: string, updates: Partial<VideoSegment>) => void;
+  deleteSegment: (id: string) => void;
   setVideoFile: (file: File) => void;
   setVideoUrl: (url: string) => void;
   setVideoDuration: (duration: number) => void;
@@ -142,6 +143,16 @@ export const useProjectStore = create<ProjectStore>((set) => ({
       bRollImages: state.bRollImages.filter((b) => b.id !== id),
     })),
   setSegments: (segments) => set({ segments }),
+  deleteSegment: (id) =>
+    set((state) => {
+      const segIdSuffix = `_${id}`;
+      return {
+        segments: state.segments.filter((s) => s.id !== id),
+        // Also remove associated effects and B-roll
+        effects: state.effects.filter((e) => !e.id.includes(segIdSuffix)),
+        bRollImages: state.bRollImages.filter((b) => !b.id.includes(segIdSuffix)),
+      };
+    }),
   updateSegment: (id, updates) =>
     set((state) => {
       const oldSeg = state.segments.find((s) => s.id === id);

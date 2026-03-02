@@ -87,10 +87,10 @@ export default function TeleprompterScreen() {
             },
         audio: {
           sampleRate: { ideal: 48000 },
-          channelCount: { ideal: 2 },
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false,
+          channelCount: { ideal: 1 },
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
         },
       };
 

@@ -73,9 +73,25 @@ export default function TeleprompterScreen() {
 
       const constraints: MediaStreamConstraints = {
         video: deviceId
-          ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
-          : { facingMode: "user", width: { ideal: 1920 }, height: { ideal: 1080 } },
-        audio: true,
+          ? {
+              deviceId: { exact: deviceId },
+              width: { ideal: 3840, min: 1280 },
+              height: { ideal: 2160, min: 720 },
+              frameRate: { ideal: 60, min: 30 },
+            }
+          : {
+              facingMode: "user",
+              width: { ideal: 3840, min: 1280 },
+              height: { ideal: 2160, min: 720 },
+              frameRate: { ideal: 60, min: 30 },
+            },
+        audio: {
+          sampleRate: { ideal: 48000 },
+          channelCount: { ideal: 2 },
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
       };
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -207,7 +223,8 @@ export default function TeleprompterScreen() {
 
         const recorder = new MediaRecorder(streamRef.current!, {
           mimeType,
-          videoBitsPerSecond: 5_000_000,
+          videoBitsPerSecond: 20_000_000,
+          audioBitsPerSecond: 320_000,
         });
 
         recorder.ondataavailable = (e) => {
@@ -223,7 +240,7 @@ export default function TeleprompterScreen() {
         };
 
         mediaRecorderRef.current = recorder;
-        recorder.start(1000);
+        recorder.start(100);
 
         resetScroll();
         setTimeout(() => {
@@ -509,7 +526,7 @@ export default function TeleprompterScreen() {
           {/* Camera preview */}
           <div className="absolute inset-0 bg-black flex items-center justify-center">
             {phase === "preview" && recordedUrl ? (
-              <video ref={previewVideoRef} src={recordedUrl} className="w-full h-full object-contain" controls autoPlay playsInline />
+              <video ref={previewVideoRef} src={recordedUrl} className="w-full h-full object-contain" controls autoPlay playsInline preload="auto" />
             ) : (
               <>
                 <video ref={videoRef} className="w-full h-full object-cover" autoPlay muted playsInline style={{ transform: "scaleX(-1)" }} />

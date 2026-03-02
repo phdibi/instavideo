@@ -3,8 +3,9 @@
   "configurations": [
     {
       "name": "dev",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeExecutable": "/opt/homebrew/Cellar/node/25.2.1/bin/node",
+      "runtimeArgs": ["node_modules/.bin/next", "dev"],
+      "env": { "PATH": "/opt/homebrew/Cellar/node/25.2.1/bin:/opt/homebrew/bin:/usr/bin:/bin" },
       "port": 3000
     }
   ]

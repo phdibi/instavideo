@@ -112,7 +112,8 @@ export default function ExportPanel() {
         : "video/webm";
       const recorder = new MediaRecorder(stream, {
         mimeType: actualMime,
-        videoBitsPerSecond: quality === "1080p" ? 8000000 : 4000000,
+        videoBitsPerSecond: quality === "1080p" ? 16_000_000 : 8_000_000,
+        audioBitsPerSecond: 320_000,
       });
 
       const chunks: Blob[] = [];

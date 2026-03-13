@@ -2,83 +2,62 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Type,
-  Sparkles,
-  Image as ImageIcon,
   Download,
   ArrowLeft,
   Film,
   GripHorizontal,
   ChevronUp,
   ChevronDown,
-  Wand2,
+  Eye,
+  Layers,
+  Image as ImageIcon,
+  Music,
 } from "lucide-react";
 import VideoPreview from "./VideoPreview";
-import CaptionEditor from "./CaptionEditor";
-import EffectsEditor from "./EffectsEditor";
-import BRollPanel from "./BRollPanel";
 import ExportPanel from "./ExportPanel";
-import PresetPanel from "./PresetPanel";
+import MusicPanel from "./MusicPanel";
+import MusicController from "./MusicController";
+import BRollSwapGrid from "./BRollSwapGrid";
 import Timeline from "./Timeline";
 import { useProjectStore } from "@/store/useProjectStore";
 
-type Tab = "presets" | "captions" | "effects" | "broll" | "export";
+type Tab = "preview" | "timeline" | "broll" | "music" | "export";
 
 const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
-  {
-    key: "presets",
-    label: "AI Edit",
-    icon: <Wand2 className="w-4 h-4" />,
-  },
-  { key: "captions", label: "Legendas", icon: <Type className="w-4 h-4" /> },
-  {
-    key: "effects",
-    label: "Efeitos",
-    icon: <Sparkles className="w-4 h-4" />,
-  },
-  {
-    key: "broll",
-    label: "B-Roll",
-    icon: <ImageIcon className="w-4 h-4" />,
-  },
-  {
-    key: "export",
-    label: "Exportar",
-    icon: <Download className="w-4 h-4" />,
-  },
+  { key: "preview", label: "Preview", icon: <Eye className="w-4 h-4" /> },
+  { key: "timeline", label: "Timeline", icon: <Layers className="w-4 h-4" /> },
+  { key: "broll", label: "B-Roll", icon: <ImageIcon className="w-4 h-4" /> },
+  { key: "music", label: "Música", icon: <Music className="w-4 h-4" /> },
+  { key: "export", label: "Exportar", icon: <Download className="w-4 h-4" /> },
 ];
 
 const MIN_TIMELINE_HEIGHT = 100;
 const MAX_TIMELINE_HEIGHT = 500;
 const DEFAULT_TIMELINE_HEIGHT = 200;
 
-// Mobile panel height presets (percentage of available space)
-const MOBILE_PANEL_COLLAPSED = 0; // Panel hidden
-const MOBILE_PANEL_HALF = 60; // Panel takes ~60% of area — large enough to edit comfortably
-const MOBILE_PANEL_FULL = 92; // Panel nearly fullscreen
+const MOBILE_PANEL_COLLAPSED = 0;
+const MOBILE_PANEL_HALF = 60;
+const MOBILE_PANEL_FULL = 92;
 
-// Mobile timeline height presets (pixels)
-const MOBILE_TIMELINE_COMPACT = 80;   // Minimal — just see track headers
-const MOBILE_TIMELINE_DEFAULT = 140;  // Default — comfortable viewing
-const MOBILE_TIMELINE_EXPANDED = 260; // Expanded — full editing mode
-const MOBILE_TIMELINE_MAX = 380;      // Maximum — nearly half screen
+const MOBILE_TIMELINE_COMPACT = 80;
+const MOBILE_TIMELINE_DEFAULT = 140;
+const MOBILE_TIMELINE_EXPANDED = 260;
+const MOBILE_TIMELINE_MAX = 380;
 
 export default function EditorLayout() {
-  const [activeTab, setActiveTab] = useState<Tab>("presets");
-  const { reset, captions, effects, segments, selectedItem } = useProjectStore();
+  const [activeTab, setActiveTab] = useState<Tab>("preview");
+  const { reset, modeSegments, selectedItem } = useProjectStore();
   const [timelineHeight, setTimelineHeight] = useState(DEFAULT_TIMELINE_HEIGHT);
   const isDraggingRef = useRef(false);
   const startYRef = useRef(0);
   const startHeightRef = useRef(0);
 
-  // Mobile: panel height as percentage (0 = collapsed, 55 = half, 90 = full)
   const [mobilePanelPercent, setMobilePanelPercent] = useState(MOBILE_PANEL_COLLAPSED);
   const mobileDragRef = useRef(false);
   const mobileDragStartYRef = useRef(0);
   const mobileDragStartPercentRef = useRef(0);
   const mobileContentRef = useRef<HTMLDivElement>(null);
 
-  // Mobile: timeline height (pixels) — resizable
   const [mobileTimelineHeight, setMobileTimelineHeight] = useState(MOBILE_TIMELINE_DEFAULT);
   const timelineDragRef = useRef(false);
   const timelineDragStartYRef = useRef(0);
@@ -86,25 +65,25 @@ export default function EditorLayout() {
 
   const mobilePanelOpen = mobilePanelPercent > 0;
 
-  // Auto-switch sidebar tab when an item is selected from the timeline
+  // Selected b-roll segment for swap grid
+  const selectedBrollSegment = modeSegments.find(
+    (s) => s.mode === "broll" && selectedItem?.type === "segment" && selectedItem.id === s.id
+  );
+
+  // Auto-switch to broll tab when selecting a broll segment
   useEffect(() => {
-    if (!selectedItem) return;
-    const tabMap: Record<string, Tab> = {
-      caption: "captions",
-      effect: "effects",
-      broll: "broll",
-    };
-    const targetTab = tabMap[selectedItem.type];
-    if (targetTab) {
-      setActiveTab(targetTab);
-      // Auto-expand panel on mobile when selecting from timeline
-      if (mobilePanelPercent === MOBILE_PANEL_COLLAPSED) {
-        setMobilePanelPercent(MOBILE_PANEL_HALF);
+    if (selectedItem?.type === "segment") {
+      const seg = modeSegments.find((s) => s.id === selectedItem.id);
+      if (seg?.mode === "broll") {
+        setActiveTab("broll");
+        if (mobilePanelPercent === MOBILE_PANEL_COLLAPSED) {
+          setMobilePanelPercent(MOBILE_PANEL_HALF);
+        }
       }
     }
-  }, [selectedItem]);
+  }, [selectedItem, modeSegments]);
 
-  // Mobile panel drag handler (touch)
+  // Mobile panel drag handlers
   const handleMobilePanelDragStart = useCallback(
     (e: React.TouchEvent) => {
       mobileDragRef.current = true;
@@ -114,27 +93,22 @@ export default function EditorLayout() {
     [mobilePanelPercent]
   );
 
-  const handleMobilePanelDragMove = useCallback(
-    (e: React.TouchEvent) => {
-      if (!mobileDragRef.current) return;
-      const container = mobileContentRef.current;
-      if (!container) return;
-
-      const deltaY = mobileDragStartYRef.current - e.touches[0].clientY;
-      const containerHeight = container.getBoundingClientRect().height;
-      const deltaPercent = (deltaY / containerHeight) * 100;
-      const newPercent = Math.min(
-        MOBILE_PANEL_FULL,
-        Math.max(0, mobileDragStartPercentRef.current + deltaPercent)
-      );
-      setMobilePanelPercent(newPercent);
-    },
-    []
-  );
+  const handleMobilePanelDragMove = useCallback((e: React.TouchEvent) => {
+    if (!mobileDragRef.current) return;
+    const container = mobileContentRef.current;
+    if (!container) return;
+    const deltaY = mobileDragStartYRef.current - e.touches[0].clientY;
+    const containerHeight = container.getBoundingClientRect().height;
+    const deltaPercent = (deltaY / containerHeight) * 100;
+    const newPercent = Math.min(
+      MOBILE_PANEL_FULL,
+      Math.max(0, mobileDragStartPercentRef.current + deltaPercent)
+    );
+    setMobilePanelPercent(newPercent);
+  }, []);
 
   const handleMobilePanelDragEnd = useCallback(() => {
     mobileDragRef.current = false;
-    // Snap to nearest preset
     setMobilePanelPercent((prev) => {
       if (prev < 20) return MOBILE_PANEL_COLLAPSED;
       if (prev < 72) return MOBILE_PANEL_HALF;
@@ -142,7 +116,6 @@ export default function EditorLayout() {
     });
   }, []);
 
-  // Mobile timeline drag handler (touch) — drag the handle UP to expand, DOWN to collapse
   const handleTimelineDragStart = useCallback(
     (e: React.TouchEvent) => {
       timelineDragRef.current = true;
@@ -152,23 +125,18 @@ export default function EditorLayout() {
     [mobileTimelineHeight]
   );
 
-  const handleTimelineDragMove = useCallback(
-    (e: React.TouchEvent) => {
-      if (!timelineDragRef.current) return;
-      // Dragging UP (negative deltaY) = increase height
-      const deltaY = timelineDragStartYRef.current - e.touches[0].clientY;
-      const newHeight = Math.min(
-        MOBILE_TIMELINE_MAX,
-        Math.max(MOBILE_TIMELINE_COMPACT, timelineDragStartHeightRef.current + deltaY)
-      );
-      setMobileTimelineHeight(newHeight);
-    },
-    []
-  );
+  const handleTimelineDragMove = useCallback((e: React.TouchEvent) => {
+    if (!timelineDragRef.current) return;
+    const deltaY = timelineDragStartYRef.current - e.touches[0].clientY;
+    const newHeight = Math.min(
+      MOBILE_TIMELINE_MAX,
+      Math.max(MOBILE_TIMELINE_COMPACT, timelineDragStartHeightRef.current + deltaY)
+    );
+    setMobileTimelineHeight(newHeight);
+  }, []);
 
   const handleTimelineDragEnd = useCallback(() => {
     timelineDragRef.current = false;
-    // Snap to nearest preset
     setMobileTimelineHeight((prev) => {
       if (prev < 110) return MOBILE_TIMELINE_COMPACT;
       if (prev < 200) return MOBILE_TIMELINE_DEFAULT;
@@ -177,14 +145,12 @@ export default function EditorLayout() {
     });
   }, []);
 
-  // Toggle timeline between compact and expanded with one tap
   const toggleMobileTimeline = useCallback(() => {
     setMobileTimelineHeight((prev) =>
       prev <= MOBILE_TIMELINE_DEFAULT ? MOBILE_TIMELINE_EXPANDED : MOBILE_TIMELINE_DEFAULT
     );
   }, []);
 
-  // Resize handle for timeline (desktop)
   const handleResizeStart = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
@@ -218,6 +184,25 @@ export default function EditorLayout() {
     [timelineHeight]
   );
 
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case "broll":
+        return selectedBrollSegment ? (
+          <BRollSwapGrid segment={selectedBrollSegment} />
+        ) : (
+          <div className="p-4 text-sm text-zinc-500">
+            Selecione um segmento B-Roll na timeline para trocar o vídeo.
+          </div>
+        );
+      case "music":
+        return <MusicPanel />;
+      case "export":
+        return <ExportPanel />;
+      default:
+        return null;
+    }
+  };
+
   return (
     <div className="h-[100dvh] flex flex-col bg-[var(--background)]">
       {/* Top bar */}
@@ -234,13 +219,12 @@ export default function EditorLayout() {
           <span className="font-semibold text-sm">CineAI Editor</span>
         </div>
         <div className="ml-auto flex items-center gap-3 text-xs text-[var(--text-secondary)]">
-          <span className="hidden sm:inline">{segments.length} segmentos</span>
-          <span className="hidden sm:inline w-px h-4 bg-[var(--border)]" />
-          <span className="hidden sm:inline">{captions.length} legendas</span>
-          <span className="hidden sm:inline w-px h-4 bg-[var(--border)]" />
-          <span className="hidden sm:inline">{effects.length} efeitos</span>
+          <span className="hidden sm:inline">{modeSegments.length} segmentos</span>
         </div>
       </header>
+
+      {/* Music controller (invisible, handles audio) */}
+      <MusicController />
 
       {/* ====== DESKTOP LAYOUT ====== */}
       <div className="hidden md:flex flex-1 overflow-hidden flex-col">
@@ -254,7 +238,7 @@ export default function EditorLayout() {
           <div className="w-80 bg-[var(--surface)] border-l border-[var(--border)] flex flex-col shrink-0">
             {/* Tab bar */}
             <div className="flex border-b border-[var(--border)] shrink-0">
-              {tabs.map((tab) => (
+              {tabs.filter(t => t.key !== "preview" && t.key !== "timeline").map((tab) => (
                 <button
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key)}
@@ -271,12 +255,8 @@ export default function EditorLayout() {
             </div>
 
             {/* Tab content */}
-            <div className="flex-1 overflow-hidden">
-              {activeTab === "presets" && <PresetPanel />}
-              {activeTab === "captions" && <CaptionEditor />}
-              {activeTab === "effects" && <EffectsEditor />}
-              {activeTab === "broll" && <BRollPanel />}
-              {activeTab === "export" && <ExportPanel />}
+            <div className="flex-1 overflow-hidden overflow-y-auto">
+              {renderTabContent()}
             </div>
           </div>
         </div>
@@ -297,9 +277,7 @@ export default function EditorLayout() {
 
       {/* ====== MOBILE LAYOUT ====== */}
       <div className="md:hidden flex-1 flex flex-col overflow-hidden">
-        {/* Main content area: video + sliding panel */}
         <div ref={mobileContentRef} className="flex-1 min-h-0 flex flex-col relative overflow-hidden">
-          {/* Video preview - always visible, shrinks as panel grows */}
           <div
             className="min-h-[80px] transition-all duration-300 ease-out"
             style={{ flex: `1 1 ${100 - mobilePanelPercent}%` }}
@@ -307,13 +285,11 @@ export default function EditorLayout() {
             <VideoPreview />
           </div>
 
-          {/* Panel area - grows from bottom */}
           {mobilePanelOpen && (
             <div
               className="bg-[var(--surface)] border-t border-[var(--border)] flex flex-col overflow-hidden transition-all duration-300 ease-out"
               style={{ flex: `0 0 ${mobilePanelPercent}%` }}
             >
-              {/* Drag handle */}
               <div
                 className="flex items-center justify-center py-1.5 cursor-grab active:cursor-grabbing touch-none shrink-0"
                 onTouchStart={handleMobilePanelDragStart}
@@ -322,19 +298,14 @@ export default function EditorLayout() {
               >
                 <GripHorizontal className="w-5 h-5 text-[var(--text-secondary)]/50" />
               </div>
-
-              {/* Panel content */}
               <div className="flex-1 min-h-0 overflow-y-auto">
-                {activeTab === "captions" && <CaptionEditor />}
-                {activeTab === "effects" && <EffectsEditor />}
-                {activeTab === "broll" && <BRollPanel />}
-                {activeTab === "export" && <ExportPanel />}
+                {renderTabContent()}
               </div>
             </div>
           )}
         </div>
 
-        {/* Tab bar - always visible */}
+        {/* Tab bar */}
         <div className="shrink-0 bg-[var(--surface)] border-t border-[var(--border)]">
           <div className="flex">
             {tabs.map((tab) => (
@@ -342,14 +313,14 @@ export default function EditorLayout() {
                 key={tab.key}
                 onClick={() => {
                   if (activeTab === tab.key && mobilePanelOpen) {
-                    // Tapping same active tab toggles panel
                     setMobilePanelPercent(MOBILE_PANEL_COLLAPSED);
                   } else {
                     setActiveTab(tab.key);
-                    // Open or expand panel when selecting a tab
-                    setMobilePanelPercent((prev) =>
-                      prev < MOBILE_PANEL_HALF ? MOBILE_PANEL_HALF : prev
-                    );
+                    if (tab.key !== "preview" && tab.key !== "timeline") {
+                      setMobilePanelPercent((prev) =>
+                        prev < MOBILE_PANEL_HALF ? MOBILE_PANEL_HALF : prev
+                      );
+                    }
                   }
                 }}
                 className={`flex-1 py-2.5 flex flex-col items-center gap-0.5 text-[10px] transition-colors ${
@@ -391,7 +362,7 @@ export default function EditorLayout() {
           </div>
         </div>
 
-        {/* Timeline - mobile, resizable */}
+        {/* Timeline - mobile */}
         <div
           className="shrink-0 transition-[height] duration-200 ease-out"
           style={{ height: mobileTimelineHeight }}

@@ -160,11 +160,61 @@ export type ProjectStatus =
   | "extracting-audio"
   | "transcribing"
   | "analyzing"
+  | "analyzing-modes"
+  | "fetching-broll"
+  | "building-video"
   | "generating-plan"
   | "generating-broll"
   | "ready"
   | "exporting"
   | "error";
+
+// ===== New Mode System (vibefounder style) =====
+export type VideoMode = "presenter" | "broll" | "typography";
+
+export interface ModeSegment {
+  id: string;
+  mode: VideoMode;
+  startTime: number;
+  endTime: number;
+  brollVideoUrl?: string;
+  brollQuery?: string;
+  pexelsAlternatives?: PexelsVideoResult[];
+  typographyText?: string;
+  typographyBackground?: "#F5F0E8" | "#0a0a0a";
+  transcriptText?: string;
+}
+
+export interface PexelsVideoResult {
+  id: number;
+  url: string;
+  thumbnail: string;
+  width: number;
+  height: number;
+  duration: number;
+}
+
+export interface PhraseCaption {
+  id: string;
+  startTime: number;
+  endTime: number;
+  text: string; // 2-4 words
+}
+
+export interface MusicTrack {
+  id: string;
+  name: string;
+  file: string;
+  duration: number;
+}
+
+export interface MusicConfig {
+  trackId: string | null;
+  baseVolume: number;   // 0.30
+  duckVolume: number;   // 0.15
+  fadeInDuration: number;
+  fadeOutDuration: number;
+}
 
 // ===== AI Preset System =====
 export type PresetType = "hook" | "talking-head" | "talking-head-broll" | "futuristic-hud";

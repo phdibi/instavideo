@@ -9,6 +9,9 @@ import type {
   VideoSegment,
   BrandingConfig,
   SFXConfig,
+  ModeSegment,
+  PhraseCaption,
+  MusicConfig,
 } from "@/types";
 
 interface ProjectStore {
@@ -28,7 +31,16 @@ interface ProjectStore {
   teleprompterSettings: TeleprompterSettings;
   brandingConfig: BrandingConfig;
   sfxConfig: SFXConfig;
+  modeSegments: ModeSegment[];
+  phraseCaptions: PhraseCaption[];
+  musicConfig: MusicConfig;
+  selectedMusicTrack: string | null;
 
+  setModeSegments: (segments: ModeSegment[]) => void;
+  updateModeSegment: (id: string, updates: Partial<ModeSegment>) => void;
+  setPhraseCaptions: (captions: PhraseCaption[]) => void;
+  setMusicConfig: (config: Partial<MusicConfig>) => void;
+  setSelectedMusicTrack: (trackId: string | null) => void;
   setSegments: (segments: VideoSegment[]) => void;
   updateSegment: (id: string, updates: Partial<VideoSegment>) => void;
   deleteSegment: (id: string) => void;
@@ -91,6 +103,14 @@ const defaultSFXConfig: SFXConfig = {
   segmentChange: false,
 };
 
+const defaultMusicConfig: MusicConfig = {
+  trackId: null,
+  baseVolume: 0.30,
+  duckVolume: 0.15,
+  fadeInDuration: 0.5,
+  fadeOutDuration: 0.5,
+};
+
 
 const initialState = {
   videoFile: null,
@@ -109,6 +129,10 @@ const initialState = {
   teleprompterSettings: { ...defaultTeleprompterSettings },
   brandingConfig: { ...defaultBrandingConfig },
   sfxConfig: { ...defaultSFXConfig },
+  modeSegments: [],
+  phraseCaptions: [],
+  musicConfig: { ...defaultMusicConfig },
+  selectedMusicTrack: null,
 };
 
 export const useProjectStore = create<ProjectStore>((set) => ({
@@ -157,6 +181,19 @@ export const useProjectStore = create<ProjectStore>((set) => ({
     set((state) => ({
       bRollImages: state.bRollImages.filter((b) => b.id !== id),
     })),
+  setModeSegments: (segments) => set({ modeSegments: segments }),
+  updateModeSegment: (id, updates) =>
+    set((state) => ({
+      modeSegments: state.modeSegments.map((s) =>
+        s.id === id ? { ...s, ...updates } : s
+      ),
+    })),
+  setPhraseCaptions: (captions) => set({ phraseCaptions: captions }),
+  setMusicConfig: (config) =>
+    set((state) => ({
+      musicConfig: { ...state.musicConfig, ...config },
+    })),
+  setSelectedMusicTrack: (trackId) => set({ selectedMusicTrack: trackId }),
   setSegments: (segments) => set({ segments }),
   deleteSegment: (id) =>
     set((state) => {

@@ -1,25 +1,19 @@
 "use client";
 
-import { useRef, useEffect, useCallback, useMemo } from "react";
-import { Play, Pause, RotateCcw, Volume2, VolumeX, Download } from "lucide-react";
+import { useRef, useEffect, useCallback, useMemo, useState } from "react";
+import { Play, Pause, RotateCcw, Volume2, VolumeX } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { formatTime } from "@/lib/formatTime";
+import { getCurrentMode } from "@/lib/modes";
 import CaptionOverlay from "./CaptionOverlay";
-import CTAOverlay from "./CTAOverlay";
-import WatermarkOverlay from "./WatermarkOverlay";
-import KeywordOverlay from "./KeywordOverlay";
-import SFXController from "./SFXController";
-import { initSFX } from "@/lib/sfx";
-import { useState } from "react";
+import TypographyCard from "./TypographyCard";
 
 export default function VideoPreview() {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const brollVideoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const animFrameRef = useRef<number>(0);
   const [muted, setMuted] = useState(false);
-
-  // Synchronous flag — set immediately on play/pause, not subject to React batching.
-  // This is the SINGLE source of truth for whether we're in playback mode.
   const isPlayingRef = useRef(false);
 
   const {
@@ -27,29 +21,29 @@ export default function VideoPreview() {
     videoDuration,
     currentTime,
     isPlaying,
-    effects,
-    bRollImages,
+    modeSegments,
     setCurrentTime,
     setIsPlaying,
     setVideoDuration,
   } = useProjectStore();
 
+  // Current mode segment
+  const currentSegment = useMemo(
+    () => getCurrentMode(modeSegments, currentTime),
+    [modeSegments, currentTime]
+  );
+
+  const currentMode = currentSegment?.mode || "presenter";
+
   // ── SEEK SYNC ───────────────────────────────────────────────────────
-  // Syncs the <video> element to match the store's currentTime.
-  // ONLY runs when NOT playing. During playback, the RAF loop is the
-  // single writer of currentTime → there is nothing to sync.
   const seekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const seekingRef = useRef(false);
 
   useEffect(() => {
     const vid = videoRef.current;
     if (!vid) return;
-
-    // Only the VISIBLE instance should sync — skip if hidden (display:none)
     const container = containerRef.current;
     if (!container || container.offsetParent === null) return;
-
-    // Guard: NEVER seek the video element during playback.
     if (isPlayingRef.current || !vid.paused) return;
 
     const diff = Math.abs(vid.currentTime - currentTime);
@@ -73,28 +67,17 @@ export default function VideoPreview() {
     return () => {
       if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
     };
-  }, [currentTime]); // Intentionally omit isPlaying — we use the ref instead
+  }, [currentTime]);
 
   // ── RAF PLAYBACK LOOP ───────────────────────────────────────────────
-  // Reads vid.currentTime → writes to the store EVERY animation frame.
-  // This is the ONLY writer of currentTime during playback.
-  //
-  // No artificial offset is applied here. Timing accuracy is handled at
-  // the source: FFmpeg audio extraction preserves the exact video timeline,
-  // and timestamp calibration corrects any API drift after transcription.
   const videoDurationRef = useRef(videoDuration);
   videoDurationRef.current = videoDuration;
-  // Ref to store the last written value — avoids redundant Zustand writes
-  // when video.currentTime hasn't changed between frames.
   const lastWrittenTimeRef = useRef(-1);
 
   const updateTime = useCallback(() => {
     if (!isPlayingRef.current) return;
-
-    // Only the VISIBLE instance drives currentTime
     const container = containerRef.current;
     if (!container || container.offsetParent === null) return;
-
     const vid = videoRef.current;
     if (!vid) return;
 
@@ -103,22 +86,20 @@ export default function VideoPreview() {
       ? Math.min(vid.currentTime, dur)
       : vid.currentTime;
 
-    // Only write to store if value actually changed (avoids unnecessary re-renders)
     if (Math.abs(raw - lastWrittenTimeRef.current) > 0.001) {
       setCurrentTime(raw);
       lastWrittenTimeRef.current = raw;
     }
 
     animFrameRef.current = requestAnimationFrame(updateTime);
-  }, [setCurrentTime]); // Only stable dep
+  }, [setCurrentTime]);
 
-  // Start/stop RAF loop when isPlaying changes — ONLY for visible instance
   useEffect(() => {
     const container = containerRef.current;
     if (!container || container.offsetParent === null) return;
 
     if (isPlaying) {
-      lastWrittenTimeRef.current = -1; // Force immediate first update
+      lastWrittenTimeRef.current = -1;
       animFrameRef.current = requestAnimationFrame(updateTime);
     }
     return () => {
@@ -129,366 +110,38 @@ export default function VideoPreview() {
     };
   }, [isPlaying, updateTime]);
 
-  // ── EFFECTS, B-ROLL, VISUAL OVERLAYS ─────────────────────────────────
+  // ── B-ROLL VIDEO MANAGEMENT ─────────────────────────────────────────
+  const prevBrollUrlRef = useRef<string | null>(null);
 
-  // Find active effects at current time
-  const activeEffects = useMemo(
-    () =>
-      effects.filter(
-        (e) => currentTime >= e.startTime && currentTime <= e.endTime
-      ),
-    [effects, currentTime]
-  );
+  useEffect(() => {
+    const brollVid = brollVideoRef.current;
+    if (!brollVid) return;
 
-  // Find active B-roll at current time
-  const activeBRoll = useMemo(
-    () =>
-      bRollImages.find(
-        (b) => b.url && currentTime >= b.startTime && currentTime <= b.endTime
-      ),
-    [bRollImages, currentTime]
-  );
+    if (currentMode === "broll" && currentSegment?.brollVideoUrl) {
+      if (prevBrollUrlRef.current !== currentSegment.brollVideoUrl) {
+        brollVid.src = currentSegment.brollVideoUrl;
+        brollVid.load();
+        prevBrollUrlRef.current = currentSegment.brollVideoUrl;
+      }
+      if (isPlaying && brollVid.paused) {
+        brollVid.play().catch(() => {});
+      }
+    } else {
+      if (!brollVid.paused) brollVid.pause();
+    }
+  }, [currentMode, currentSegment?.brollVideoUrl, isPlaying]);
 
-  // B-Roll animation: respects the `animation` and `position` properties
-  const bRollStyle = useMemo(() => {
-    if (!activeBRoll) return null;
-    const duration = activeBRoll.endTime - activeBRoll.startTime;
+  // Ken Burns scale for presenter mode
+  const presenterScale = useMemo(() => {
+    if (currentMode !== "presenter" || !currentSegment) return 1;
+    const segDuration = currentSegment.endTime - currentSegment.startTime;
+    if (segDuration <= 0) return 1;
     const progress = Math.min(
-      Math.max((currentTime - activeBRoll.startTime) / duration, 0),
+      (currentTime - currentSegment.startTime) / segDuration,
       1
     );
-
-    // Fade in/out envelope for all animations
-    let opacity = activeBRoll.opacity ?? 1;
-    if (progress < 0.15) {
-      opacity *= progress / 0.15;
-    } else if (progress > 0.85) {
-      opacity *= (1 - progress) / 0.15;
-    }
-
-    let scale = 1;
-    let translateX = 0;
-    let translateY = 0;
-
-    const animation = activeBRoll.animation || "ken-burns";
-
-    switch (animation) {
-      case "fade":
-        break;
-      case "slide":
-        translateX = (progress - 0.5) * -6;
-        break;
-      case "zoom":
-        scale = 1 + progress * 0.2;
-        break;
-      case "pan-left":
-        translateX = (1 - progress) * 4 - 2;
-        break;
-      case "pan-up":
-        translateY = (1 - progress) * 4 - 2;
-        break;
-      case "pan-down":
-        translateY = progress * 4 - 2;
-        break;
-      case "blur-in":
-        scale = 1 + (1 - progress) * 0.05;
-        break;
-      case "cinematic-reveal":
-        // Start zoomed in on detail, zoom out to reveal full image
-        scale = 1.4 - progress * 0.4;
-        translateY = (1 - progress) * -3;
-        break;
-      case "glitch-in": {
-        // Quick glitch on entry, then stabilize with subtle zoom
-        const glitchPhase = Math.min(progress / 0.2, 1);
-        if (glitchPhase < 1) {
-          const glitchAmount = (1 - glitchPhase) * 3;
-          translateX = Math.sin(glitchPhase * Math.PI * 8) * glitchAmount;
-          translateY = Math.cos(glitchPhase * Math.PI * 6) * glitchAmount * 0.5;
-        }
-        scale = 1 + progress * 0.06;
-        break;
-      }
-      case "parallax":
-        // Multi-layer depth movement
-        scale = 1.08;
-        translateX = (progress - 0.5) * -4;
-        translateY = Math.sin(progress * Math.PI) * -2;
-        break;
-      case "ken-burns":
-      default:
-        scale = 1 + progress * 0.12;
-        translateX = progress * -2;
-        translateY = progress * -1;
-        break;
-    }
-
-    const blurAmount = animation === "blur-in"
-      ? (1 - progress) * 8
-      : animation === "cinematic-reveal"
-        ? Math.max(0, (1 - progress * 3)) * 4
-        : animation === "glitch-in" && progress < 0.15
-          ? (1 - progress / 0.15) * 3
-          : 0;
-
-    return {
-      opacity,
-      transform: `scale(${scale}) translate(${translateX}%, ${translateY}%)`,
-      backgroundImage: `url(${activeBRoll.url})`,
-      backgroundSize: "cover",
-      backgroundPosition: "center",
-      transition: "opacity 0.2s ease",
-      ...(blurAmount > 0 ? { filter: `blur(${blurAmount}px)` } : {}),
-    } as React.CSSProperties;
-  }, [activeBRoll, currentTime]);
-
-  // B-Roll position mode class names
-  const bRollPositionClass = useMemo(() => {
-    if (!activeBRoll) return "absolute inset-0";
-    switch (activeBRoll.position) {
-      case "pip":
-        return "absolute bottom-[15%] right-[4%] w-[35%] h-[30%] rounded-xl overflow-hidden shadow-2xl";
-      case "overlay":
-        return "absolute inset-[8%] rounded-2xl overflow-hidden shadow-2xl";
-      case "split":
-        return "absolute top-0 right-0 w-[50%] h-full rounded-l-2xl overflow-hidden";
-      case "split-left":
-        return "absolute top-0 left-0 w-[50%] h-full rounded-r-2xl overflow-hidden";
-      case "top-half":
-        return "absolute top-0 left-0 right-0 h-[50%] rounded-b-2xl overflow-hidden";
-      case "bottom-half":
-        return "absolute bottom-0 left-0 right-0 h-[50%] rounded-t-2xl overflow-hidden";
-      case "center-inset":
-        return "absolute inset-[12%] rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10";
-      case "fullscreen":
-      default:
-        return "absolute inset-0";
-    }
-  }, [activeBRoll]);
-
-  // B-Roll entrance/exit animation — driven per-frame for fluid motion
-  // Each position type gets its own entrance animation for professional feel
-  const bRollSlideStyle = useMemo(() => {
-    if (!activeBRoll) return {};
-    const duration = activeBRoll.endTime - activeBRoll.startTime;
-    const progress = Math.min(
-      Math.max((currentTime - activeBRoll.startTime) / duration, 0),
-      1
-    );
-    const pos = activeBRoll.position || "fullscreen";
-
-    // Shared entry/exit timing
-    const entryPct = 0.12;
-    const exitPct = 0.88;
-
-    if (pos === "split") {
-      let slideX = 0;
-      if (progress < entryPct) {
-        slideX = (1 - easeOutCubic(progress / entryPct)) * 100;
-      } else if (progress > exitPct) {
-        slideX = easeOutCubic((progress - exitPct) / (1 - exitPct)) * 100;
-      }
-      return { transform: `translateX(${slideX}%)`, transition: "none" };
-    }
-
-    if (pos === "split-left") {
-      let slideX = 0;
-      if (progress < entryPct) {
-        slideX = (easeOutCubic(progress / entryPct) - 1) * 100;
-      } else if (progress > exitPct) {
-        slideX = -easeOutCubic((progress - exitPct) / (1 - exitPct)) * 100;
-      }
-      return { transform: `translateX(${slideX}%)`, transition: "none" };
-    }
-
-    if (pos === "top-half") {
-      let slideY = 0;
-      if (progress < entryPct) {
-        slideY = (easeOutCubic(progress / entryPct) - 1) * 100;
-      } else if (progress > exitPct) {
-        slideY = -easeOutCubic((progress - exitPct) / (1 - exitPct)) * 100;
-      }
-      return { transform: `translateY(${slideY}%)`, transition: "none" };
-    }
-
-    if (pos === "bottom-half") {
-      let slideY = 0;
-      if (progress < entryPct) {
-        slideY = (1 - easeOutCubic(progress / entryPct)) * 100;
-      } else if (progress > exitPct) {
-        slideY = easeOutCubic((progress - exitPct) / (1 - exitPct)) * 100;
-      }
-      return { transform: `translateY(${slideY}%)`, transition: "none" };
-    }
-
-    if (pos === "fullscreen" || pos === "center-inset" || pos === "overlay") {
-      let scale = 1;
-      let opacity = 1;
-      if (progress < 0.1) {
-        const entry = easeOutCubic(progress / 0.1);
-        scale = 1.04 - 0.04 * entry;
-        opacity = entry;
-      } else if (progress > 0.9) {
-        const exit = easeOutCubic((progress - 0.9) / 0.1);
-        scale = 1 + 0.02 * exit;
-        opacity = 1 - exit;
-      }
-      return { transform: `scale(${scale})`, opacity, transition: "none" };
-    }
-
-    return {};
-  }, [activeBRoll, currentTime]);
-
-  // B-Roll cinematic gradient overlay (auto-enabled)
-  const showCinematicOverlay = activeBRoll && (activeBRoll.cinematicOverlay !== false);
-
-  // Compute transform style based on active effects
-  const videoStyle = useMemo(() => {
-    let scale = 1;
-    let translateX = 0;
-    let translateY = 0;
-    let filter = "";
-    let clipPath = "";
-
-    for (const effect of activeEffects) {
-      const rawProgress =
-        (currentTime - effect.startTime) / (effect.endTime - effect.startTime);
-      const progress = Math.min(Math.max(rawProgress, 0), 1);
-      const params = effect.params as Record<string, number | string>;
-
-      switch (effect.type) {
-        case "zoom-in": {
-          const targetScale = (params.scale as number) || 1.3;
-          const eased = easeOutCubic(progress);
-          scale *= 1 + (targetScale - 1) * eased;
-          const focusX = ((params.focusX as number) || 0.5) - 0.5;
-          const focusY = ((params.focusY as number) || 0.4) - 0.5;
-          translateX -= focusX * (scale - 1) * 100;
-          translateY -= focusY * (scale - 1) * 100;
-          break;
-        }
-        case "zoom-out": {
-          const targetScale = (params.scale as number) || 1.3;
-          const eased = easeOutCubic(progress);
-          scale *= targetScale - (targetScale - 1) * eased;
-          break;
-        }
-        case "zoom-pulse": {
-          const targetScale = (params.scale as number) || 1.2;
-          const pulse = Math.sin(progress * Math.PI);
-          const smoothed = easeInOutQuad(pulse);
-          scale *= 1 + (targetScale - 1) * smoothed;
-          break;
-        }
-        case "pan-left":
-          translateX -= ((params.distance as number) || 30) * easeInOutCubic(progress);
-          break;
-        case "pan-right":
-          translateX += ((params.distance as number) || 30) * easeInOutCubic(progress);
-          break;
-        case "pan-up":
-          translateY -= ((params.distance as number) || 20) * easeInOutCubic(progress);
-          break;
-        case "pan-down":
-          translateY += ((params.distance as number) || 20) * easeInOutCubic(progress);
-          break;
-        case "shake": {
-          const intensity = (params.intensity as number) || 3;
-          const freq = (params.frequency as number) || 15;
-          const decay = 1 - progress * 0.6;
-          translateX += Math.sin(progress * freq * Math.PI * 2) * intensity * decay;
-          translateY +=
-            Math.cos(progress * freq * Math.PI * 2 + 1) * intensity * decay;
-          break;
-        }
-        case "vignette":
-          break;
-        case "letterbox":
-          clipPath = `inset(${((params.amount as number) || 0.1) * 100}% 0)`;
-          break;
-        case "blur-background":
-          break;
-        case "color-grade": {
-          const preset = params.preset as string;
-          if (preset === "cinematic-warm")
-            filter += " sepia(0.12) saturate(1.15) contrast(1.08)";
-          else if (preset === "ember-warm")
-            // Ember: warmer golden/amber grade — more sepia, subtle warmth
-            filter += " sepia(0.2) saturate(1.1) contrast(1.06) brightness(1.02)";
-          else if (preset === "velocity-gold")
-            // Velocity: high-contrast golden grade with boosted saturation
-            filter += " sepia(0.15) saturate(1.25) contrast(1.12) brightness(1.04)";
-          else if (preset === "authority-deep")
-            filter += " saturate(1.05) contrast(1.1) brightness(0.98) hue-rotate(10deg)";
-          else if (preset === "cold-thriller")
-            filter += " saturate(0.8) hue-rotate(200deg) contrast(1.15)";
-          else if (preset === "vintage")
-            filter += " sepia(0.3) saturate(0.9) contrast(1.05)";
-          else if (preset === "high-contrast")
-            filter += " contrast(1.4) saturate(1.1)";
-          break;
-        }
-        case "flash": {
-          const flashProgress = 1 - progress;
-          if (flashProgress > 0.5) filter += ` brightness(${1 + flashProgress * 2})`;
-          break;
-        }
-        case "slow-motion":
-        case "speed-ramp":
-          break;
-      }
-    }
-
-    return {
-      transform: `scale(${scale}) translate(${translateX}px, ${translateY}px)`,
-      filter: filter || undefined,
-      clipPath: clipPath || undefined,
-      willChange: "transform, filter",
-    };
-  }, [activeEffects, currentTime]);
-
-  // Vignette effect
-  const vignetteEffect = useMemo(() => {
-    const vignette = activeEffects.find((e) => e.type === "vignette");
-    if (!vignette) return null;
-    const intensity = (vignette.params.intensity as number) || 0.3;
-    return {
-      background: `radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,${intensity}) 100%)`,
-    };
-  }, [activeEffects]);
-
-  // Transition effects
-  const transitionOverlay = useMemo(() => {
-    const transition = activeEffects.find((e) =>
-      e.type.startsWith("transition-")
-    );
-    if (!transition) return null;
-    const progress =
-      (currentTime - transition.startTime) /
-      (transition.endTime - transition.startTime);
-
-    switch (transition.type) {
-      case "transition-fade":
-        return {
-          backgroundColor: `rgba(0,0,0,${Math.sin(progress * Math.PI) * 0.7})`,
-        };
-      case "transition-glitch": {
-        const glitchR = Math.abs(Math.sin(progress * 127.1)) * 255;
-        const glitchB = Math.abs(Math.sin(progress * 269.5)) * 255;
-        return {
-          backgroundColor: `rgba(${glitchR},0,${glitchB},${Math.sin(progress * Math.PI) * 0.3})`,
-          mixBlendMode: "screen" as const,
-        };
-      }
-      case "transition-zoom":
-        return {
-          backgroundColor: `rgba(255,255,255,${Math.sin(progress * Math.PI) * 0.5
-            })`,
-        };
-      default:
-        return null;
-    }
-  }, [activeEffects, currentTime]);
+    return 1 + progress * 0.03; // 1.0 → 1.03
+  }, [currentMode, currentSegment, currentTime]);
 
   // ── PLAY/PAUSE/SEEK CONTROLS ──────────────────────────────────────────
 
@@ -496,17 +149,9 @@ export default function VideoPreview() {
     const vid = videoRef.current;
     if (!vid) return;
     if (vid.paused) {
-      // Unlock AudioContext on first user gesture (click) —
-      // this is REQUIRED by browser autoplay policy before SFXController
-      // can play sounds from useEffect during playback.
-      initSFX();
-
-      // Set BOTH ref AND state IMMEDIATELY — don't wait for play() promise.
-      // This ensures the RAF loop starts on the next render cycle.
       isPlayingRef.current = true;
       setIsPlaying(true);
       vid.play().catch(() => {
-        // Play failed (e.g., autoplay policy) — revert
         isPlayingRef.current = false;
         setIsPlaying(false);
       });
@@ -538,34 +183,20 @@ export default function VideoPreview() {
   );
 
   // ── SPACEBAR PLAY/PAUSE ────────────────────────────────────────────
-  // NOTE: VideoPreview is mounted TWICE in EditorLayout (desktop + mobile).
-  // Only the *visible* instance should handle spacebar to avoid double-fire.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code !== "Space") return;
-
-      // Only handle if THIS instance is visible (not display:none from responsive CSS)
       const container = containerRef.current;
       if (!container || container.offsetParent === null) return;
-
-      // Don't intercept if user is typing in an input, textarea, or contentEditable
       const active = document.activeElement;
       if (
         active instanceof HTMLInputElement ||
         active instanceof HTMLTextAreaElement ||
         (active instanceof HTMLElement && active.isContentEditable)
-      ) {
-        return;
-      }
-
+      ) return;
       e.preventDefault();
       e.stopPropagation();
-
-      // Blur any focused button to prevent native keyup → click
-      if (active instanceof HTMLButtonElement) {
-        active.blur();
-      }
-
+      if (active instanceof HTMLButtonElement) active.blur();
       togglePlay();
     };
 
@@ -573,15 +204,12 @@ export default function VideoPreview() {
       if (e.code !== "Space") return;
       const container = containerRef.current;
       if (!container || container.offsetParent === null) return;
-
       const active = document.activeElement;
       if (
         active instanceof HTMLInputElement ||
         active instanceof HTMLTextAreaElement ||
         (active instanceof HTMLElement && active.isContentEditable)
-      ) {
-        return;
-      }
+      ) return;
       e.preventDefault();
       e.stopPropagation();
     };
@@ -594,119 +222,99 @@ export default function VideoPreview() {
     };
   }, [togglePlay]);
 
+  // Elapsed time within current segment (for typography animation)
+  const segmentElapsed = currentSegment
+    ? currentTime - currentSegment.startTime
+    : 0;
+
   return (
     <div className="flex flex-col h-full">
-      {/* Video Container */}
+      {/* Video Container — 9:16 aspect ratio */}
       <div
         ref={containerRef}
         className="relative flex-1 bg-black rounded-xl overflow-hidden mx-2 mt-2 md:mx-4 md:mt-4"
       >
-        <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
-          <video
-            ref={videoRef}
-            src={videoUrl}
-            className="w-full h-full object-contain"
-            style={videoStyle}
-            onLoadedMetadata={(e) => {
-              const vid = e.target as HTMLVideoElement;
-              if (Number.isFinite(vid.duration) && vid.duration > 0) {
-                setVideoDuration(vid.duration);
-              }
-            }}
-            onDurationChange={(e) => {
-              // WebM blobs may update duration after initial load
-              const vid = e.target as HTMLVideoElement;
-              if (Number.isFinite(vid.duration) && vid.duration > 0 && vid.duration !== videoDuration) {
-                setVideoDuration(vid.duration);
-              }
-            }}
-            onEnded={() => {
-              isPlayingRef.current = false;
-              setIsPlaying(false);
-            }}
-            muted={muted}
-            playsInline
-          />
+        <div className="absolute inset-0 overflow-hidden">
 
-          {/* B-Roll overlay - supports position modes + cinematic overlay */}
-          {activeBRoll && bRollStyle && (
-            <div className={`${bRollPositionClass} z-10`} style={bRollSlideStyle}>
-              {/* B-Roll image with animation */}
-              <div
-                className="absolute inset-0"
-                style={bRollStyle}
-              />
-              {/* Cinematic gradient overlay — dark top/bottom for professional look */}
-              {showCinematicOverlay && (
-                <div
-                  className="absolute inset-0 pointer-events-none"
-                  style={{
-                    background: "linear-gradient(to bottom, rgba(0,0,0,0.25) 0%, transparent 30%, transparent 70%, rgba(0,0,0,0.35) 100%)",
-                  }}
-                />
-              )}
-              {/* Border glow for non-fullscreen positions */}
-              {activeBRoll.position !== "fullscreen" && (
-                <div
-                  className="absolute inset-0 pointer-events-none rounded-[inherit]"
-                  style={{
-                    boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.15)",
-                  }}
-                />
-              )}
-            </div>
-          )}
+          {/* ── Layer 1: Background ── */}
+          <div className="absolute inset-0 bg-[#0a0a0a]" />
 
-          {/* Vignette overlay */}
-          {vignetteEffect && (
-            <div className="absolute inset-0 z-20 pointer-events-none" style={vignetteEffect} />
-          )}
-
-          {/* Transition overlay */}
-          {transitionOverlay && (
+          {/* ── Layer 2: Presenter Video ── */}
+          <div
+            className={`absolute inset-0 flex items-center justify-center transition-opacity duration-0 ${
+              currentMode === "presenter" ? "opacity-100" : "opacity-0"
+            }`}
+          >
             <div
-              className="absolute inset-0 z-30 pointer-events-none"
-              style={transitionOverlay}
+              className="w-[85%] h-[50%] rounded-3xl overflow-hidden"
+              style={{
+                transform: `scale(${presenterScale})`,
+                willChange: "transform",
+              }}
+            >
+              <video
+                ref={videoRef}
+                src={videoUrl}
+                className="w-full h-full object-cover"
+                onLoadedMetadata={(e) => {
+                  const vid = e.target as HTMLVideoElement;
+                  if (Number.isFinite(vid.duration) && vid.duration > 0) {
+                    setVideoDuration(vid.duration);
+                  }
+                }}
+                onDurationChange={(e) => {
+                  const vid = e.target as HTMLVideoElement;
+                  if (Number.isFinite(vid.duration) && vid.duration > 0 && vid.duration !== videoDuration) {
+                    setVideoDuration(vid.duration);
+                  }
+                }}
+                onEnded={() => {
+                  isPlayingRef.current = false;
+                  setIsPlaying(false);
+                }}
+                muted={muted}
+                playsInline
+              />
+            </div>
+          </div>
+
+          {/* ── Layer 2b: B-Roll Video (Mode B) ── */}
+          <div
+            className={`absolute inset-0 transition-opacity duration-0 ${
+              currentMode === "broll" ? "opacity-100" : "opacity-0 pointer-events-none"
+            }`}
+          >
+            <video
+              ref={brollVideoRef}
+              className="w-full h-full object-cover"
+              loop
+              muted
+              playsInline
+            />
+            {/* Dark overlay on b-roll */}
+            <div className="absolute inset-0 bg-black/25" />
+          </div>
+
+          {/* ── Layer 2c: Typography Card (Mode C) ── */}
+          {currentMode === "typography" && currentSegment?.typographyText && (
+            <TypographyCard
+              text={currentSegment.typographyText}
+              background={currentSegment.typographyBackground || "#F5F0E8"}
+              elapsed={segmentElapsed}
             />
           )}
 
-          {/* Letterbox bars */}
-          {activeEffects.some((e) => e.type === "letterbox") && (
-            <>
-              <div className="absolute top-0 left-0 right-0 h-[10%] bg-black z-20" />
-              <div className="absolute bottom-0 left-0 right-0 h-[10%] bg-black z-20" />
-            </>
-          )}
+          {/* ── Layer 3: Click to play/pause ── */}
+          <div
+            className="absolute inset-0 z-40 cursor-pointer"
+            onClick={togglePlay}
+          />
+
+          {/* ── Layer 4: Captions (all modes) ── */}
+          <div className="absolute inset-0 z-50 pointer-events-none">
+            <CaptionOverlay currentTime={currentTime} />
+          </div>
         </div>
-
-        {/* Click to play/pause - z-40 */}
-        <div
-          className="absolute inset-0 z-40 cursor-pointer"
-          onClick={togglePlay}
-        />
-
-        {/* Watermark overlay - z-42, subtle name/title (kept, user branding) */}
-        <div className="absolute inset-0 z-[42] pointer-events-none">
-          <WatermarkOverlay currentTime={currentTime} videoDuration={videoDuration} />
-        </div>
-
-        {/* Keyword overlay - z-44, large keyword during hook (Captions app style) */}
-        <div className="absolute inset-0 z-[44] pointer-events-none">
-          <KeywordOverlay currentTime={currentTime} />
-        </div>
-
-        {/* CTA overlay - z-45, final seconds (kept, user branding) */}
-        <div className="absolute inset-0 z-[45] pointer-events-none">
-          <CTAOverlay currentTime={currentTime} videoDuration={videoDuration} />
-        </div>
-
-        {/* Caption overlay - z-50, MUST be after click handler to render on top */}
-        <div className="absolute inset-0 z-50 pointer-events-none">
-          <CaptionOverlay currentTime={currentTime} />
-        </div>
-
-        {/* SFX Controller — cinematic sound effects during playback */}
-        <SFXController />
       </div>
 
       {/* Controls */}
@@ -750,43 +358,27 @@ export default function VideoPreview() {
                 <Volume2 className="w-4 h-4" />
               )}
             </button>
-            {/* Download original video */}
-            {videoUrl && (
-              <button
-                onClick={() => {
-                  const a = document.createElement("a");
-                  a.href = videoUrl;
-                  a.download = "video-original.webm";
-                  document.body.appendChild(a);
-                  a.click();
-                  document.body.removeChild(a);
-                }}
-                className="w-9 h-9 rounded-lg bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center hover:bg-[var(--surface-hover)] transition-colors"
-                title="Baixar vídeo original"
-              >
-                <Download className="w-4 h-4" />
-              </button>
-            )}
           </div>
 
-          <span className="text-sm text-[var(--text-secondary)] font-mono">
-            {formatTime(currentTime)} / {formatTime(videoDuration)}
-          </span>
+          <div className="flex items-center gap-2">
+            {/* Mode indicator */}
+            {currentSegment && (
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                currentMode === "presenter"
+                  ? "bg-blue-500/20 text-blue-400"
+                  : currentMode === "broll"
+                    ? "bg-orange-500/20 text-orange-400"
+                    : "bg-purple-500/20 text-purple-400"
+              }`}>
+                {currentMode === "presenter" ? "A" : currentMode === "broll" ? "B" : "C"}
+              </span>
+            )}
+            <span className="text-sm text-[var(--text-secondary)] font-mono">
+              {formatTime(currentTime)} / {formatTime(videoDuration)}
+            </span>
+          </div>
         </div>
       </div>
     </div>
   );
-}
-
-// Smooth easing functions for fluid effects
-function easeOutCubic(t: number): number {
-  return 1 - Math.pow(1 - t, 3);
-}
-
-function easeInOutCubic(t: number): number {
-  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-}
-
-function easeInOutQuad(t: number): number {
-  return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 }

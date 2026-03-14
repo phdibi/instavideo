@@ -258,7 +258,7 @@ export default function VideoPreview() {
         <div
           ref={containerRef}
           className="relative bg-black rounded-xl overflow-hidden"
-          style={{ aspectRatio: "9/16", maxWidth: "100%", maxHeight: "100%", width: "auto", height: "100%" }}
+          style={{ aspectRatio: "9/16", maxWidth: "100%", maxHeight: "100%", width: "auto", height: "100%", containerType: "inline-size" }}
         >
           <div className="absolute inset-0 overflow-hidden">
 

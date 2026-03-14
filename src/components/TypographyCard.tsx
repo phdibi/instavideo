@@ -46,7 +46,7 @@ export default function TypographyCard({ text, background, elapsed }: Props) {
               }}
               style={{
                 fontFamily: "Inter, system-ui, sans-serif",
-                fontSize: "clamp(40px, 8vw, 72px)",
+                fontSize: "clamp(18px, 8cqw, 56px)",
                 fontWeight: 800,
                 color: textColor,
                 lineHeight: 1.1,

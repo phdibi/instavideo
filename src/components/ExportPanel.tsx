@@ -467,12 +467,12 @@ export default function ExportPanel() {
           const bg = segment?.typographyBackground || "#F5F0E8";
           const textColor = bg === "#F5F0E8" ? "#0a0a0a" : "#F5F0E8";
           const text = segment?.typographyText || "";
+          const typoAnim = segment?.typographyAnimation || "pop-in";
+          const typoStagger = (segment?.typographyStagger ?? 80) / 1000;
 
           ctx.fillStyle = bg;
           ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-          // Word-by-word animation
-          const words = text.toUpperCase().split(" ").filter((w) => w.length > 0);
           const elapsed = segment ? time - segment.startTime : 0;
           const fontSize = Math.min(72, WIDTH * 0.08);
 
@@ -481,34 +481,62 @@ export default function ExportPanel() {
           ctx.textBaseline = "middle";
           ctx.fillStyle = textColor;
 
-          const lineHeight = fontSize * 1.2;
-          const totalTextHeight = words.length > 3
-            ? lineHeight * Math.ceil(words.length / 2)
-            : lineHeight;
-          const startY = HEIGHT / 2 - totalTextHeight / 2;
+          if (typoAnim === "typewriter") {
+            // Character by character
+            const chars = text.toUpperCase();
+            const charStagger = typoStagger * 0.3;
+            const visibleCount = Math.min(
+              Math.floor(elapsed / charStagger),
+              chars.length
+            );
+            const visibleText = chars.slice(0, visibleCount);
+            ctx.fillText(visibleText, WIDTH / 2, HEIGHT / 2);
+          } else {
+            // Word-by-word animations
+            const words = text.toUpperCase().split(" ").filter((w) => w.length > 0);
+            const lineHeight = fontSize * 1.2;
+            const totalTextHeight = words.length > 3
+              ? lineHeight * Math.ceil(words.length / 2)
+              : lineHeight;
+            const startY = HEIGHT / 2 - totalTextHeight / 2;
 
-          words.forEach((word, i) => {
-            const wordDelay = i * 0.08;
-            if (elapsed < wordDelay) return;
+            words.forEach((word, i) => {
+              const wordDelay = i * typoStagger;
+              if (elapsed < wordDelay) return;
 
-            const wordProgress = Math.min((elapsed - wordDelay) / 0.15, 1);
-            const scale = wordProgress;
-            const alpha = wordProgress;
+              const wordProgress = Math.min((elapsed - wordDelay) / 0.15, 1);
 
-            const row = words.length > 3 ? Math.floor(i / 2) : 0;
-            const col = words.length > 3 ? i % 2 : i;
-            const x = words.length > 3
-              ? WIDTH / 2 + (col - 0.5) * fontSize * 3
-              : WIDTH / 2;
-            const y = startY + row * lineHeight + lineHeight / 2;
+              const row = words.length > 3 ? Math.floor(i / 2) : 0;
+              const col = words.length > 3 ? i % 2 : i;
+              const x = words.length > 3
+                ? WIDTH / 2 + (col - 0.5) * fontSize * 3
+                : WIDTH / 2;
+              const y = startY + row * lineHeight + lineHeight / 2;
 
-            ctx.save();
-            ctx.globalAlpha = alpha;
-            ctx.translate(x, y);
-            ctx.scale(scale, scale);
-            ctx.fillText(word, 0, 0);
-            ctx.restore();
-          });
+              ctx.save();
+              ctx.globalAlpha = wordProgress;
+
+              if (typoAnim === "pop-in") {
+                ctx.translate(x, y);
+                ctx.scale(wordProgress, wordProgress);
+                ctx.fillText(word, 0, 0);
+              } else if (typoAnim === "fade-up") {
+                const offsetY = (1 - wordProgress) * 20;
+                ctx.translate(x, y + offsetY);
+                ctx.fillText(word, 0, 0);
+              } else if (typoAnim === "slide-in") {
+                const offsetX = (1 - wordProgress) * -WIDTH * 0.3;
+                ctx.translate(x + offsetX, y);
+                ctx.fillText(word, 0, 0);
+              } else {
+                ctx.translate(x, y);
+                ctx.scale(wordProgress, wordProgress);
+                ctx.fillText(word, 0, 0);
+              }
+
+              ctx.restore();
+            });
+          }
         }
 
         // Captions on top (all modes) — using captionConfig

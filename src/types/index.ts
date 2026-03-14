@@ -213,6 +213,8 @@ export interface ModeSegment {
   pexelsAlternatives?: PexelsVideoResult[];
   typographyText?: string;
   typographyBackground?: "#F5F0E8" | "#0a0a0a";
+  typographyAnimation?: "pop-in" | "fade-up" | "typewriter" | "slide-in";
+  typographyStagger?: number;
   transcriptText?: string;
   brollImageUrl?: string;
   brollMediaType?: "video" | "photo";

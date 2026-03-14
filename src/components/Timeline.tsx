@@ -243,6 +243,111 @@ export default function Timeline() {
     [pixelToTime, updateSFXMarker]
   );
 
+  // Body drag for mode segments (horizontal reposition)
+  const handleSegmentBodyDrag = useCallback(
+    (e: React.MouseEvent, seg: ModeSegment) => {
+      if (e.button !== 0) return; // left-click only
+      e.stopPropagation();
+      const startClientX = e.clientX;
+      const duration = seg.endTime - seg.startTime;
+      let hasMoved = false;
+
+      const scroll = scrollRef.current;
+      if (!scroll) return;
+      const rect = scroll.getBoundingClientRect();
+      const startX = e.clientX - rect.left + scroll.scrollLeft;
+      const offsetX = startX - (timeToX(seg.startTime) + LABEL_WIDTH);
+
+      const handleMove = (ev: MouseEvent) => {
+        if (!hasMoved && Math.abs(ev.clientX - startClientX) <= 3) return;
+        hasMoved = true;
+        document.body.style.cursor = "grabbing";
+
+        const s = scrollRef.current;
+        if (!s) return;
+        const r = s.getBoundingClientRect();
+        const x = ev.clientX - r.left + s.scrollLeft;
+        let newStart = pixelToTime(x - offsetX);
+        let newEnd = newStart + duration;
+
+        // Clamp
+        if (newStart < 0) { newStart = 0; newEnd = duration; }
+        if (newEnd > videoDuration) { newEnd = videoDuration; newStart = videoDuration - duration; }
+
+        updateModeSegment(seg.id, { startTime: newStart, endTime: newEnd });
+      };
+
+      const handleUp = () => {
+        document.removeEventListener("mousemove", handleMove);
+        document.removeEventListener("mouseup", handleUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        if (!hasMoved) {
+          // It was a click, not a drag — toggle selection
+          setSelectedItem(
+            selectedItem?.id === seg.id ? null : { type: "segment", id: seg.id }
+          );
+        }
+      };
+
+      document.addEventListener("mousemove", handleMove);
+      document.addEventListener("mouseup", handleUp);
+      document.body.style.userSelect = "none";
+    },
+    [pixelToTime, timeToX, videoDuration, updateModeSegment, setSelectedItem, selectedItem]
+  );
+
+  // Body drag for phrase captions
+  const handleCaptionBodyDrag = useCallback(
+    (e: React.MouseEvent, cap: PhraseCaption) => {
+      if (e.button !== 0) return; // left-click only
+      e.stopPropagation();
+      const startClientX = e.clientX;
+      const duration = cap.endTime - cap.startTime;
+      let hasMoved = false;
+
+      const scroll = scrollRef.current;
+      if (!scroll) return;
+      const rect = scroll.getBoundingClientRect();
+      const startX = e.clientX - rect.left + scroll.scrollLeft;
+      const offsetX = startX - (timeToX(cap.startTime) + LABEL_WIDTH);
+
+      const handleMove = (ev: MouseEvent) => {
+        if (!hasMoved && Math.abs(ev.clientX - startClientX) <= 3) return;
+        hasMoved = true;
+        document.body.style.cursor = "grabbing";
+
+        const s = scrollRef.current;
+        if (!s) return;
+        const r = s.getBoundingClientRect();
+        const x = ev.clientX - r.left + s.scrollLeft;
+        let newStart = pixelToTime(x - offsetX);
+        let newEnd = newStart + duration;
+
+        if (newStart < 0) { newStart = 0; newEnd = duration; }
+        if (newEnd > videoDuration) { newEnd = videoDuration; newStart = videoDuration - duration; }
+
+        updatePhraseCaption(cap.id, { startTime: newStart, endTime: newEnd });
+      };
+
+      const handleUp = () => {
+        document.removeEventListener("mousemove", handleMove);
+        document.removeEventListener("mouseup", handleUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        if (!hasMoved) {
+          const isSelected = selectedItem?.type === "phrase" && selectedItem.id === cap.id;
+          setSelectedItem(isSelected ? null : { type: "phrase", id: cap.id });
+        }
+      };
+
+      document.addEventListener("mousemove", handleMove);
+      document.addEventListener("mouseup", handleUp);
+      document.body.style.userSelect = "none";
+    },
+    [pixelToTime, timeToX, videoDuration, updatePhraseCaption, setSelectedItem, selectedItem]
+  );
+
   // Double-click on SFX track to add a new marker
   const handleSFXTrackDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -298,7 +403,7 @@ export default function Timeline() {
               return (
                 <div
                   key={seg.id}
-                  className={`absolute top-1 bottom-1 rounded-lg cursor-pointer group transition-shadow ${
+                  className={`absolute top-1 bottom-1 rounded-lg cursor-grab group transition-shadow ${
                     isSelected ? "ring-2 ring-white/60 shadow-lg" : "hover:shadow-md"
                   }`}
                   style={{
@@ -307,11 +412,7 @@ export default function Timeline() {
                     backgroundColor: `${color}33`,
                     borderLeft: `3px solid ${color}`,
                   }}
-                  onClick={() =>
-                    setSelectedItem(
-                      selectedItem?.id === seg.id ? null : { type: "segment", id: seg.id }
-                    )
-                  }
+                  onMouseDown={(e) => handleSegmentBodyDrag(e, seg)}
                   onContextMenu={(e) => {
                     if (seg.mode === "typography") return; // no context menu for typography
                     e.preventDefault();
@@ -354,7 +455,7 @@ export default function Timeline() {
               return (
                 <div
                   key={cap.id}
-                  className={`absolute top-1 bottom-1 rounded-md cursor-pointer group transition-shadow ${
+                  className={`absolute top-1 bottom-1 rounded-md cursor-grab group transition-shadow ${
                     isSelected ? "ring-2 ring-white/60 shadow-lg" : "hover:shadow-sm"
                   }`}
                   style={{
@@ -363,11 +464,7 @@ export default function Timeline() {
                     backgroundColor: "rgba(255,255,255,0.12)",
                     borderLeft: "2px solid rgba(255,255,255,0.5)",
                   }}
-                  onClick={() =>
-                    setSelectedItem(
-                      isSelected ? null : { type: "phrase", id: cap.id }
-                    )
-                  }
+                  onMouseDown={(e) => handleCaptionBodyDrag(e, cap)}
                 >
                   <div className="absolute inset-0 flex items-center px-1.5 overflow-hidden">
                     <span className="text-[9px] text-white/80 truncate font-medium">
@@ -393,7 +490,7 @@ export default function Timeline() {
               return (
                 <div
                   key={`fx-${seg.id}`}
-                  className={`absolute top-1 bottom-1 rounded-md cursor-pointer group transition-shadow ${
+                  className={`absolute top-1 bottom-1 rounded-md cursor-grab group transition-shadow ${
                     isSelected ? "ring-2 ring-white/60 shadow-lg" : "hover:shadow-sm"
                   }`}
                   style={{
@@ -402,11 +499,7 @@ export default function Timeline() {
                     backgroundColor: "rgba(249,115,22,0.15)",
                     borderLeft: "2px solid rgba(249,115,22,0.6)",
                   }}
-                  onClick={() =>
-                    setSelectedItem(
-                      selectedItem?.id === seg.id ? null : { type: "segment", id: seg.id }
-                    )
-                  }
+                  onMouseDown={(e) => handleSegmentBodyDrag(e, seg)}
                 >
                   <div className="absolute inset-0 flex items-center px-1.5 overflow-hidden">
                     <span className="text-[9px] text-orange-400/80 truncate font-medium">

@@ -17,6 +17,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create prediction with Flux Schnell (fast, cheap)
+    const trimmedPrompt = prompt.slice(0, 500);
     const createRes = await fetch(
       "https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions",
       {
@@ -24,10 +25,11 @@ export async function POST(request: NextRequest) {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
+          Prefer: "wait",
         },
         body: JSON.stringify({
           input: {
-            prompt: `${prompt}, high quality, professional photography, portrait orientation`,
+            prompt: `${trimmedPrompt}, high quality, professional photography, portrait orientation`,
             aspect_ratio: "9:16",
             num_outputs: 1,
           },

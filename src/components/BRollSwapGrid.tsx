@@ -14,6 +14,7 @@ export default function BRollSwapGrid({ segment }: Props) {
   const [customQuery, setCustomQuery] = useState(segment.brollQuery || "");
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
   const [generatedImages, setGeneratedImages] = useState<string[]>([]);
   const [alternatives, setAlternatives] = useState<PexelsVideoResult[]>(
     segment.pexelsAlternatives || []
@@ -48,16 +49,24 @@ export default function BRollSwapGrid({ segment }: Props) {
   const generateWithAI = useCallback(async () => {
     if (!customQuery.trim()) return;
     setGenerating(true);
+    setGenerateError(null);
     try {
       const res = await fetch("/api/generate-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: customQuery.trim() }),
       });
-      if (!res.ok) throw new Error("Generation failed");
-      const data: { url: string } = await res.json();
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Generation failed");
+      }
+      if (!data.url) {
+        throw new Error("Nenhuma imagem retornada");
+      }
       setGeneratedImages((prev) => [data.url, ...prev]);
     } catch (e) {
+      const msg = e instanceof Error ? e.message : "Falha ao gerar imagem";
+      setGenerateError(msg);
       console.warn("AI image generation failed:", e);
     } finally {
       setGenerating(false);
@@ -146,6 +155,13 @@ export default function BRollSwapGrid({ segment }: Props) {
         )}
         {generating ? "Gerando imagem..." : "Gerar com IA"}
       </button>
+
+      {/* Error message */}
+      {generateError && (
+        <p className="text-xs text-red-400 bg-red-500/10 rounded-lg px-3 py-2">
+          {generateError}
+        </p>
+      )}
 
       {/* AI Generated images */}
       {generatedImages.length > 0 && (

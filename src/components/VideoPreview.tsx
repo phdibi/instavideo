@@ -474,6 +474,8 @@ export default function VideoPreview() {
               text={currentSegment.typographyText}
               background={currentSegment.typographyBackground || "#F5F0E8"}
               elapsed={segmentElapsed}
+              animation={currentSegment.typographyAnimation || "pop-in"}
+              stagger={currentSegment.typographyStagger ?? 80}
             />
           )}
 

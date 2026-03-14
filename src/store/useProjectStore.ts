@@ -337,7 +337,7 @@ export const useProjectStore = create<ProjectStore>((set) => ({
       const idx = state.modeSegments.findIndex((s) => s.id === id);
       if (idx === -1) return {};
       const seg = state.modeSegments[idx];
-      if (seg.mode !== "broll") return {};
+      if (seg.mode !== "broll" && seg.mode !== "typography") return {};
 
       const segments = [...state.modeSegments];
       const prev = idx > 0 ? segments[idx - 1] : null;
@@ -365,7 +365,12 @@ export const useProjectStore = create<ProjectStore>((set) => ({
         };
       }
 
-      return { modeSegments: segments, selectedItem: null };
+      // Remove SFX markers within the deleted b-roll range
+      const cleanedMarkers = state.sfxMarkers.filter(
+        (m) => m.time < seg.startTime || m.time > seg.endTime
+      );
+
+      return { modeSegments: segments, selectedItem: null, sfxMarkers: cleanedMarkers };
     }),
 
   splitSegmentForBroll: (id, atTime) =>
@@ -411,7 +416,16 @@ export const useProjectStore = create<ProjectStore>((set) => ({
       }
 
       segments.splice(idx, 1, ...newSegments);
-      return { modeSegments: segments };
+
+      // Auto-generate SFX markers for b-roll transition
+      const brollSeg = newSegments.find((s) => s.mode === "broll")!;
+      const newMarkers: SFXMarker[] = [
+        ...state.sfxMarkers,
+        { id: uuidv4(), time: brollSeg.startTime, soundType: "whoosh" as const },
+        { id: uuidv4(), time: brollSeg.endTime, soundType: "whoosh-out" as const },
+      ].sort((a, b) => a.time - b.time);
+
+      return { modeSegments: segments, sfxMarkers: newMarkers };
     }),
 
   batchOffsetItems: (items, deltaTime) =>

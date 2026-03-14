@@ -1,3 +1,5 @@
+const TARGET_SAMPLE_RATE = 16000; // Whisper optimal rate + keeps file size small
+
 export async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const video = document.createElement("video");
@@ -11,10 +13,11 @@ export async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
         const arrayBuffer = await response.arrayBuffer();
         const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
 
+        // Downsample to 16kHz mono — optimal for Whisper and keeps file under 25MB
         const offlineCtx = new OfflineAudioContext(
           1,
-          audioBuffer.length,
-          audioBuffer.sampleRate
+          Math.ceil(audioBuffer.duration * TARGET_SAMPLE_RATE),
+          TARGET_SAMPLE_RATE
         );
 
         const source = offlineCtx.createBufferSource();
@@ -26,6 +29,7 @@ export async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
         const wavBlob = audioBufferToWav(renderedBuffer);
 
         URL.revokeObjectURL(video.src);
+        await audioContext.close();
         resolve(wavBlob);
       } catch (err) {
         URL.revokeObjectURL(video.src);

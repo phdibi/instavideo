@@ -15,6 +15,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No audio file provided" }, { status: 400 });
     }
 
+    // Check file size (Whisper limit: 25MB)
+    if (audioFile.size > 25 * 1024 * 1024) {
+      return NextResponse.json(
+        { error: `Arquivo de áudio muito grande (${(audioFile.size / 1024 / 1024).toFixed(1)}MB). Limite: 25MB. Tente um vídeo mais curto.` },
+        { status: 400 }
+      );
+    }
+
+    console.log(`[Whisper] Transcribing audio: ${(audioFile.size / 1024 / 1024).toFixed(2)}MB`);
+
     const openai = getOpenAI();
     const response = await openai.audio.transcriptions.create({
       model: "whisper-1",
@@ -23,12 +33,22 @@ export async function POST(request: NextRequest) {
       timestamp_granularities: ["word", "segment"],
     });
 
-    const words = (response as unknown as { words?: Array<{ word: string; start: number; end: number }> }).words || [];
-    const segments = (response as unknown as { segments?: Array<{ start: number; end: number; text: string }> }).segments || [];
+    // The verbose_json response includes words and segments at the top level
+    const typedResponse = response as unknown as {
+      text: string;
+      language?: string;
+      words?: Array<{ word: string; start: number; end: number }>;
+      segments?: Array<{ start: number; end: number; text: string }>;
+    };
+
+    const words = typedResponse.words || [];
+    const segments = typedResponse.segments || [];
+
+    console.log(`[Whisper] Got ${segments.length} segments, ${words.length} words`);
 
     const result: TranscriptionResult = {
-      fullText: response.text,
-      language: (response as unknown as { language?: string }).language || "pt",
+      fullText: typedResponse.text || response.text,
+      language: typedResponse.language || "pt",
       segments: segments.map((seg) => {
         const segWords = words.filter(
           (w) => w.start >= seg.start && w.end <= seg.end + 0.1
@@ -49,10 +69,21 @@ export async function POST(request: NextRequest) {
     };
 
     return NextResponse.json(result);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Whisper transcription error:", error);
+
+    // Extract useful error message from OpenAI SDK
+    let message = "Transcription failed";
+    if (error instanceof Error) {
+      message = error.message;
+    }
+    if (error && typeof error === "object" && "status" in error) {
+      const apiError = error as { status: number; message?: string };
+      message = apiError.message || `OpenAI API error (HTTP ${apiError.status})`;
+    }
+
     return NextResponse.json(
-      { error: "Transcription failed" },
+      { error: message },
       { status: 500 }
     );
   }

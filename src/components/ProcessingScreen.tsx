@@ -8,11 +8,12 @@ import { generatePhraseCaptions } from "@/lib/modes";
 import type { TranscriptionResult, ModeSegment, PexelsVideoResult } from "@/types";
 
 const steps = [
+  { key: "uploading", label: "Preparando vídeo..." },
   { key: "extracting-audio", label: "Extraindo áudio..." },
   { key: "transcribing", label: "Transcrevendo áudio..." },
-  { key: "analyzing-modes", label: "Buscando b-rolls..." },
-  { key: "fetching-broll", label: "Montando seu vídeo..." },
-  { key: "building-video", label: "Finalizando..." },
+  { key: "analyzing-modes", label: "Analisando conteúdo..." },
+  { key: "fetching-broll", label: "Buscando b-rolls..." },
+  { key: "building-video", label: "Montando seu vídeo..." },
   { key: "ready", label: "Pronto!" },
 ];
 
@@ -20,21 +21,31 @@ export default function ProcessingScreen() {
   const {
     videoFile,
     status,
+    statusMessage,
     setStatus,
     setModeSegments,
     setPhraseCaptions,
-    videoDuration,
   } = useProjectStore();
 
   const hasStarted = useRef(false);
 
   const runPipeline = useCallback(async () => {
-    if (!videoFile) return;
+    if (!videoFile) {
+      console.error("ProcessingScreen: videoFile is null, cannot start pipeline");
+      setStatus("error", "Nenhum vídeo encontrado. Tente novamente.");
+      return;
+    }
 
     try {
       // Step 1: Extract audio
       setStatus("extracting-audio", "Extraindo áudio do vídeo...");
-      const audioBlob = await extractAudioFromVideo(videoFile);
+      let audioBlob: Blob;
+      try {
+        audioBlob = await extractAudioFromVideo(videoFile);
+      } catch (audioErr) {
+        console.error("Audio extraction failed:", audioErr);
+        throw new Error("Falha ao extrair áudio do vídeo. Verifique o formato do arquivo.");
+      }
 
       // Step 2: Transcribe with Whisper
       setStatus("transcribing", "Transcrevendo áudio...");
@@ -45,11 +56,26 @@ export default function ProcessingScreen() {
         method: "POST",
         body: formData,
       });
-      if (!transcribeRes.ok) throw new Error("Transcription failed");
+
+      if (!transcribeRes.ok) {
+        const errorData = await transcribeRes.json().catch(() => ({}));
+        console.error("Whisper API error:", transcribeRes.status, errorData);
+        throw new Error(
+          (errorData as { error?: string }).error || `Transcrição falhou (HTTP ${transcribeRes.status})`
+        );
+      }
+
       const transcription: TranscriptionResult = await transcribeRes.json();
 
+      if (!transcription.segments || transcription.segments.length === 0) {
+        throw new Error("Nenhuma fala detectada no vídeo. Verifique se o vídeo tem áudio.");
+      }
+
       // Step 3: Analyze modes with Claude
+      // Read videoDuration from store at this point (not from closure) to avoid stale value
+      const currentDuration = useProjectStore.getState().videoDuration;
       setStatus("analyzing-modes", "Analisando conteúdo...");
+
       const transcriptionText = transcription.segments
         .map((s) => `[${s.start.toFixed(1)}s - ${s.end.toFixed(1)}s] ${s.text}`)
         .join("\n");
@@ -59,12 +85,24 @@ export default function ProcessingScreen() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           transcription: transcriptionText,
-          duration: videoDuration,
+          duration: currentDuration || 60, // fallback to 60s if duration unknown
         }),
       });
-      if (!analyzeRes.ok) throw new Error("Mode analysis failed");
+
+      if (!analyzeRes.ok) {
+        const errorData = await analyzeRes.json().catch(() => ({}));
+        console.error("Analyze modes error:", analyzeRes.status, errorData);
+        throw new Error(
+          (errorData as { error?: string }).error || `Análise de modos falhou (HTTP ${analyzeRes.status})`
+        );
+      }
+
       const { segments: modeSegments }: { segments: ModeSegment[] } =
         await analyzeRes.json();
+
+      if (!modeSegments || modeSegments.length === 0) {
+        throw new Error("Nenhum segmento de modo foi gerado. Tente novamente.");
+      }
 
       setModeSegments(modeSegments);
 
@@ -110,13 +148,13 @@ export default function ProcessingScreen() {
       // Done
       setStatus("ready", "Pronto!");
     } catch (error) {
-      console.error("Processing error:", error);
+      console.error("Processing pipeline error:", error);
       setStatus(
         "error",
-        error instanceof Error ? error.message : "Processing failed"
+        error instanceof Error ? error.message : "Erro desconhecido no processamento"
       );
     }
-  }, [videoFile, videoDuration, setStatus, setModeSegments, setPhraseCaptions]);
+  }, [videoFile, setStatus, setModeSegments, setPhraseCaptions]);
 
   useEffect(() => {
     if (hasStarted.current) return;
@@ -140,7 +178,6 @@ export default function ProcessingScreen() {
           {steps.map((step, i) => {
             const isActive = step.key === status;
             const isComplete = currentStepIdx > i || status === "ready";
-            const isPending = currentStepIdx < i && status !== "ready";
 
             return (
               <div
@@ -177,10 +214,21 @@ export default function ProcessingScreen() {
         </div>
 
         {status === "error" && (
-          <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
-            <p className="text-red-400 text-sm">
-              Erro no processamento. Tente novamente.
+          <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 space-y-2">
+            <p className="text-red-400 text-sm font-medium">
+              Erro no processamento
             </p>
+            {statusMessage && (
+              <p className="text-red-400/80 text-xs">
+                {statusMessage}
+              </p>
+            )}
+            <button
+              onClick={() => useProjectStore.getState().reset()}
+              className="mt-2 px-4 py-2 bg-red-500/20 text-red-400 rounded-lg text-xs hover:bg-red-500/30 transition-colors"
+            >
+              Tentar novamente
+            </button>
           </div>
         )}
       </div>

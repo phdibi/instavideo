@@ -9,9 +9,9 @@ export async function POST(request: NextRequest) {
   try {
     const { transcription, duration } = await request.json();
 
-    if (!transcription || !duration) {
+    if (!transcription) {
       return NextResponse.json(
-        { error: "Missing transcription or duration" },
+        { error: "Missing transcription" },
         { status: 400 }
       );
     }
@@ -100,10 +100,12 @@ Respond with a JSON array only, no other text. Each element must have:
     );
 
     return NextResponse.json({ segments: validatedSegments });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Mode analysis error:", error);
+    let message = "Mode analysis failed";
+    if (error instanceof Error) message = error.message;
     return NextResponse.json(
-      { error: "Mode analysis failed" },
+      { error: message },
       { status: 500 }
     );
   }

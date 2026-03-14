@@ -8,19 +8,22 @@ import {
   Scissors,
   Music,
   Download,
+  AudioLines,
 } from "lucide-react";
 import CaptionPanel from "./panels/CaptionPanel";
 import BRollPanel from "./panels/BRollPanel";
 import CutsPanel from "./panels/CutsPanel";
+import SFXPanel from "./panels/SFXPanel";
 import MusicPanel from "./MusicPanel";
 import ExportPanel from "./ExportPanel";
 
-export type ToolbarCategory = "captions" | "broll" | "cuts" | "music" | "export";
+export type ToolbarCategory = "captions" | "broll" | "cuts" | "sfx" | "music" | "export";
 
 const CATEGORIES: { key: ToolbarCategory; label: string; icon: React.ReactNode }[] = [
   { key: "captions", label: "Legendas", icon: <Type className="w-5 h-5" /> },
   { key: "broll", label: "B-Roll", icon: <ImageIcon className="w-5 h-5" /> },
   { key: "cuts", label: "Cortes", icon: <Scissors className="w-5 h-5" /> },
+  { key: "sfx", label: "Sons", icon: <AudioLines className="w-5 h-5" /> },
   { key: "music", label: "Música", icon: <Music className="w-5 h-5" /> },
   { key: "export", label: "Exportar", icon: <Download className="w-5 h-5" /> },
 ];
@@ -63,6 +66,8 @@ export default function EditingToolbar({ activeCategory, onCategoryChange }: Pro
         return <BRollPanel />;
       case "cuts":
         return <CutsPanel />;
+      case "sfx":
+        return <SFXPanel />;
       case "music":
         return <MusicPanel />;
       case "export":

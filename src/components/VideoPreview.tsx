@@ -6,7 +6,7 @@ import { useProjectStore } from "@/store/useProjectStore";
 import { formatTime } from "@/lib/formatTime";
 import { getCurrentMode } from "@/lib/modes";
 import { computeBRollEffect, effectToCSS } from "@/lib/brollEffects";
-import { triggerTransitionSFX, resetSFXTracker } from "@/lib/sfx";
+import { playTransitionSFX } from "@/lib/sfx";
 import CaptionOverlay from "./CaptionOverlay";
 import TypographyCard from "./TypographyCard";
 
@@ -42,12 +42,12 @@ export default function VideoPreview() {
   // ── SFX on mode transitions ─────────────────────────────────────────
   const prevModeRef = useRef(currentMode);
   useEffect(() => {
-    if (currentMode !== prevModeRef.current && isPlayingRef.current) {
-      if (sfxConfig.profile !== "none") {
-        triggerTransitionSFX(currentMode, sfxConfig.masterVolume, brollLayout);
-      }
-    }
+    const prevMode = prevModeRef.current;
     prevModeRef.current = currentMode;
+
+    if (currentMode !== prevMode && isPlayingRef.current && sfxConfig.profile !== "none") {
+      playTransitionSFX(prevMode, currentMode, sfxConfig.masterVolume, brollLayout);
+    }
   }, [currentMode, sfxConfig.profile, sfxConfig.masterVolume, brollLayout]);
 
   // ── SEEK SYNC ───────────────────────────────────────────────────────
@@ -207,7 +207,7 @@ export default function VideoPreview() {
     vid.currentTime = 0;
     setIsPlaying(false);
     setCurrentTime(0);
-    resetSFXTracker();
+    prevModeRef.current = "presenter";
   }, [setCurrentTime, setIsPlaying]);
 
   const seekTo = useCallback(
@@ -216,7 +216,7 @@ export default function VideoPreview() {
       if (!vid) return;
       vid.currentTime = time;
       setCurrentTime(time);
-      resetSFXTracker();
+      prevModeRef.current = "presenter";
     },
     [setCurrentTime]
   );

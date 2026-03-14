@@ -275,56 +275,47 @@ export function playPop(volume = 0.06) {
   } catch { /* ignore */ }
 }
 
-// ── Transition Manager (preview) ──────────────────────────────────────
+// ── Transition Player (stateless — caller tracks mode changes) ────────
 
-let lastMode: VideoMode | null = null;
-
-export function triggerTransitionSFX(
-  currentMode: VideoMode,
-  masterVolume = 0.15,
+/**
+ * Play the appropriate transition sound for a mode change.
+ * No internal state — caller provides both previous and current mode.
+ */
+export function playTransitionSFX(
+  fromMode: VideoMode,
+  toMode: VideoMode,
+  volume = 0.5,
   layout?: BRollLayout
 ) {
-  if (lastMode === null) {
-    lastMode = currentMode;
-    return;
-  }
-
-  if (currentMode === lastMode) return;
-
-  const prev = lastMode;
-  lastMode = currentMode;
+  if (fromMode === toMode) return;
 
   // Entering b-roll
-  if (currentMode === "broll") {
+  if (toMode === "broll") {
     if (layout === "split") {
-      playSlide(masterVolume);
+      playSlide(volume);
     } else {
-      playWhoosh(masterVolume);
+      playWhoosh(volume);
     }
     return;
   }
 
   // Entering typography
-  if (currentMode === "typography") {
-    playImpact(masterVolume);
+  if (toMode === "typography") {
+    playImpact(volume);
     return;
   }
 
-  // Returning to presenter from b-roll
-  if (prev === "broll") {
-    playWhooshOut(masterVolume * 0.7);
+  // Exiting b-roll → presenter
+  if (fromMode === "broll") {
+    playWhooshOut(volume * 0.7);
     return;
   }
 
-  // Returning to presenter from typography
-  if (prev === "typography") {
-    playRise(masterVolume * 0.5);
+  // Exiting typography → presenter
+  if (fromMode === "typography") {
+    playRise(volume * 0.5);
     return;
   }
-}
-
-export function resetSFXTracker() {
-  lastMode = null;
 }
 
 // ── Export Rendering ──────────────────────────────────────────────────

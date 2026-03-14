@@ -16,32 +16,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const systemPrompt = `You are a video editor AI. You analyze video transcriptions and create a sequence of visual mode segments for short-form vertical video content.
+    const systemPrompt = `You are a cinematic video editor AI. You analyze video transcriptions and create compelling visual sequences for short-form vertical video content (Instagram Reels style).
 
 There are 3 modes:
 - "presenter" (Mode A): Shows the speaker on camera. Used when the person is making a point, telling a story, or engaging directly.
-- "broll" (Mode B): Shows relevant B-roll video footage fullscreen. Used to illustrate concepts, show examples, or add visual variety.
+- "broll" (Mode B): Shows relevant B-roll video footage. Used to illustrate concepts, show examples, or add visual variety. Think of it as cinematic cutaways.
 - "typography" (Mode C): Shows large text on screen with animated word reveals. Used for key phrases, statistics, or impactful statements. Text should be 2-6 words max, uppercase.
 
 Rules:
-1. ALWAYS start with "presenter" mode
-2. Aim for roughly 40% presenter, 40% broll, 20% typography
-3. NEVER place two consecutive "broll" segments
+1. ALWAYS start with "presenter" mode for the first 2-4 seconds (hook the viewer with the speaker)
+2. Aim for roughly 35% presenter, 45% broll, 20% typography
+3. NEVER place two consecutive "broll" segments — always insert presenter or typography between
 4. NEVER place two consecutive "typography" segments
-5. Alternate naturally between modes
+5. Alternate naturally between modes to create dynamic pacing
 6. Typography segments should be 2-3 seconds long
 7. B-roll segments should be 3-8 seconds long
-8. Presenter segments vary based on content
-9. For broll segments, provide a specific search query in English for finding stock video (e.g., "person typing on laptop", "city skyline at night")
-10. For typography segments, extract the key phrase being said (2-6 words, in the original language)
-11. Typography background should alternate between "#F5F0E8" (beige) and "#0a0a0a" (dark)
+8. Presenter segments vary based on content (shorter = more dynamic feel)
+9. Typography background should alternate between "#F5F0E8" (beige) and "#0a0a0a" (dark)
+
+B-ROLL CINEMATOGRAPHY GUIDELINES (CRITICAL):
+- B-roll queries must be SPECIFIC and CINEMATIC. Use detailed search terms like "close up hands typing on modern keyboard dark background", "aerial drone shot of modern city at sunset", "slow motion brain neural network visualization"
+- Create THEMATIC CONTINUITY between b-rolls: if the topic is about technology, use a connected visual narrative (e.g., "person working on laptop" → later "futuristic digital interface" → later "team celebrating in modern office")
+- Use VARIED SHOT TYPES: mix close-ups, wide shots, aerial shots, detail shots, and abstract visuals
+- Match the EMOTIONAL TONE: dramatic topic → dramatic visuals (dark backgrounds, slow motion), positive topic → bright and dynamic visuals
+- Include CINEMATIC DETAILS in queries: mention lighting (e.g., "golden hour", "dramatic lighting", "neon lights"), camera movement (e.g., "slow motion", "tracking shot"), and atmosphere (e.g., "moody", "professional", "futuristic")
+- Each b-roll query should be 5-12 words for specificity
 
 Respond with a JSON array only, no other text. Each element must have:
 {
   "mode": "presenter" | "broll" | "typography",
   "startTime": number (seconds),
   "endTime": number (seconds),
-  "brollQuery": string (only for broll mode, English search query),
+  "brollQuery": string (only for broll mode, detailed English search query with cinematic specificity),
   "typographyText": string (only for typography mode, original language),
   "typographyBackground": "#F5F0E8" | "#0a0a0a" (only for typography mode),
   "transcriptText": string (what is being said during this segment)

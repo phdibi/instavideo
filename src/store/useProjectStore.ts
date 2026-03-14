@@ -99,8 +99,8 @@ const defaultBrandingConfig: BrandingConfig = {
 };
 
 const defaultSFXConfig: SFXConfig = {
-  profile: "corporate",
-  masterVolume: 0.15,
+  profile: "cinematic",
+  masterVolume: 0.5,
   hookImpact: true,
   hookRise: true,
   brollEnter: true,

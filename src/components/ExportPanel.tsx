@@ -18,6 +18,7 @@ export default function ExportPanel() {
     musicConfig,
     selectedMusicTrack,
     captionConfig,
+    stanzaConfig,
     sfxConfig,
     sfxMarkers,
     setStatus,
@@ -206,7 +207,9 @@ export default function ExportPanel() {
 
       recorder.start(100);
 
-      // Render loop
+      // Render loop — pre-compute stanza font names (avoid per-frame lookups)
+      const stanzaEmphFont = getCanvasFontName(stanzaConfig.emphasisFontFamily);
+      const stanzaNormFont = getCanvasFontName(stanzaConfig.normalFontFamily);
       const totalFrames = Math.ceil(videoDuration * FPS);
       await seekVideo(video, 0);
       video.play();
@@ -582,9 +585,9 @@ export default function ExportPanel() {
           else if (captionConfig.position === "center") baseCaptionY = HEIGHT * 0.5;
 
           // Calculate line heights for each caption
+          const emphSize = stanzaConfig.emphasisFontSize;
+          const normalSize = stanzaConfig.normalFontSize;
           const lines = activeCaptions.map((cap) => {
-            const emphSize = 56;
-            const normalSize = 28;
             const size = cap.isEmphasis ? emphSize : normalSize;
             return { caption: cap, fontSize: size, lineHeight: size * 1.2 };
           });
@@ -593,7 +596,7 @@ export default function ExportPanel() {
 
           for (const line of lines) {
             const { caption: cap, fontSize: fSize } = line;
-            const fontName = cap.isEmphasis ? "'Playfair Display'" : "Inter";
+            const fontName = cap.isEmphasis ? stanzaEmphFont : stanzaNormFont;
             const weight = cap.isEmphasis ? "italic 700" : "400";
             ctx.font = `${weight} ${fSize}px ${fontName}, system-ui, sans-serif`;
 
@@ -705,6 +708,7 @@ export default function ExportPanel() {
     musicConfig,
     selectedMusicTrack,
     captionConfig,
+    stanzaConfig,
     sfxConfig,
     sfxMarkers,
     exporting,

@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useProjectStore } from "@/store/useProjectStore";
 import { getFontValue } from "@/lib/fonts";
-import type { PhraseCaption, CaptionConfig } from "@/types";
+import type { PhraseCaption, CaptionConfig, StanzaConfig } from "@/types";
 
 interface Props {
   currentTime: number;
@@ -69,7 +69,7 @@ function getPositionClass(position: CaptionConfig["position"]) {
  * Supports stacked stanza display (multiple words with mixed typography).
  */
 export default function CaptionOverlay({ currentTime }: Props) {
-  const { phraseCaptions, captionConfig } = useProjectStore();
+  const { phraseCaptions, captionConfig, stanzaConfig } = useProjectStore();
 
   // Find ALL active captions at current time
   const activeCaptions = useMemo(() => {
@@ -89,6 +89,7 @@ export default function CaptionOverlay({ currentTime }: Props) {
             key={activeCaptions[0].stanzaId!}
             captions={activeCaptions}
             config={captionConfig}
+            stanzaConfig={stanzaConfig}
           />
         ) : activeCaptions[0] ? (
           <PhraseDisplay
@@ -103,8 +104,10 @@ export default function CaptionOverlay({ currentTime }: Props) {
 }
 
 /** Stacked stanza display — multiple words stacked vertically with mixed typography */
-function StanzaDisplay({ captions, config }: { captions: PhraseCaption[]; config: CaptionConfig }) {
+function StanzaDisplay({ captions, config, stanzaConfig }: { captions: PhraseCaption[]; config: CaptionConfig; stanzaConfig: StanzaConfig }) {
   const positionClass = getPositionClass(config.position);
+  const emphFamily = getFontValue(stanzaConfig.emphasisFontFamily);
+  const normalFamily = getFontValue(stanzaConfig.normalFontFamily);
 
   return (
     <motion.div
@@ -124,13 +127,11 @@ function StanzaDisplay({ captions, config }: { captions: PhraseCaption[]; config
             transition={{ duration: 0.15 }}
             style={{
               fontSize: caption.isEmphasis
-                ? 'clamp(28px, 7cqw, 56px)'
-                : 'clamp(16px, 4cqw, 32px)',
+                ? `clamp(28px, 7cqw, ${stanzaConfig.emphasisFontSize}px)`
+                : `clamp(16px, 4cqw, ${stanzaConfig.normalFontSize}px)`,
               fontWeight: caption.isEmphasis ? 700 : 400,
               fontStyle: caption.isEmphasis ? 'italic' : 'normal',
-              fontFamily: caption.isEmphasis
-                ? 'var(--font-playfair), Georgia, serif'
-                : 'var(--font-inter), system-ui, sans-serif',
+              fontFamily: caption.isEmphasis ? emphFamily : normalFamily,
               color: '#FFFFFF',
               textShadow: '0 2px 8px rgba(0,0,0,0.7)',
               lineHeight: 1.1,

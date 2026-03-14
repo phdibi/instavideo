@@ -1,4 +1,4 @@
-import type { ModeSegment, VideoMode, PhraseCaption, TranscriptionResult } from "@/types";
+import type { ModeSegment, VideoMode, PhraseCaption, TranscriptionResult, StanzaConfig } from "@/types";
 import { v4 as uuid } from "uuid";
 
 /** Get the current mode segment for a given time */
@@ -12,25 +12,30 @@ export function getModeAt(segments: ModeSegment[], time: number): VideoMode {
   return seg?.mode || "presenter";
 }
 
+/** Connector words that never get emphasis — hoisted to module scope to avoid re-creation per call */
+const CONNECTORS = new Set([
+  'a','o','e','em','de','do','da','no','na','um','uma','que',
+  'para','por','com','se','os','as','dos','das','nos','nas',
+  'ao','à','the','an','in','on','of','to','and','or','is',
+  'are','was','with','for','at','by','it','eu','ele','ela',
+  'mas','mais','não','como','seu','sua','isso','este','esta',
+]);
+
 /** Check if a word should receive emphasis (large/bold/italic serif) treatment */
 function isEmphasisWord(word: string): boolean {
   const cleaned = word.replace(/[.,!?;:]/g, '').toLowerCase();
   if (/\d/.test(cleaned)) return true; // números
-  const connectors = new Set([
-    'a','o','e','em','de','do','da','no','na','um','uma','que',
-    'para','por','com','se','os','as','dos','das','nos','nas',
-    'ao','à','the','an','in','on','of','to','and','or','is',
-    'are','was','with','for','at','by','it','eu','ele','ela',
-    'mas','mais','não','como','seu','sua','isso','este','esta',
-  ]);
-  if (connectors.has(cleaned)) return false;
+  if (CONNECTORS.has(cleaned)) return false;
   return cleaned.length >= 3; // palavras substantivas
 }
 
 /** Generate phrase captions (1-2 words each) from transcription word timings.
- *  Every ~8s, creates a "stanza" of 4-5 words that stack vertically on screen
+ *  Every ~intervalSeconds, creates a stanza of words that stack vertically on screen
  *  with mixed typography (emphasis vs connector). */
-export function generatePhraseCaptions(transcription: TranscriptionResult): PhraseCaption[] {
+export function generatePhraseCaptions(transcription: TranscriptionResult, stanzaConfig?: Partial<StanzaConfig>): PhraseCaption[] {
+  const stanzaEnabled = stanzaConfig?.enabled ?? true;
+  const intervalSeconds = stanzaConfig?.intervalSeconds ?? 4;
+  const wordsPerStanza = stanzaConfig?.wordsPerStanza ?? 5;
   const allWords: { word: string; start: number; end: number }[] = [];
 
   for (const segment of transcription.segments) {
@@ -59,9 +64,9 @@ export function generatePhraseCaptions(transcription: TranscriptionResult): Phra
     const remaining = allWords.length - i;
     const timeSinceLastStanza = currentWord.start - lastStanzaEnd;
 
-    // Create a stanza every ~8s if we have enough words
-    if (timeSinceLastStanza >= 8 && remaining >= 4) {
-      const stanzaSize = Math.min(remaining, 5);
+    // Create a stanza every ~intervalSeconds if enabled and we have enough words
+    if (stanzaEnabled && timeSinceLastStanza >= intervalSeconds && remaining >= 4) {
+      const stanzaSize = Math.min(remaining, wordsPerStanza);
       const stanzaWords = allWords.slice(i, i + stanzaSize);
       const stanzaEndTime = stanzaWords[stanzaWords.length - 1].end;
       const sid = uuid();

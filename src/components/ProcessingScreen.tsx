@@ -25,6 +25,7 @@ export default function ProcessingScreen() {
     setStatus,
     setModeSegments,
     setPhraseCaptions,
+    setTranscriptionResult,
   } = useProjectStore();
 
   const hasStarted = useRef(false);
@@ -84,6 +85,7 @@ export default function ProcessingScreen() {
 
       const transcription: TranscriptionResult = await transcribeRes.json();
       if (signal.aborted) return;
+      setTranscriptionResult(transcription);
 
       if (!transcription.segments || transcription.segments.length === 0) {
         throw new Error("Nenhuma fala detectada no vídeo. Verifique se o vídeo tem áudio.");
@@ -233,7 +235,8 @@ export default function ProcessingScreen() {
 
       // Step 5: Generate phrase captions
       setStatus("building-video", "Montando seu vídeo...");
-      const phrases = generatePhraseCaptions(transcription);
+      const currentStanzaConfig = useProjectStore.getState().stanzaConfig;
+      const phrases = generatePhraseCaptions(transcription, currentStanzaConfig);
       setPhraseCaptions(phrases);
 
       // Done
@@ -246,7 +249,7 @@ export default function ProcessingScreen() {
         error instanceof Error ? error.message : "Erro desconhecido no processamento"
       );
     }
-  }, [videoFile, setStatus, setModeSegments, setPhraseCaptions]);
+  }, [videoFile, setStatus, setModeSegments, setPhraseCaptions, setTranscriptionResult]);
 
   useEffect(() => {
     if (hasStarted.current) return;

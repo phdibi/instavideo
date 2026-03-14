@@ -200,6 +200,17 @@ export interface CaptionConfig {
   letterSpacing: number;
 }
 
+// ===== Stanza Config (stylized stacked captions) =====
+export interface StanzaConfig {
+  enabled: boolean;           // default: true
+  intervalSeconds: number;    // default: 4
+  wordsPerStanza: number;     // default: 5
+  emphasisFontSize: number;   // default: 56
+  normalFontSize: number;     // default: 28
+  emphasisFontFamily: string; // default: "Playfair Display"
+  normalFontFamily: string;   // default: "Inter"
+}
+
 // ===== New Mode System (vibefounder style) =====
 export type VideoMode = "presenter" | "broll" | "typography";
 

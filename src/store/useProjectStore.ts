@@ -15,6 +15,8 @@ import type {
   ModeSegment,
   PhraseCaption,
   MusicConfig,
+  StanzaConfig,
+  TranscriptionResult,
 } from "@/types";
 
 interface ProjectStore {
@@ -41,7 +43,11 @@ interface ProjectStore {
   musicConfig: MusicConfig;
   selectedMusicTrack: string | null;
   captionConfig: CaptionConfig;
+  stanzaConfig: StanzaConfig;
+  transcriptionResult: TranscriptionResult | null;
 
+  setStanzaConfig: (config: Partial<StanzaConfig>) => void;
+  setTranscriptionResult: (result: TranscriptionResult | null) => void;
   setSFXMarkers: (markers: SFXMarker[]) => void;
   addSFXMarker: (marker: SFXMarker) => void;
   updateSFXMarker: (id: string, updates: Partial<SFXMarker>) => void;
@@ -127,6 +133,16 @@ const defaultMusicConfig: MusicConfig = {
   fadeOutDuration: 0.5,
 };
 
+const defaultStanzaConfig: StanzaConfig = {
+  enabled: true,
+  intervalSeconds: 4,
+  wordsPerStanza: 5,
+  emphasisFontSize: 56,
+  normalFontSize: 28,
+  emphasisFontFamily: "Playfair Display",
+  normalFontFamily: "Inter",
+};
+
 const defaultCaptionConfig: CaptionConfig = {
   fontFamily: "Inter",
   fontSize: 48,
@@ -167,6 +183,8 @@ const initialState = {
   musicConfig: { ...defaultMusicConfig },
   selectedMusicTrack: null,
   captionConfig: { ...defaultCaptionConfig },
+  stanzaConfig: { ...defaultStanzaConfig },
+  transcriptionResult: null,
 };
 
 export const useProjectStore = create<ProjectStore>((set) => ({
@@ -219,6 +237,11 @@ export const useProjectStore = create<ProjectStore>((set) => ({
     set((state) => ({
       captionConfig: { ...state.captionConfig, ...config },
     })),
+  setStanzaConfig: (config) =>
+    set((state) => ({
+      stanzaConfig: { ...state.stanzaConfig, ...config },
+    })),
+  setTranscriptionResult: (result) => set({ transcriptionResult: result }),
   setModeSegments: (segments) => set({ modeSegments: segments }),
   updateModeSegment: (id, updates) =>
     set((state) => ({

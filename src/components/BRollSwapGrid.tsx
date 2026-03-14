@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 import { Search, RefreshCw } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
-import type { ModeSegment, PexelsVideoResult } from "@/types";
+import type { ModeSegment, PexelsVideoResult, PexelsPhotoResult } from "@/types";
 
 interface Props {
   segment: ModeSegment;
@@ -16,6 +16,9 @@ export default function BRollSwapGrid({ segment }: Props) {
   const [alternatives, setAlternatives] = useState<PexelsVideoResult[]>(
     segment.pexelsAlternatives || []
   );
+  const [photos, setPhotos] = useState<PexelsPhotoResult[]>(
+    segment.pexelsPhotoAlternatives || []
+  );
 
   const searchMore = useCallback(async () => {
     if (!customQuery.trim()) return;
@@ -25,10 +28,12 @@ export default function BRollSwapGrid({ segment }: Props) {
         `/api/search-broll?query=${encodeURIComponent(customQuery.trim())}`
       );
       if (!res.ok) throw new Error("Search failed");
-      const { videos }: { videos: PexelsVideoResult[] } = await res.json();
-      setAlternatives(videos);
+      const data: { videos: PexelsVideoResult[]; photos: PexelsPhotoResult[] } = await res.json();
+      setAlternatives(data.videos);
+      setPhotos(data.photos || []);
       updateModeSegment(segment.id, {
-        pexelsAlternatives: videos,
+        pexelsAlternatives: data.videos,
+        pexelsPhotoAlternatives: data.photos || [],
         brollQuery: customQuery.trim(),
       });
     } catch (e) {
@@ -41,8 +46,26 @@ export default function BRollSwapGrid({ segment }: Props) {
   const selectVideo = (video: PexelsVideoResult) => {
     updateModeSegment(segment.id, {
       brollVideoUrl: `/api/proxy-video?url=${encodeURIComponent(video.url)}`,
+      brollMediaType: "video",
+      brollImageUrl: undefined,
     });
   };
+
+  const selectPhoto = (photo: PexelsPhotoResult) => {
+    updateModeSegment(segment.id, {
+      brollImageUrl: photo.url,
+      brollMediaType: "photo",
+      brollVideoUrl: undefined,
+    });
+  };
+
+  const isVideoActive = (video: PexelsVideoResult) =>
+    segment.brollMediaType !== "photo" &&
+    segment.brollVideoUrl?.includes(encodeURIComponent(video.url));
+
+  const isPhotoActive = (photo: PexelsPhotoResult) =>
+    segment.brollMediaType === "photo" &&
+    segment.brollImageUrl === photo.url;
 
   return (
     <div className="p-4 space-y-4">
@@ -63,7 +86,7 @@ export default function BRollSwapGrid({ segment }: Props) {
             value={customQuery}
             onChange={(e) => setCustomQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && searchMore()}
-            placeholder="Buscar vídeos..."
+            placeholder="Buscar vídeos e fotos..."
             className="w-full pl-9 pr-3 py-2 bg-[var(--surface)] border border-[var(--border)] rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
         </div>
@@ -77,45 +100,68 @@ export default function BRollSwapGrid({ segment }: Props) {
         </button>
       </div>
 
-      {/* Video grid */}
+      {/* Combined grid: videos + photos */}
       <div className="grid grid-cols-2 gap-2">
-        {alternatives.map((video) => {
-          const isActive =
-            segment.brollVideoUrl?.includes(encodeURIComponent(video.url));
-
-          return (
-            <div
-              key={video.id}
-              className={`relative rounded-xl overflow-hidden cursor-pointer group transition-all ${
-                isActive
-                  ? "ring-2 ring-blue-500 ring-offset-2 ring-offset-[#0a0a0a]"
-                  : "hover:ring-1 hover:ring-white/30"
-              }`}
-              onClick={() => selectVideo(video)}
-            >
-              <img
-                src={video.thumbnail}
-                alt=""
-                className="w-full aspect-[9/16] object-cover"
-              />
-              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                <span className="text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity font-medium">
-                  Usar este
-                </span>
-              </div>
-              <div className="absolute bottom-1 right-1 bg-black/60 rounded px-1.5 py-0.5">
-                <span className="text-[10px] text-white">
-                  {video.duration}s
-                </span>
-              </div>
+        {alternatives.map((video) => (
+          <div
+            key={`v-${video.id}`}
+            className={`relative rounded-xl overflow-hidden cursor-pointer group transition-all ${
+              isVideoActive(video)
+                ? "ring-2 ring-blue-500 ring-offset-2 ring-offset-[#0a0a0a]"
+                : "hover:ring-1 hover:ring-white/30"
+            }`}
+            onClick={() => selectVideo(video)}
+          >
+            <img
+              src={video.thumbnail}
+              alt=""
+              className="w-full aspect-[9/16] object-cover"
+            />
+            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+              <span className="text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity font-medium">
+                Usar este
+              </span>
             </div>
-          );
-        })}
+            <div className="absolute top-1 left-1 bg-blue-500/80 rounded px-1.5 py-0.5">
+              <span className="text-[10px] text-white font-medium">Video</span>
+            </div>
+            <div className="absolute bottom-1 right-1 bg-black/60 rounded px-1.5 py-0.5">
+              <span className="text-[10px] text-white">
+                {video.duration}s
+              </span>
+            </div>
+          </div>
+        ))}
+        {photos.map((photo) => (
+          <div
+            key={`p-${photo.id}`}
+            className={`relative rounded-xl overflow-hidden cursor-pointer group transition-all ${
+              isPhotoActive(photo)
+                ? "ring-2 ring-green-500 ring-offset-2 ring-offset-[#0a0a0a]"
+                : "hover:ring-1 hover:ring-white/30"
+            }`}
+            onClick={() => selectPhoto(photo)}
+          >
+            <img
+              src={photo.thumbnail}
+              alt=""
+              className="w-full aspect-[9/16] object-cover"
+            />
+            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+              <span className="text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity font-medium">
+                Usar este
+              </span>
+            </div>
+            <div className="absolute top-1 left-1 bg-green-500/80 rounded px-1.5 py-0.5">
+              <span className="text-[10px] text-white font-medium">Foto</span>
+            </div>
+          </div>
+        ))}
       </div>
 
-      {alternatives.length === 0 && !loading && (
+      {alternatives.length === 0 && photos.length === 0 && !loading && (
         <p className="text-center text-sm text-zinc-500 py-4">
-          Busque vídeos para ver alternativas
+          Busque vídeos e fotos para ver alternativas
         </p>
       )}
     </div>

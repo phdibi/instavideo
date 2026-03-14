@@ -214,6 +214,9 @@ export interface ModeSegment {
   typographyText?: string;
   typographyBackground?: "#F5F0E8" | "#0a0a0a";
   transcriptText?: string;
+  brollImageUrl?: string;
+  brollMediaType?: "video" | "photo";
+  pexelsPhotoAlternatives?: PexelsPhotoResult[];
   brollEffect?: BRollEffect;
   brollEffectIntensity?: number;
   brollLayout?: BRollLayout;
@@ -226,6 +229,14 @@ export interface PexelsVideoResult {
   width: number;
   height: number;
   duration: number;
+}
+
+export interface PexelsPhotoResult {
+  id: number;
+  url: string;
+  thumbnail: string;
+  width: number;
+  height: number;
 }
 
 export interface PhraseCaption {

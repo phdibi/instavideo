@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { v4 as uuidv4 } from "uuid";
 import type {
   Caption,
   CaptionConfig,
@@ -75,6 +76,8 @@ interface ProjectStore {
   setTeleprompterSettings: (settings: Partial<TeleprompterSettings>) => void;
   setBrandingConfig: (config: Partial<BrandingConfig>) => void;
   setSFXConfig: (config: Partial<SFXConfig>) => void;
+  deleteModeSegment: (id: string) => void;
+  splitSegmentForBroll: (id: string, atTime: number) => void;
   /** Batch offset multiple items by a time delta — for Shift multi-select bulk editing */
   batchOffsetItems: (items: { type: "caption" | "effect" | "broll" | "segment"; id: string }[], deltaTime: number) => void;
   reset: () => void;
@@ -329,6 +332,88 @@ export const useProjectStore = create<ProjectStore>((set) => ({
     set((state) => ({
       sfxMarkers: state.sfxMarkers.filter((m) => m.id !== id),
     })),
+  deleteModeSegment: (id) =>
+    set((state) => {
+      const idx = state.modeSegments.findIndex((s) => s.id === id);
+      if (idx === -1) return {};
+      const seg = state.modeSegments[idx];
+      if (seg.mode !== "broll") return {};
+
+      const segments = [...state.modeSegments];
+      const prev = idx > 0 ? segments[idx - 1] : null;
+      const next = idx < segments.length - 1 ? segments[idx + 1] : null;
+
+      if (prev?.mode === "presenter" && next?.mode === "presenter") {
+        // Merge: expand prev to cover seg + next, remove seg and next
+        segments[idx - 1] = { ...prev, endTime: next.endTime };
+        segments.splice(idx, 2);
+      } else if (prev?.mode === "presenter") {
+        // Expand prev to cover seg
+        segments[idx - 1] = { ...prev, endTime: seg.endTime };
+        segments.splice(idx, 1);
+      } else if (next?.mode === "presenter") {
+        // Expand next to cover seg
+        segments[idx + 1] = { ...next, startTime: seg.startTime };
+        segments.splice(idx, 1);
+      } else {
+        // Replace with new presenter segment
+        segments[idx] = {
+          id: uuidv4(),
+          mode: "presenter",
+          startTime: seg.startTime,
+          endTime: seg.endTime,
+        };
+      }
+
+      return { modeSegments: segments, selectedItem: null };
+    }),
+
+  splitSegmentForBroll: (id, atTime) =>
+    set((state) => {
+      const idx = state.modeSegments.findIndex((s) => s.id === id);
+      if (idx === -1) return {};
+      const seg = state.modeSegments[idx];
+      if (seg.mode !== "presenter") return {};
+
+      const brollDuration = 4;
+      const brollEnd = Math.min(atTime + brollDuration, seg.endTime);
+      const segments = [...state.modeSegments];
+      const newSegments: ModeSegment[] = [];
+
+      // Part 1: presenter before b-roll (if ≥ 0.3s)
+      if (atTime - seg.startTime >= 0.3) {
+        newSegments.push({
+          id: seg.id, // keep original id
+          mode: "presenter",
+          startTime: seg.startTime,
+          endTime: atTime,
+        });
+      }
+
+      // Part 2: b-roll
+      newSegments.push({
+        id: uuidv4(),
+        mode: "broll",
+        startTime: newSegments.length > 0 ? atTime : seg.startTime,
+        endTime: brollEnd,
+        brollEffect: "ken-burns",
+        brollLayout: "fullscreen",
+      });
+
+      // Part 3: presenter after b-roll (if ≥ 0.3s)
+      if (seg.endTime - brollEnd >= 0.3) {
+        newSegments.push({
+          id: uuidv4(),
+          mode: "presenter",
+          startTime: brollEnd,
+          endTime: seg.endTime,
+        });
+      }
+
+      segments.splice(idx, 1, ...newSegments);
+      return { modeSegments: segments };
+    }),
+
   batchOffsetItems: (items, deltaTime) =>
     set((state) => {
       const dur = state.videoDuration || 9999;

@@ -1,8 +1,9 @@
 "use client";
 
 import { useProjectStore } from "@/store/useProjectStore";
-import { SFX_PLAY_MAP } from "@/lib/sfx";
-import { Volume2, Play, Trash2 } from "lucide-react";
+import { SFX_PLAY_MAP, SFX_LABELS, generateSFXMarkers } from "@/lib/sfx";
+import { Volume2, Play, Trash2, Plus, RefreshCw } from "lucide-react";
+import { v4 as uuidv4 } from "uuid";
 import type { SFXProfile, SFXSoundType } from "@/types";
 
 const PROFILES: { value: SFXProfile; label: string; desc: string }[] = [
@@ -28,20 +29,50 @@ const ALL_SOUNDS: { key: SFXSoundType; label: string }[] = [
 ];
 
 export default function SFXPanel() {
-  const { sfxConfig, setSFXConfig, sfxMarkers, selectedItem, updateSFXMarker, deleteSFXMarker, setSelectedItem } = useProjectStore();
+  const {
+    sfxConfig,
+    setSFXConfig,
+    sfxMarkers,
+    modeSegments,
+    currentTime,
+    selectedItem,
+    updateSFXMarker,
+    deleteSFXMarker,
+    addSFXMarker,
+    setSFXMarkers,
+    setSelectedItem,
+    setCurrentTime,
+  } = useProjectStore();
 
   const selectedMarker = selectedItem?.type === "sfx"
     ? sfxMarkers.find((m) => m.id === selectedItem.id)
     : null;
 
+  const handleAddAtPlayhead = () => {
+    const id = uuidv4();
+    addSFXMarker({ id, time: currentTime, soundType: "impact" });
+    setSelectedItem({ type: "sfx", id });
+  };
+
+  const handleRegenerate = () => {
+    const markers = generateSFXMarkers(modeSegments, uuidv4);
+    setSFXMarkers(markers);
+    setSelectedItem(null);
+  };
+
+  const handleClearAll = () => {
+    setSFXMarkers([]);
+    setSelectedItem(null);
+  };
+
   return (
     <div className="space-y-5 overflow-y-auto max-h-full">
-      {/* Selected marker editing */}
+      {/* ── Selected marker editing ── */}
       {selectedMarker && (
         <div className="px-4 pt-4 space-y-3 border-b border-[var(--border)] pb-4">
           <div className="flex items-center justify-between">
-            <label className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
-              Marcador SFX
+            <label className="text-xs font-medium text-yellow-400 uppercase tracking-wider">
+              Editando Marcador
             </label>
             <button
               onClick={() => {
@@ -55,7 +86,7 @@ export default function SFXPanel() {
             </button>
           </div>
           <p className="text-[10px] text-[var(--text-secondary)]">
-            Tempo: {selectedMarker.time.toFixed(2)}s
+            Tempo: {selectedMarker.time.toFixed(2)}s — Som: {SFX_LABELS[selectedMarker.soundType]}
           </p>
           <div className="grid grid-cols-3 gap-1.5">
             {ALL_SOUNDS.map((s) => (
@@ -78,8 +109,120 @@ export default function SFXPanel() {
         </div>
       )}
 
-      {/* Profile selector */}
+      {/* ── Marker List + Actions ── */}
       <div className="px-4 pt-4 space-y-2">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
+            Marcadores ({sfxMarkers.length})
+          </label>
+          <div className="flex gap-1">
+            <button
+              onClick={handleAddAtPlayhead}
+              className="p-1.5 rounded-md hover:bg-[var(--surface-hover)] transition-colors"
+              title="Adicionar marcador na posição atual"
+            >
+              <Plus className="w-3.5 h-3.5 text-yellow-400" />
+            </button>
+            <button
+              onClick={handleRegenerate}
+              className="p-1.5 rounded-md hover:bg-[var(--surface-hover)] transition-colors"
+              title="Regenerar marcadores das transições"
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+            </button>
+            {sfxMarkers.length > 0 && (
+              <button
+                onClick={handleClearAll}
+                className="p-1.5 rounded-md hover:bg-red-500/20 transition-colors"
+                title="Remover todos"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {sfxMarkers.length === 0 ? (
+          <div className="text-center py-4 space-y-2">
+            <p className="text-[11px] text-[var(--text-secondary)]">
+              Nenhum marcador de som.
+            </p>
+            <div className="flex gap-2 justify-center">
+              <button
+                onClick={handleRegenerate}
+                className="text-[11px] px-3 py-1.5 rounded-lg bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 transition-colors"
+              >
+                Gerar das transições
+              </button>
+              <button
+                onClick={handleAddAtPlayhead}
+                className="text-[11px] px-3 py-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)] transition-colors"
+              >
+                Adicionar manual
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-1 max-h-48 overflow-y-auto">
+            {sfxMarkers.map((marker) => {
+              const isSelected = selectedItem?.type === "sfx" && selectedItem.id === marker.id;
+              return (
+                <div
+                  key={marker.id}
+                  className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all ${
+                    isSelected
+                      ? "bg-yellow-500/15 border border-yellow-500/40"
+                      : "bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)]"
+                  }`}
+                  onClick={() => {
+                    setSelectedItem(isSelected ? null : { type: "sfx", id: marker.id });
+                    setCurrentTime(marker.time);
+                  }}
+                >
+                  {/* Diamond indicator */}
+                  <div className={`w-2.5 h-2.5 rotate-45 flex-shrink-0 ${
+                    isSelected ? "bg-yellow-400" : "bg-yellow-500/60"
+                  }`} />
+                  {/* Time */}
+                  <span className="text-[10px] text-[var(--text-secondary)] font-mono w-12">
+                    {marker.time.toFixed(1)}s
+                  </span>
+                  {/* Sound name */}
+                  <span className="text-[11px] text-[var(--foreground)] flex-1 truncate">
+                    {SFX_LABELS[marker.soundType]}
+                  </span>
+                  {/* Preview */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      SFX_PLAY_MAP[marker.soundType](sfxConfig.masterVolume);
+                    }}
+                    className="p-1 rounded hover:bg-[var(--surface-hover)] transition-colors"
+                    title="Pré-visualizar"
+                  >
+                    <Play className="w-3 h-3 text-[var(--accent-light)]" />
+                  </button>
+                  {/* Delete */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteSFXMarker(marker.id);
+                      if (isSelected) setSelectedItem(null);
+                    }}
+                    className="p-1 rounded hover:bg-red-500/20 transition-colors"
+                    title="Deletar"
+                  >
+                    <Trash2 className="w-3 h-3 text-[var(--text-secondary)]" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Profile selector ── */}
+      <div className="px-4 space-y-2">
         <label className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
           Perfil de Sons
         </label>
@@ -105,7 +248,7 @@ export default function SFXPanel() {
         </div>
       </div>
 
-      {/* Volume slider */}
+      {/* ── Volume slider ── */}
       <div className="px-4 space-y-2">
         <div className="flex items-center gap-2">
           <Volume2 className="w-4 h-4 text-[var(--text-secondary)]" />
@@ -125,21 +268,21 @@ export default function SFXPanel() {
         />
       </div>
 
-      {/* Preview all sounds */}
+      {/* ── Preview all sounds ── */}
       {sfxConfig.profile !== "none" && (
         <div className="px-4 pb-4 space-y-2">
           <label className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
             Pré-visualizar Sons
           </label>
-          <div className="space-y-1">
+          <div className="grid grid-cols-2 gap-1">
             {ALL_SOUNDS.map((s) => (
               <button
                 key={s.key}
                 onClick={() => SFX_PLAY_MAP[s.key](sfxConfig.masterVolume)}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)] transition-colors text-left"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)] transition-colors text-left"
               >
-                <Play className="w-3.5 h-3.5 text-[var(--accent-light)] flex-shrink-0" />
-                <span className="text-xs text-[var(--foreground)]">{s.label}</span>
+                <Play className="w-3 h-3 text-[var(--accent-light)] flex-shrink-0" />
+                <span className="text-[10px] text-[var(--foreground)]">{s.label}</span>
               </button>
             ))}
           </div>

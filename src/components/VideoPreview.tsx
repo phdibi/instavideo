@@ -13,6 +13,7 @@ import TypographyCard from "./TypographyCard";
 export default function VideoPreview() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const brollVideoRef = useRef<HTMLVideoElement>(null);
+  const brollImageRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const animFrameRef = useRef<number>(0);
   const [muted, setMuted] = useState(false);
@@ -143,14 +144,17 @@ export default function VideoPreview() {
     };
   }, [isPlaying, updateTime]);
 
-  // ── B-ROLL VIDEO MANAGEMENT ─────────────────────────────────────────
+  // ── B-ROLL MEDIA MANAGEMENT (video or photo) ───────────────────────
   const prevBrollUrlRef = useRef<string | null>(null);
+  const prevBrollImageUrlRef = useRef<string | null>(null);
+
+  const brollIsPhoto = currentSegment?.brollMediaType === "photo";
 
   useEffect(() => {
     const brollVid = brollVideoRef.current;
     if (!brollVid) return;
 
-    if (currentMode === "broll" && currentSegment?.brollVideoUrl) {
+    if (currentMode === "broll" && currentSegment?.brollVideoUrl && !brollIsPhoto) {
       if (prevBrollUrlRef.current !== currentSegment.brollVideoUrl) {
         brollVid.src = currentSegment.brollVideoUrl;
         brollVid.load();
@@ -162,7 +166,20 @@ export default function VideoPreview() {
     } else {
       if (!brollVid.paused) brollVid.pause();
     }
-  }, [currentMode, currentSegment?.brollVideoUrl, isPlaying]);
+  }, [currentMode, currentSegment?.brollVideoUrl, isPlaying, brollIsPhoto]);
+
+  // Photo b-roll: set image src
+  useEffect(() => {
+    const brollImg = brollImageRef.current;
+    if (!brollImg) return;
+
+    if (currentMode === "broll" && brollIsPhoto && currentSegment?.brollImageUrl) {
+      if (prevBrollImageUrlRef.current !== currentSegment.brollImageUrl) {
+        brollImg.src = currentSegment.brollImageUrl;
+        prevBrollImageUrlRef.current = currentSegment.brollImageUrl;
+      }
+    }
+  }, [currentMode, brollIsPhoto, currentSegment?.brollImageUrl]);
 
   // Ken Burns for presenter — alternating zoom direction per segment index
   const presenterIdx = useMemo(() => {
@@ -401,13 +418,21 @@ export default function VideoPreview() {
                 willChange: brollTransformCSS ? "transform" : undefined,
               }}
             >
-              <video
-                ref={brollVideoRef}
-                className="w-full h-full object-cover"
-                loop
-                muted
-                playsInline
-              />
+              {brollIsPhoto ? (
+                <img
+                  ref={brollImageRef}
+                  className="w-full h-full object-cover"
+                  alt=""
+                />
+              ) : (
+                <video
+                  ref={brollVideoRef}
+                  className="w-full h-full object-cover"
+                  loop
+                  muted
+                  playsInline
+                />
+              )}
             </div>
             {/* Dark overlay on b-roll */}
             <div className={`absolute inset-0 ${

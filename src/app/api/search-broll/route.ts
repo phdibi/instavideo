@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { PexelsVideoResult } from "@/types";
+import type { PexelsVideoResult, PexelsPhotoResult } from "@/types";
 
 interface PexelsFile {
   id: number;
@@ -19,6 +19,25 @@ interface PexelsVideo {
   video_files: PexelsFile[];
 }
 
+interface PexelsPhotoSrc {
+  original: string;
+  large2x: string;
+  large: string;
+  medium: string;
+  small: string;
+  portrait: string;
+  landscape: string;
+  tiny: string;
+}
+
+interface PexelsPhoto {
+  id: number;
+  width: number;
+  height: number;
+  url: string;
+  src: PexelsPhotoSrc;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -33,20 +52,25 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Pexels API key not configured" }, { status: 500 });
     }
 
-    const response = await fetch(
-      `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=6&orientation=portrait`,
-      { headers: { Authorization: apiKey } }
-    );
+    // Fetch videos and photos in parallel
+    const [videosResponse, photosResponse] = await Promise.all([
+      fetch(
+        `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=6&orientation=portrait`,
+        { headers: { Authorization: apiKey } }
+      ),
+      fetch(
+        `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=6&orientation=portrait`,
+        { headers: { Authorization: apiKey } }
+      ),
+    ]);
 
-    if (!response.ok) {
-      throw new Error(`Pexels API error: ${response.status}`);
+    if (!videosResponse.ok) {
+      throw new Error(`Pexels Videos API error: ${videosResponse.status}`);
     }
 
-    const data = await response.json();
-
-    const results: PexelsVideoResult[] = (data.videos || []).map(
+    const videosData = await videosResponse.json();
+    const videos: PexelsVideoResult[] = (videosData.videos || []).map(
       (video: PexelsVideo) => {
-        // Prefer HD quality, portrait-ish aspect ratio
         const bestFile =
           video.video_files.find(
             (f: PexelsFile) => f.quality === "hd" && f.height > f.width
@@ -65,7 +89,19 @@ export async function GET(request: NextRequest) {
       }
     );
 
-    return NextResponse.json({ videos: results });
+    let photos: PexelsPhotoResult[] = [];
+    if (photosResponse.ok) {
+      const photosData = await photosResponse.json();
+      photos = (photosData.photos || []).map((photo: PexelsPhoto) => ({
+        id: photo.id,
+        url: photo.src.portrait,
+        thumbnail: photo.src.medium,
+        width: photo.width,
+        height: photo.height,
+      }));
+    }
+
+    return NextResponse.json({ videos, photos });
   } catch (error) {
     console.error("Pexels search error:", error);
     return NextResponse.json(

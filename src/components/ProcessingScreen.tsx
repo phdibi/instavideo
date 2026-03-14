@@ -5,7 +5,9 @@ import { Loader2, CheckCircle } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { FFmpegService } from "@/lib/ffmpeg";
 import { generatePhraseCaptions } from "@/lib/modes";
-import type { TranscriptionResult, ModeSegment, PexelsVideoResult } from "@/types";
+import { generateSFXMarkers } from "@/lib/sfx";
+import { v4 as uuidv4 } from "uuid";
+import type { TranscriptionResult, ModeSegment, PexelsVideoResult, PexelsPhotoResult } from "@/types";
 
 const steps = [
   { key: "uploading", label: "Preparando vídeo..." },
@@ -25,6 +27,7 @@ export default function ProcessingScreen() {
     setStatus,
     setModeSegments,
     setPhraseCaptions,
+    setSFXMarkers,
   } = useProjectStore();
 
   const hasStarted = useRef(false);
@@ -121,15 +124,32 @@ export default function ProcessingScreen() {
               `/api/search-broll?query=${encodeURIComponent(seg.brollQuery!)}`
             );
             if (!res.ok) return;
-            const { videos }: { videos: PexelsVideoResult[] } =
+            const data: { videos: PexelsVideoResult[]; photos: PexelsPhotoResult[] } =
               await res.json();
+            const { videos, photos } = data;
 
             const idx = updatedSegments.findIndex((s) => s.id === seg.id);
-            if (idx !== -1 && videos.length > 0) {
+            if (idx === -1) return;
+
+            const segDuration = seg.endTime - seg.startTime;
+            const preferPhoto = segDuration <= 3 && photos && photos.length > 0;
+
+            if (preferPhoto) {
+              // Short segments: prefer photo for more visible effect on static image
+              updatedSegments[idx] = {
+                ...updatedSegments[idx],
+                brollImageUrl: photos[0].url,
+                brollMediaType: "photo",
+                pexelsAlternatives: videos,
+                pexelsPhotoAlternatives: photos,
+              };
+            } else if (videos.length > 0) {
               updatedSegments[idx] = {
                 ...updatedSegments[idx],
                 brollVideoUrl: `/api/proxy-video?url=${encodeURIComponent(videos[0].url)}`,
+                brollMediaType: "video",
                 pexelsAlternatives: videos,
+                pexelsPhotoAlternatives: photos || [],
               };
             }
           } catch (e) {
@@ -160,6 +180,10 @@ export default function ProcessingScreen() {
 
       setModeSegments(updatedSegments);
 
+      // Step 4b: Auto-generate SFX markers from mode transitions
+      const sfxMarkers = generateSFXMarkers(updatedSegments, uuidv4);
+      setSFXMarkers(sfxMarkers);
+
       // Step 5: Generate phrase captions
       setStatus("building-video", "Montando seu vídeo...");
       const phrases = generatePhraseCaptions(transcription);
@@ -174,7 +198,7 @@ export default function ProcessingScreen() {
         error instanceof Error ? error.message : "Erro desconhecido no processamento"
       );
     }
-  }, [videoFile, setStatus, setModeSegments, setPhraseCaptions]);
+  }, [videoFile, setStatus, setModeSegments, setPhraseCaptions, setSFXMarkers]);
 
   useEffect(() => {
     if (hasStarted.current) return;

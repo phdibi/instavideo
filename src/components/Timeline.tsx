@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useCallback, useMemo, useState } from "react";
+import { useRef, useCallback, useMemo, useState, useEffect } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { useProjectStore } from "@/store/useProjectStore";
 import { getModeColor, getModeLabel } from "@/lib/modes";
+import { SFX_LABELS } from "@/lib/sfx";
 import { formatTime } from "@/lib/formatTime";
 import type { ModeSegment, PhraseCaption, SFXMarker } from "@/types";
 
@@ -29,6 +30,8 @@ export default function Timeline() {
     updatePhraseCaption,
     addSFXMarker,
     updateSFXMarker,
+    deleteModeSegment,
+    splitSegmentForBroll,
   } = useProjectStore();
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -39,6 +42,28 @@ export default function Timeline() {
     edge: "start" | "end";
   } | null>(null);
   const [isDraggingSFX, setIsDraggingSFX] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    segId: string;
+    segMode: "presenter" | "broll";
+    time: number;
+  } | null>(null);
+
+  // Close context menu on click outside or Escape
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleClose = () => setContextMenu(null);
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setContextMenu(null);
+    };
+    document.addEventListener("click", handleClose);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("click", handleClose);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [contextMenu]);
 
   const totalWidth = Math.max(videoDuration * PIXELS_PER_SECOND, 300);
 
@@ -287,6 +312,22 @@ export default function Timeline() {
                       selectedItem?.id === seg.id ? null : { type: "segment", id: seg.id }
                     )
                   }
+                  onContextMenu={(e) => {
+                    if (seg.mode === "typography") return; // no context menu for typography
+                    e.preventDefault();
+                    const scroll = scrollRef.current;
+                    if (!scroll) return;
+                    const rect = scroll.getBoundingClientRect();
+                    const x = e.clientX - rect.left + scroll.scrollLeft;
+                    const clickTime = pixelToTime(x);
+                    setContextMenu({
+                      x: e.clientX,
+                      y: e.clientY,
+                      segId: seg.id,
+                      segMode: seg.mode as "presenter" | "broll",
+                      time: clickTime,
+                    });
+                  }}
                 >
                   <div className="absolute inset-0 flex items-center px-2 overflow-hidden">
                     <span className="text-[10px] font-semibold truncate" style={{ color }}>
@@ -384,6 +425,16 @@ export default function Timeline() {
             onDoubleClick={handleSFXTrackDoubleClick}
           >
             <TrackLabel label="Sons" />
+            {sfxMarkers.length === 0 && (
+              <div
+                className="absolute top-0 bottom-0 flex items-center pointer-events-none"
+                style={{ left: LABEL_WIDTH + 16 }}
+              >
+                <span className="text-[9px] text-[var(--text-secondary)]/40 italic select-none">
+                  Duplo-clique para adicionar som
+                </span>
+              </div>
+            )}
             {sfxMarkers.map((marker) => {
               const x = timeToX(marker.time);
               const isSelected = selectedItem?.type === "sfx" && selectedItem.id === marker.id;
@@ -399,6 +450,7 @@ export default function Timeline() {
                     width: 14,
                     height: TRACK_HEIGHT - 8,
                   }}
+                  title={`${SFX_LABELS[marker.soundType]} — ${marker.time.toFixed(1)}s`}
                   onClick={(e) => {
                     e.stopPropagation();
                     setSelectedItem(
@@ -435,6 +487,38 @@ export default function Timeline() {
           </div>
         </div>
       </div>
+
+      {/* ═══ Context Menu ═══ */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 bg-[#1a1a1a] border border-white/10 rounded-lg shadow-xl py-1 min-w-[180px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {contextMenu.segMode === "presenter" && (
+            <button
+              className="w-full text-left px-4 py-2 text-sm text-white hover:bg-white/10 transition-colors"
+              onClick={() => {
+                splitSegmentForBroll(contextMenu.segId, contextMenu.time);
+                setContextMenu(null);
+              }}
+            >
+              Adicionar B-Roll aqui
+            </button>
+          )}
+          {contextMenu.segMode === "broll" && (
+            <button
+              className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-white/10 transition-colors"
+              onClick={() => {
+                deleteModeSegment(contextMenu.segId);
+                setContextMenu(null);
+              }}
+            >
+              Remover B-Roll
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

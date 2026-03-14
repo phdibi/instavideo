@@ -71,11 +71,15 @@ export default function ExportPanel() {
 
       // Pre-load b-roll videos
       const brollVideos: Record<string, HTMLVideoElement> = {};
-      const brollSegments = modeSegments.filter(
-        (s) => s.mode === "broll" && s.brollVideoUrl
+      const brollImages: Record<string, HTMLImageElement> = {};
+      const brollVideoSegments = modeSegments.filter(
+        (s) => s.mode === "broll" && s.brollVideoUrl && s.brollMediaType !== "photo"
       );
-      await Promise.all(
-        brollSegments.map(
+      const brollPhotoSegments = modeSegments.filter(
+        (s) => s.mode === "broll" && s.brollImageUrl && s.brollMediaType === "photo"
+      );
+      await Promise.all([
+        ...brollVideoSegments.map(
           (seg) =>
             new Promise<void>((resolve) => {
               const bv = document.createElement("video");
@@ -83,7 +87,7 @@ export default function ExportPanel() {
               bv.muted = true;
               bv.playsInline = true;
               bv.crossOrigin = "anonymous";
-              const timer = setTimeout(resolve, 10000); // 10s timeout per b-roll
+              const timer = setTimeout(resolve, 10000);
               bv.onloadeddata = () => {
                 clearTimeout(timer);
                 brollVideos[seg.id] = bv;
@@ -92,8 +96,23 @@ export default function ExportPanel() {
               bv.onerror = () => { clearTimeout(timer); resolve(); };
               bv.load();
             })
-        )
-      );
+        ),
+        ...brollPhotoSegments.map(
+          (seg) =>
+            new Promise<void>((resolve) => {
+              const img = new Image();
+              img.crossOrigin = "anonymous";
+              const timer = setTimeout(resolve, 10000);
+              img.onload = () => {
+                clearTimeout(timer);
+                brollImages[seg.id] = img;
+                resolve();
+              };
+              img.onerror = () => { clearTimeout(timer); resolve(); };
+              img.src = seg.brollImageUrl!;
+            })
+        ),
+      ]);
 
       // Set up audio
       audioCtx = new AudioContext();
@@ -237,8 +256,11 @@ export default function ExportPanel() {
           drawVideoCover(ctx, video, 0, 0, WIDTH, HEIGHT);
           ctx.restore();
         } else if (mode === "broll") {
-          const brollVid = segment ? brollVideos[segment.id] : null;
-          const hasBroll = brollVid && brollVid.readyState >= 2;
+          const isPhoto = segment?.brollMediaType === "photo";
+          const brollVid = (!isPhoto && segment) ? brollVideos[segment.id] : null;
+          const brollImg = (isPhoto && segment) ? brollImages[segment.id] : null;
+          const hasBroll = (brollVid && brollVid.readyState >= 2) || !!brollImg;
+          const brollMedia = brollImg || brollVid;
 
           // Compute effect transform once (shared across all layouts)
           const segDur = segment ? segment.endTime - segment.startTime : 1;
@@ -258,7 +280,7 @@ export default function ExportPanel() {
             drawVideoCover(ctx, video, 0, 0, WIDTH / 2, HEIGHT);
             ctx.restore();
 
-            if (hasBroll) {
+            if (hasBroll && brollMedia) {
               ctx.save();
               ctx.beginPath();
               ctx.rect(WIDTH / 2, 0, WIDTH / 2, HEIGHT);
@@ -269,7 +291,7 @@ export default function ExportPanel() {
                 -WIDTH * 0.25 + (transform.translateX / 100) * (WIDTH / 2),
                 -HEIGHT / 2 + (transform.translateY / 100) * HEIGHT
               );
-              drawVideoCover(ctx, brollVid, 0, 0, WIDTH / 2, HEIGHT);
+              drawMediaCover(ctx, brollMedia, 0, 0, WIDTH / 2, HEIGHT);
               ctx.restore();
             }
 
@@ -282,7 +304,7 @@ export default function ExportPanel() {
             ctx.fillStyle = "rgba(0,0,0,0.15)";
             ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-            if (hasBroll) {
+            if (hasBroll && brollMedia) {
               const entryProg = Math.min((time - (segment?.startTime || 0)) / 0.3, 1);
               const cardScale = 0.85 + entryProg * 0.15;
               const cardW = WIDTH * 0.84;
@@ -305,7 +327,7 @@ export default function ExportPanel() {
                 (transform.translateX / 100) * cardW,
                 (transform.translateY / 100) * cardH
               );
-              drawVideoCover(ctx, brollVid, 0, 0, cardW, cardH);
+              drawMediaCover(ctx, brollMedia, 0, 0, cardW, cardH);
               ctx.fillStyle = "rgba(0,0,0,0.08)";
               ctx.fillRect(0, 0, cardW, cardH);
               ctx.restore();
@@ -324,7 +346,7 @@ export default function ExportPanel() {
 
           } else if (layout === "pip") {
             // ── PIP: b-roll fullscreen, presenter in circle ──
-            if (hasBroll) {
+            if (hasBroll && brollMedia) {
               ctx.save();
               ctx.translate(WIDTH / 2, HEIGHT / 2);
               ctx.scale(transform.scale, transform.scale);
@@ -332,7 +354,7 @@ export default function ExportPanel() {
                 -WIDTH / 2 + (transform.translateX / 100) * WIDTH,
                 -HEIGHT / 2 + (transform.translateY / 100) * HEIGHT
               );
-              drawVideoCover(ctx, brollVid, 0, 0, WIDTH, HEIGHT);
+              drawMediaCover(ctx, brollMedia, 0, 0, WIDTH, HEIGHT);
               ctx.restore();
             }
             ctx.fillStyle = "rgba(0,0,0,0.25)";
@@ -357,7 +379,7 @@ export default function ExportPanel() {
 
           } else if (layout === "cinematic") {
             // ── Cinematic: b-roll with letterbox bars ──
-            if (hasBroll) {
+            if (hasBroll && brollMedia) {
               ctx.save();
               ctx.translate(WIDTH / 2, HEIGHT / 2);
               ctx.scale(transform.scale, transform.scale);
@@ -365,7 +387,7 @@ export default function ExportPanel() {
                 -WIDTH / 2 + (transform.translateX / 100) * WIDTH,
                 -HEIGHT / 2 + (transform.translateY / 100) * HEIGHT
               );
-              drawVideoCover(ctx, brollVid, 0, 0, WIDTH, HEIGHT);
+              drawMediaCover(ctx, brollMedia, 0, 0, WIDTH, HEIGHT);
               ctx.restore();
             }
             ctx.fillStyle = "rgba(0,0,0,0.25)";
@@ -391,7 +413,7 @@ export default function ExportPanel() {
             ctx.restore();
 
             // B-roll side
-            if (hasBroll) {
+            if (hasBroll && brollMedia) {
               ctx.save();
               ctx.beginPath();
               ctx.moveTo(WIDTH * 0.6, 0);
@@ -406,7 +428,7 @@ export default function ExportPanel() {
                 -WIDTH / 2 + (transform.translateX / 100) * WIDTH,
                 -HEIGHT / 2 + (transform.translateY / 100) * HEIGHT
               );
-              drawVideoCover(ctx, brollVid, 0, 0, WIDTH, HEIGHT);
+              drawMediaCover(ctx, brollMedia, 0, 0, WIDTH, HEIGHT);
               ctx.restore();
             }
 
@@ -422,7 +444,7 @@ export default function ExportPanel() {
 
           } else {
             // ── Fullscreen (default) ──
-            if (hasBroll) {
+            if (hasBroll && brollMedia) {
               ctx.save();
               ctx.translate(WIDTH / 2, HEIGHT / 2);
               ctx.scale(transform.scale, transform.scale);
@@ -430,7 +452,7 @@ export default function ExportPanel() {
                 -WIDTH / 2 + (transform.translateX / 100) * WIDTH,
                 -HEIGHT / 2 + (transform.translateY / 100) * HEIGHT
               );
-              drawVideoCover(ctx, brollVid, 0, 0, WIDTH, HEIGHT);
+              drawMediaCover(ctx, brollMedia, 0, 0, WIDTH, HEIGHT);
               ctx.restore();
             } else {
               ctx.fillStyle = "#0a0a0a";
@@ -658,6 +680,35 @@ function roundedRect(
   ctx.lineTo(x, y + r);
   ctx.quadraticCurveTo(x, y, x + r, y);
   ctx.closePath();
+}
+
+// Helper: draw video or image covering the given rect (center crop)
+function drawMediaCover(
+  ctx: CanvasRenderingContext2D,
+  media: HTMLVideoElement | HTMLImageElement,
+  dx: number,
+  dy: number,
+  dw: number,
+  dh: number
+) {
+  const isVideo = media instanceof HTMLVideoElement;
+  const mw = isVideo ? media.videoWidth : media.naturalWidth;
+  const mh = isVideo ? media.videoHeight : media.naturalHeight;
+  if (!mw || !mh) return;
+
+  const targetRatio = dw / dh;
+  const mediaRatio = mw / mh;
+
+  let sx = 0, sy = 0, sw = mw, sh = mh;
+  if (mediaRatio > targetRatio) {
+    sw = mh * targetRatio;
+    sx = (mw - sw) / 2;
+  } else {
+    sh = mw / targetRatio;
+    sy = (mh - sh) / 2;
+  }
+
+  ctx.drawImage(media, sx, sy, sw, sh, dx, dy, dw, dh);
 }
 
 // Helper: draw video covering the given rect (center crop)

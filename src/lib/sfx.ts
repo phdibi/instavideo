@@ -476,6 +476,78 @@ export const SFX_PLAY_MAP: Record<SFXSoundType, (vol: number) => void> = {
   "reverse-hit": playReverseHit,
 };
 
+// ── SFX Sound Labels ────────────────────────────────────────────────────
+export const SFX_LABELS: Record<SFXSoundType, string> = {
+  "whoosh": "Whoosh In",
+  "whoosh-out": "Whoosh Out",
+  "impact": "Impacto",
+  "rise": "Rise",
+  "slide": "Slide",
+  "pop": "Pop",
+  "swoosh": "Swoosh",
+  "ding": "Ding",
+  "thud": "Thud",
+  "shimmer": "Shimmer",
+  "snap": "Snap",
+  "reverse-hit": "Reverse Hit",
+};
+
+// ── Auto-generate SFX Markers from Mode Segments ────────────────────
+
+interface GenerateSegment {
+  mode: VideoMode;
+  startTime: number;
+  endTime: number;
+  brollLayout?: BRollLayout;
+}
+
+/**
+ * Generates SFX markers at each mode transition.
+ * Returns markers sorted by time.
+ */
+export function generateSFXMarkers(
+  segments: GenerateSegment[],
+  idGenerator: () => string
+): SFXMarker[] {
+  const sorted = [...segments].sort((a, b) => a.startTime - b.startTime);
+  const markers: SFXMarker[] = [];
+
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = sorted[i - 1];
+    const curr = sorted[i];
+    if (curr.mode === prev.mode) continue;
+
+    const time = curr.startTime;
+    let soundType: SFXSoundType = "whoosh";
+
+    // Entering b-roll
+    if (curr.mode === "broll") {
+      const layout = curr.brollLayout || "fullscreen";
+      if (layout === "split") soundType = "slide";
+      else if (layout === "diagonal") soundType = "swoosh";
+      else if (layout === "cinematic") soundType = "reverse-hit";
+      else if (layout === "pip") soundType = "pop";
+      else soundType = "whoosh";
+    }
+    // Entering typography
+    else if (curr.mode === "typography") {
+      soundType = "impact";
+    }
+    // Exiting b-roll → presenter
+    else if (prev.mode === "broll") {
+      soundType = "whoosh-out";
+    }
+    // Exiting typography → presenter
+    else if (prev.mode === "typography") {
+      soundType = "rise";
+    }
+
+    markers.push({ id: idGenerator(), time, soundType });
+  }
+
+  return markers;
+}
+
 // ── Transition Player (stateless — caller tracks mode changes) ────────
 
 /**

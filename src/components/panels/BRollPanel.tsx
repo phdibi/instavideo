@@ -1,6 +1,7 @@
 "use client";
 
 import { useProjectStore } from "@/store/useProjectStore";
+import { getCurrentMode } from "@/lib/modes";
 import BRollSwapGrid from "../BRollSwapGrid";
 import type { BRollEffect, BRollLayout } from "@/types";
 import {
@@ -18,6 +19,8 @@ import {
   PictureInPicture2,
   Clapperboard as CinematicIcon,
   Diamond,
+  Plus,
+  Trash2,
 } from "lucide-react";
 
 const EFFECTS: { value: BRollEffect; label: string; icon: React.ReactNode }[] = [
@@ -42,7 +45,7 @@ const LAYOUTS: { value: BRollLayout; label: string; icon: React.ReactNode }[] = 
 ];
 
 export default function BRollPanel() {
-  const { modeSegments, selectedItem, updateModeSegment } = useProjectStore();
+  const { modeSegments, selectedItem, currentTime, updateModeSegment, deleteModeSegment, splitSegmentForBroll } = useProjectStore();
 
   const selectedSegment = modeSegments.find(
     (s) =>
@@ -51,10 +54,25 @@ export default function BRollPanel() {
       selectedItem.id === s.id
   );
 
+  // Check if playhead is on a presenter segment (for "Add B-Roll" button)
+  const currentSegment = getCurrentMode(modeSegments, currentTime);
+  const playheadOnPresenter = currentSegment?.mode === "presenter";
+
   if (!selectedSegment) {
     return (
-      <div className="p-4 text-sm text-zinc-500 text-center py-8">
-        Selecione um segmento B-Roll na timeline para editar.
+      <div className="p-4 space-y-4">
+        <p className="text-sm text-zinc-500 text-center py-4">
+          Selecione um segmento B-Roll na timeline para editar.
+        </p>
+        {playheadOnPresenter && currentSegment && (
+          <button
+            onClick={() => splitSegmentForBroll(currentSegment.id, currentTime)}
+            className="w-full py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2 bg-orange-500 text-white hover:bg-orange-600 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Adicionar B-Roll aqui
+          </button>
+        )}
       </div>
     );
   }
@@ -149,6 +167,17 @@ export default function BRollPanel() {
 
       {/* B-Roll swap grid */}
       <BRollSwapGrid segment={selectedSegment} />
+
+      {/* Remove B-Roll button */}
+      <div className="px-4 pb-4">
+        <button
+          onClick={() => deleteModeSegment(selectedSegment.id)}
+          className="w-full py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2 bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+        >
+          <Trash2 className="w-4 h-4" />
+          Remover B-Roll
+        </button>
+      </div>
     </div>
   );
 }

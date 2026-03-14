@@ -26,6 +26,9 @@
     },
     "src/app/api/proxy-video/route.ts": {
       "maxDuration": 60
+    },
+    "src/app/api/generate-image/route.ts": {
+      "maxDuration": 60
     }
   }
 }

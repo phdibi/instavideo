@@ -250,6 +250,11 @@ export default function ExportPanel() {
         }
 
         if (mode === "presenter") {
+          // Draw background image behind presenter
+          if (bgImage.complete && bgImage.naturalWidth > 0) {
+            drawMediaCover(ctx, bgImage, 0, 0, WIDTH, HEIGHT);
+          }
+
           // Presenter fills entire 9:16 frame with dynamic Ken Burns
           const presenterSegs = modeSegments.filter((s) => s.mode === "presenter");
           const presenterIndex = segment ? presenterSegs.findIndex((s) => s.id === segment.id) : 0;
@@ -265,11 +270,6 @@ export default function ExportPanel() {
           drawVideoCover(ctx, video, 0, 0, WIDTH, HEIGHT);
           ctx.restore();
         } else if (mode === "broll") {
-          // Draw background image behind b-roll
-          if (bgImage.complete && bgImage.naturalWidth > 0) {
-            drawMediaCover(ctx, bgImage, 0, 0, WIDTH, HEIGHT);
-          }
-
           const isPhoto = segment?.brollMediaType === "photo";
           const brollVid = (!isPhoto && segment) ? brollVideos[segment.id] : null;
           const brollImg = (isPhoto && segment) ? brollImages[segment.id] : null;
@@ -484,13 +484,7 @@ export default function ExportPanel() {
           const typoAnim = segment?.typographyAnimation || "pop-in";
           const typoStagger = (segment?.typographyStagger ?? 80) / 1000;
 
-          // Draw background image, then overlay with typography bg color
-          if (bgImage.complete && bgImage.naturalWidth > 0) {
-            drawMediaCover(ctx, bgImage, 0, 0, WIDTH, HEIGHT);
-            ctx.fillStyle = bg === "#F5F0E8" ? "rgba(245,240,232,0.85)" : "rgba(10,10,10,0.85)";
-          } else {
-            ctx.fillStyle = bg;
-          }
+          ctx.fillStyle = bg;
           ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
           const elapsed = segment ? time - segment.startTime : 0;

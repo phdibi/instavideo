@@ -188,40 +188,24 @@ export default function ExportPanel() {
         }
 
         if (mode === "presenter") {
-          // Black background
-          ctx.fillStyle = "#0a0a0a";
-          ctx.fillRect(0, 0, WIDTH, HEIGHT);
-
-          // Presenter video — proportional 9:16 aspect ratio
-          const presenterW = WIDTH * 0.90;
-          const presenterH = presenterW * (16 / 9);
-          const px = (WIDTH - presenterW) / 2;
-          const py = (HEIGHT - presenterH) / 2;
-
-          // Ken Burns
+          // Presenter fills entire 9:16 frame with dynamic Ken Burns
+          const presenterSegs = modeSegments.filter((s) => s.mode === "presenter");
+          const presenterIndex = segment ? presenterSegs.findIndex((s) => s.id === segment.id) : 0;
           const segDur = segment
             ? segment.endTime - segment.startTime
             : 1;
           const segProgress = segment
             ? Math.min((time - segment.startTime) / segDur, 1)
             : 0;
-          const scale = 1 + segProgress * 0.03;
+          // Alternate zoom direction per presenter segment
+          const zoomIn = presenterIndex % 2 === 0;
+          const scale = zoomIn ? 1 + segProgress * 0.06 : 1.06 - segProgress * 0.06;
 
           ctx.save();
-          // Rounded rect clip
-          roundedRect(ctx, px, py, presenterW, presenterH, 18);
-          ctx.clip();
-
-          // Scale from center
-          const cx = px + presenterW / 2;
-          const cy = py + presenterH / 2;
-          ctx.translate(cx, cy);
+          ctx.translate(WIDTH / 2, HEIGHT / 2);
           ctx.scale(scale, scale);
-          ctx.translate(-cx, -cy);
-
-          // Draw video (contain — fit without cropping)
-          drawVideoContain(ctx, video, px, py, presenterW, presenterH);
-
+          ctx.translate(-WIDTH / 2, -HEIGHT / 2);
+          drawVideoCover(ctx, video, 0, 0, WIDTH, HEIGHT);
           ctx.restore();
         } else if (mode === "broll") {
           // B-roll fullscreen with effect

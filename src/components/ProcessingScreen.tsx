@@ -138,14 +138,19 @@ export default function ProcessingScreen() {
         })
       );
 
-      // Set default b-roll effects on all broll segments
+      // Set varied default b-roll effects for visual dynamism
+      const brollEffectsRotation = [
+        "zoom-in", "ken-burns", "pan-left", "zoom-out", "pan-right", "parallax",
+      ] as const;
+      let brollIdx = 0;
       for (let i = 0; i < updatedSegments.length; i++) {
         if (updatedSegments[i].mode === "broll") {
           updatedSegments[i] = {
             ...updatedSegments[i],
-            brollEffect: "zoom-in",
+            brollEffect: brollEffectsRotation[brollIdx % brollEffectsRotation.length],
             brollEffectIntensity: 1.0,
           };
+          brollIdx++;
         }
       }
 

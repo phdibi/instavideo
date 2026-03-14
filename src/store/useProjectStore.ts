@@ -28,7 +28,7 @@ interface ProjectStore {
   currentTime: number;
   isPlaying: boolean;
   segments: VideoSegment[];
-  selectedItem: { type: "caption" | "effect" | "broll" | "segment"; id: string } | null;
+  selectedItem: { type: "caption" | "effect" | "broll" | "segment" | "phrase"; id: string } | null;
   teleprompterSettings: TeleprompterSettings;
   brandingConfig: BrandingConfig;
   sfxConfig: SFXConfig;
@@ -42,6 +42,8 @@ interface ProjectStore {
   setModeSegments: (segments: ModeSegment[]) => void;
   updateModeSegment: (id: string, updates: Partial<ModeSegment>) => void;
   setPhraseCaptions: (captions: PhraseCaption[]) => void;
+  updatePhraseCaption: (id: string, updates: Partial<PhraseCaption>) => void;
+  deletePhraseCaption: (id: string) => void;
   setMusicConfig: (config: Partial<MusicConfig>) => void;
   setSelectedMusicTrack: (trackId: string | null) => void;
   setSegments: (segments: VideoSegment[]) => void;
@@ -63,7 +65,7 @@ interface ProjectStore {
   setEditPlan: (plan: EditPlan) => void;
   setCurrentTime: (time: number) => void;
   setIsPlaying: (playing: boolean) => void;
-  setSelectedItem: (item: { type: "caption" | "effect" | "broll" | "segment"; id: string } | null) => void;
+  setSelectedItem: (item: { type: "caption" | "effect" | "broll" | "segment" | "phrase"; id: string } | null) => void;
   setTeleprompterSettings: (settings: Partial<TeleprompterSettings>) => void;
   setBrandingConfig: (config: Partial<BrandingConfig>) => void;
   setSFXConfig: (config: Partial<SFXConfig>) => void;
@@ -212,6 +214,16 @@ export const useProjectStore = create<ProjectStore>((set) => ({
       ),
     })),
   setPhraseCaptions: (captions) => set({ phraseCaptions: captions }),
+  updatePhraseCaption: (id, updates) =>
+    set((state) => ({
+      phraseCaptions: state.phraseCaptions
+        .map((c) => (c.id === id ? { ...c, ...updates } : c))
+        .sort((a, b) => a.startTime - b.startTime),
+    })),
+  deletePhraseCaption: (id) =>
+    set((state) => ({
+      phraseCaptions: state.phraseCaptions.filter((c) => c.id !== id),
+    })),
   setMusicConfig: (config) =>
     set((state) => ({
       musicConfig: { ...state.musicConfig, ...config },

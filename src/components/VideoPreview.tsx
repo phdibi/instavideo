@@ -132,7 +132,13 @@ export default function VideoPreview() {
     }
   }, [currentMode, currentSegment?.brollVideoUrl, isPlaying]);
 
-  // Ken Burns scale for presenter mode
+  // Ken Burns for presenter — alternating zoom direction per segment index
+  const presenterIdx = useMemo(() => {
+    if (!currentSegment) return 0;
+    const presenterSegs = modeSegments.filter((s) => s.mode === "presenter");
+    return presenterSegs.findIndex((s) => s.id === currentSegment.id);
+  }, [currentSegment, modeSegments]);
+
   const presenterScale = useMemo(() => {
     if (currentMode !== "presenter" || !currentSegment) return 1;
     const segDuration = currentSegment.endTime - currentSegment.startTime;
@@ -141,8 +147,10 @@ export default function VideoPreview() {
       (currentTime - currentSegment.startTime) / segDuration,
       1
     );
-    return 1 + progress * 0.03; // 1.0 → 1.03
-  }, [currentMode, currentSegment, currentTime]);
+    // Alternate: even segments zoom in, odd segments zoom out
+    const zoomIn = presenterIdx % 2 === 0;
+    return zoomIn ? 1 + progress * 0.06 : 1.06 - progress * 0.06;
+  }, [currentMode, currentSegment, currentTime, presenterIdx]);
 
   // B-roll effect transform
   const brollTransformCSS = useMemo(() => {
@@ -245,26 +253,24 @@ export default function VideoPreview() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Video Container — 9:16 aspect ratio */}
-      <div
-        ref={containerRef}
-        className="relative flex-1 bg-black rounded-xl overflow-hidden mx-2 mt-2 md:mx-4 md:mt-4"
-      >
-        <div className="absolute inset-0 overflow-hidden">
+      {/* Video Container — 9:16 aspect ratio, centered */}
+      <div className="flex-1 flex items-center justify-center bg-black mx-2 mt-2 md:mx-4 md:mt-4">
+        <div
+          ref={containerRef}
+          className="relative bg-black rounded-xl overflow-hidden h-full"
+          style={{ aspectRatio: "9/16", maxWidth: "100%" }}
+        >
+          <div className="absolute inset-0 overflow-hidden">
 
-          {/* ── Layer 1: Background ── */}
-          <div className="absolute inset-0 bg-[#0a0a0a]" />
+            {/* ── Layer 1: Background ── */}
+            <div className="absolute inset-0 bg-[#0a0a0a]" />
 
-          {/* ── Layer 2: Presenter Video ── */}
-          <div
-            className={`absolute inset-0 flex items-center justify-center transition-opacity duration-0 ${
-              currentMode === "presenter" ? "opacity-100" : "opacity-0"
-            }`}
-          >
+            {/* ── Layer 2: Presenter Video (fullscreen 9:16) ── */}
             <div
-              className="w-[90%] max-h-[85%] rounded-3xl overflow-hidden"
+              className={`absolute inset-0 overflow-hidden transition-opacity duration-200 ease-in-out ${
+                currentMode === "presenter" ? "opacity-100" : "opacity-0"
+              }`}
               style={{
-                aspectRatio: "9/16",
                 transform: `scale(${presenterScale})`,
                 willChange: "transform",
               }}
@@ -272,7 +278,7 @@ export default function VideoPreview() {
               <video
                 ref={videoRef}
                 src={videoUrl}
-                className="w-full h-full object-contain"
+                className="w-full h-full object-cover"
                 onLoadedMetadata={(e) => {
                   const vid = e.target as HTMLVideoElement;
                   if (Number.isFinite(vid.duration) && vid.duration > 0) {
@@ -293,11 +299,10 @@ export default function VideoPreview() {
                 playsInline
               />
             </div>
-          </div>
 
           {/* ── Layer 2b: B-Roll Video (Mode B) ── */}
           <div
-            className={`absolute inset-0 transition-opacity duration-0 overflow-hidden ${
+            className={`absolute inset-0 transition-opacity duration-200 ease-in-out overflow-hidden ${
               currentMode === "broll" ? "opacity-100" : "opacity-0 pointer-events-none"
             }`}
           >
@@ -339,6 +344,7 @@ export default function VideoPreview() {
           <div className="absolute inset-0 z-50 pointer-events-none">
             <CaptionOverlay currentTime={currentTime} />
           </div>
+        </div>
         </div>
       </div>
 

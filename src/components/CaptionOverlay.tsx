@@ -21,17 +21,17 @@ function getAnimationVariants(animation: CaptionConfig["animation"]) {
       };
     case "pop":
       return {
-        initial: { opacity: 0, scale: 0.85 },
-        animate: { opacity: 1, scale: 1 },
-        exit: { opacity: 0 },
-        transition: { duration: 0.12, ease: "easeOut" as const },
+        initial: { opacity: 0, scale: 0.5, y: 10 },
+        animate: { opacity: 1, scale: 1, y: 0 },
+        exit: { opacity: 0, scale: 0.9 },
+        transition: { type: "spring" as const, damping: 12, stiffness: 400, duration: 0.2 },
       };
     case "slide-up":
       return {
-        initial: { opacity: 0, y: 20 },
+        initial: { opacity: 0, y: 30 },
         animate: { opacity: 1, y: 0 },
-        exit: { opacity: 0, y: -10 },
-        transition: { duration: 0.15 },
+        exit: { opacity: 0, y: -15 },
+        transition: { type: "spring" as const, damping: 15, stiffness: 300 },
       };
     case "typewriter":
       return {

@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { AVAILABLE_FONTS } from "@/lib/fonts";
 import type { CaptionConfig } from "@/types";
@@ -7,6 +8,9 @@ import {
   AlignVerticalJustifyStart,
   AlignVerticalJustifyCenter,
   AlignVerticalJustifyEnd,
+  ChevronLeft,
+  ChevronRight,
+  Trash2,
 } from "lucide-react";
 
 const PRESETS: { name: string; config: Partial<CaptionConfig> }[] = [
@@ -84,10 +88,213 @@ const ANIMATIONS: { value: CaptionConfig["animation"]; label: string }[] = [
 ];
 
 export default function CaptionPanel() {
-  const { captionConfig, setCaptionConfig } = useProjectStore();
+  const {
+    captionConfig,
+    setCaptionConfig,
+    phraseCaptions,
+    selectedItem,
+    setSelectedItem,
+    updatePhraseCaption,
+    deletePhraseCaption,
+    setPhraseCaptions,
+    setCurrentTime,
+  } = useProjectStore();
+
+  // Get selected phrase and its neighbors
+  const selectedPhrase = useMemo(() => {
+    if (selectedItem?.type !== "phrase") return null;
+    return phraseCaptions.find((c) => c.id === selectedItem.id) || null;
+  }, [selectedItem, phraseCaptions]);
+
+  const sorted = useMemo(
+    () => [...phraseCaptions].sort((a, b) => a.startTime - b.startTime),
+    [phraseCaptions]
+  );
+
+  const selectedIdx = selectedPhrase
+    ? sorted.findIndex((c) => c.id === selectedPhrase.id)
+    : -1;
+  const prevPhrase = selectedIdx > 0 ? sorted[selectedIdx - 1] : null;
+  const nextPhrase = selectedIdx >= 0 && selectedIdx < sorted.length - 1 ? sorted[selectedIdx + 1] : null;
+
+  // Move the first word of selected phrase to end of previous phrase
+  const moveWordToPrev = () => {
+    if (!selectedPhrase || !prevPhrase) return;
+    const words = selectedPhrase.text.split(" ");
+    if (words.length <= 1) return;
+    const wordToMove = words[0];
+    const remaining = words.slice(1).join(" ");
+    updatePhraseCaption(prevPhrase.id, {
+      text: prevPhrase.text + " " + wordToMove,
+      endTime: selectedPhrase.startTime + (selectedPhrase.endTime - selectedPhrase.startTime) * (1 / words.length),
+    });
+    updatePhraseCaption(selectedPhrase.id, {
+      text: remaining,
+      startTime: selectedPhrase.startTime + (selectedPhrase.endTime - selectedPhrase.startTime) * (1 / words.length),
+    });
+  };
+
+  // Move the last word of selected phrase to beginning of next phrase
+  const moveWordToNext = () => {
+    if (!selectedPhrase || !nextPhrase) return;
+    const words = selectedPhrase.text.split(" ");
+    if (words.length <= 1) return;
+    const wordToMove = words[words.length - 1];
+    const remaining = words.slice(0, -1).join(" ");
+    const splitTime = selectedPhrase.startTime + (selectedPhrase.endTime - selectedPhrase.startTime) * ((words.length - 1) / words.length);
+    updatePhraseCaption(selectedPhrase.id, {
+      text: remaining,
+      endTime: splitTime,
+    });
+    updatePhraseCaption(nextPhrase.id, {
+      text: wordToMove + " " + nextPhrase.text,
+      startTime: splitTime,
+    });
+  };
+
+  // Move last word of previous phrase to beginning of selected
+  const pullWordFromPrev = () => {
+    if (!selectedPhrase || !prevPhrase) return;
+    const prevWords = prevPhrase.text.split(" ");
+    if (prevWords.length <= 1) return;
+    const wordToMove = prevWords[prevWords.length - 1];
+    const remaining = prevWords.slice(0, -1).join(" ");
+    const splitTime = prevPhrase.startTime + (prevPhrase.endTime - prevPhrase.startTime) * ((prevWords.length - 1) / prevWords.length);
+    updatePhraseCaption(prevPhrase.id, {
+      text: remaining,
+      endTime: splitTime,
+    });
+    updatePhraseCaption(selectedPhrase.id, {
+      text: wordToMove + " " + selectedPhrase.text,
+      startTime: splitTime,
+    });
+  };
+
+  // Move first word of next phrase to end of selected
+  const pullWordFromNext = () => {
+    if (!selectedPhrase || !nextPhrase) return;
+    const nextWords = nextPhrase.text.split(" ");
+    if (nextWords.length <= 1) return;
+    const wordToMove = nextWords[0];
+    const remaining = nextWords.slice(1).join(" ");
+    const splitTime = nextPhrase.startTime + (nextPhrase.endTime - nextPhrase.startTime) * (1 / nextWords.length);
+    updatePhraseCaption(selectedPhrase.id, {
+      text: selectedPhrase.text + " " + wordToMove,
+      endTime: splitTime,
+    });
+    updatePhraseCaption(nextPhrase.id, {
+      text: remaining,
+      startTime: splitTime,
+    });
+  };
 
   return (
     <div className="p-4 space-y-5 overflow-y-auto max-h-full">
+      {/* ═══ Word Editor (when phrase selected) ═══ */}
+      {selectedPhrase && (
+        <Section title="Editar frase selecionada">
+          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-3 space-y-3">
+            {/* Current phrase display */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[var(--text-secondary)]">
+                {selectedPhrase.startTime.toFixed(1)}s – {selectedPhrase.endTime.toFixed(1)}s
+              </span>
+              <button
+                onClick={() => {
+                  deletePhraseCaption(selectedPhrase.id);
+                  setSelectedItem(null);
+                }}
+                className="ml-auto p-1 rounded hover:bg-red-500/20 transition-colors"
+                title="Deletar frase"
+              >
+                <Trash2 className="w-3 h-3 text-red-400" />
+              </button>
+            </div>
+
+            {/* Words with navigation */}
+            <div className="flex flex-wrap gap-1.5">
+              {selectedPhrase.text.split(" ").map((word, i) => (
+                <span
+                  key={i}
+                  className="px-2 py-1 bg-white/10 rounded-md text-sm font-semibold"
+                >
+                  {word}
+                </span>
+              ))}
+            </div>
+
+            {/* Move buttons */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={moveWordToPrev}
+                disabled={!prevPhrase || selectedPhrase.text.split(" ").length <= 1}
+                className="flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px] bg-[var(--surface-hover)] border border-[var(--border)] hover:border-[var(--accent)]/50 disabled:opacity-30 disabled:pointer-events-none transition-all"
+                title="Mover 1ª palavra para frase anterior"
+              >
+                <ChevronLeft className="w-3 h-3" />
+                Enviar ←
+              </button>
+              <button
+                onClick={moveWordToNext}
+                disabled={!nextPhrase || selectedPhrase.text.split(" ").length <= 1}
+                className="flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px] bg-[var(--surface-hover)] border border-[var(--border)] hover:border-[var(--accent)]/50 disabled:opacity-30 disabled:pointer-events-none transition-all"
+                title="Mover última palavra para frase seguinte"
+              >
+                Enviar →
+                <ChevronRight className="w-3 h-3" />
+              </button>
+              <button
+                onClick={pullWordFromPrev}
+                disabled={!prevPhrase || (prevPhrase?.text.split(" ").length ?? 0) <= 1}
+                className="flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px] bg-[var(--surface-hover)] border border-[var(--border)] hover:border-[var(--accent)]/50 disabled:opacity-30 disabled:pointer-events-none transition-all"
+                title="Puxar última palavra da frase anterior"
+              >
+                <ChevronRight className="w-3 h-3" />
+                Puxar ←
+              </button>
+              <button
+                onClick={pullWordFromNext}
+                disabled={!nextPhrase || (nextPhrase?.text.split(" ").length ?? 0) <= 1}
+                className="flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px] bg-[var(--surface-hover)] border border-[var(--border)] hover:border-[var(--accent)]/50 disabled:opacity-30 disabled:pointer-events-none transition-all"
+                title="Puxar 1ª palavra da frase seguinte"
+              >
+                <ChevronLeft className="w-3 h-3" />
+                Puxar →
+              </button>
+            </div>
+
+            {/* Context: show prev/next phrases */}
+            <div className="space-y-1 pt-1 border-t border-[var(--border)]">
+              {prevPhrase && (
+                <button
+                  onClick={() => {
+                    setSelectedItem({ type: "phrase", id: prevPhrase.id });
+                    setCurrentTime(prevPhrase.startTime);
+                  }}
+                  className="w-full text-left px-2 py-1 rounded-md text-[10px] text-[var(--text-secondary)] hover:bg-white/5 transition-colors truncate"
+                >
+                  ← {prevPhrase.text}
+                </button>
+              )}
+              <div className="px-2 py-1 rounded-md text-xs font-bold text-white bg-white/10">
+                {selectedPhrase.text}
+              </div>
+              {nextPhrase && (
+                <button
+                  onClick={() => {
+                    setSelectedItem({ type: "phrase", id: nextPhrase.id });
+                    setCurrentTime(nextPhrase.startTime);
+                  }}
+                  className="w-full text-left px-2 py-1 rounded-md text-[10px] text-[var(--text-secondary)] hover:bg-white/5 transition-colors truncate"
+                >
+                  {nextPhrase.text} →
+                </button>
+              )}
+            </div>
+          </div>
+        </Section>
+      )}
+
       {/* Presets */}
       <Section title="Presets">
         <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">

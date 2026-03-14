@@ -53,7 +53,7 @@ export default function TypographyCard({
     return (
       <div
         className="absolute inset-0 flex items-center justify-center px-8"
-        style={{ backgroundColor: background }}
+        style={{ backgroundColor: background === "#F5F0E8" ? "rgba(245,240,232,0.85)" : "rgba(10,10,10,0.85)" }}
       >
         <div className="flex flex-wrap justify-center max-w-[90%]" style={baseStyle}>
           {chars.map((ch, i) => {
@@ -87,7 +87,7 @@ export default function TypographyCard({
   return (
     <div
       className="absolute inset-0 flex items-center justify-center px-8"
-      style={{ backgroundColor: background }}
+      style={{ backgroundColor: background === "#F5F0E8" ? "rgba(245,240,232,0.85)" : "rgba(10,10,10,0.85)" }}
     >
       <div className="flex flex-wrap justify-center gap-x-[0.4em] gap-y-2 max-w-[90%]">
         {words.map((word, i) => {

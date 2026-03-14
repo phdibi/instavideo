@@ -311,6 +311,13 @@ export default function VideoPreview() {
 
             {/* ── Layer 1: Background ── */}
             <div className="absolute inset-0 bg-[#0a0a0a]" />
+            {(currentMode === "broll" || currentMode === "typography") && (
+              <img
+                src="/background.png"
+                alt=""
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+            )}
 
             {/* ── Layer 2: Presenter Video ── */}
             <div

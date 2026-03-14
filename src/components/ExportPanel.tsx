@@ -69,6 +69,15 @@ export default function ExportPanel() {
         video.load();
       });
 
+      // Pre-load background image
+      const bgImage = new Image();
+      bgImage.src = "/background.png";
+      await new Promise<void>((resolve) => {
+        bgImage.onload = () => resolve();
+        bgImage.onerror = () => resolve(); // fallback: no bg
+        setTimeout(resolve, 5000);
+      });
+
       // Pre-load b-roll videos
       const brollVideos: Record<string, HTMLVideoElement> = {};
       const brollImages: Record<string, HTMLImageElement> = {};
@@ -256,6 +265,11 @@ export default function ExportPanel() {
           drawVideoCover(ctx, video, 0, 0, WIDTH, HEIGHT);
           ctx.restore();
         } else if (mode === "broll") {
+          // Draw background image behind b-roll
+          if (bgImage.complete && bgImage.naturalWidth > 0) {
+            drawMediaCover(ctx, bgImage, 0, 0, WIDTH, HEIGHT);
+          }
+
           const isPhoto = segment?.brollMediaType === "photo";
           const brollVid = (!isPhoto && segment) ? brollVideos[segment.id] : null;
           const brollImg = (isPhoto && segment) ? brollImages[segment.id] : null;
@@ -470,7 +484,13 @@ export default function ExportPanel() {
           const typoAnim = segment?.typographyAnimation || "pop-in";
           const typoStagger = (segment?.typographyStagger ?? 80) / 1000;
 
-          ctx.fillStyle = bg;
+          // Draw background image, then overlay with typography bg color
+          if (bgImage.complete && bgImage.naturalWidth > 0) {
+            drawMediaCover(ctx, bgImage, 0, 0, WIDTH, HEIGHT);
+            ctx.fillStyle = bg === "#F5F0E8" ? "rgba(245,240,232,0.85)" : "rgba(10,10,10,0.85)";
+          } else {
+            ctx.fillStyle = bg;
+          }
           ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
           const elapsed = segment ? time - segment.startTime : 0;

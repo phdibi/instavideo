@@ -53,7 +53,7 @@ export default function BRollSwapGrid({ segment }: Props) {
 
   const selectPhoto = (photo: PexelsPhotoResult) => {
     updateModeSegment(segment.id, {
-      brollImageUrl: photo.url,
+      brollImageUrl: `/api/proxy-video?url=${encodeURIComponent(photo.url)}`,
       brollMediaType: "photo",
       brollVideoUrl: undefined,
     });

@@ -138,7 +138,7 @@ export default function ProcessingScreen() {
               // Short segments: prefer photo for more visible effect on static image
               updatedSegments[idx] = {
                 ...updatedSegments[idx],
-                brollImageUrl: photos[0].url,
+                brollImageUrl: `/api/proxy-video?url=${encodeURIComponent(photos[0].url)}`,
                 brollMediaType: "photo",
                 pexelsAlternatives: videos,
                 pexelsPhotoAlternatives: photos,

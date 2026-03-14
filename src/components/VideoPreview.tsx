@@ -418,21 +418,20 @@ export default function VideoPreview() {
                 willChange: brollTransformCSS ? "transform" : undefined,
               }}
             >
-              {brollIsPhoto ? (
-                <img
-                  ref={brollImageRef}
-                  className="w-full h-full object-cover"
-                  alt=""
-                />
-              ) : (
-                <video
-                  ref={brollVideoRef}
-                  className="w-full h-full object-cover"
-                  loop
-                  muted
-                  playsInline
-                />
-              )}
+              <img
+                ref={brollImageRef}
+                className="w-full h-full object-cover"
+                style={{ display: brollIsPhoto ? "block" : "none" }}
+                alt=""
+              />
+              <video
+                ref={brollVideoRef}
+                className="w-full h-full object-cover"
+                style={{ display: brollIsPhoto ? "none" : "block" }}
+                loop
+                muted
+                playsInline
+              />
             </div>
             {/* Dark overlay on b-roll */}
             <div className={`absolute inset-0 ${

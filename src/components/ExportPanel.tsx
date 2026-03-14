@@ -567,10 +567,62 @@ export default function ExportPanel() {
         }
 
         // Captions on top (all modes) — using captionConfig
-        const activeCaption = phraseCaptions.find(
+        const activeCaptions = phraseCaptions.filter(
           (c) => time >= c.startTime && time < c.endTime
         );
-        if (activeCaption) {
+        const isStanza = activeCaptions.length > 1 && activeCaptions[0]?.stanzaId;
+
+        if (isStanza) {
+          // Stacked stanza rendering — multiple words with mixed typography
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+
+          let baseCaptionY = HEIGHT * 0.85;
+          if (captionConfig.position === "top") baseCaptionY = HEIGHT * 0.15;
+          else if (captionConfig.position === "center") baseCaptionY = HEIGHT * 0.5;
+
+          // Calculate line heights for each caption
+          const lines = activeCaptions.map((cap) => {
+            const emphSize = 56;
+            const normalSize = 28;
+            const size = cap.isEmphasis ? emphSize : normalSize;
+            return { caption: cap, fontSize: size, lineHeight: size * 1.2 };
+          });
+          const totalHeight = lines.reduce((sum, l) => sum + l.lineHeight, 0);
+          let currentY = baseCaptionY - totalHeight / 2;
+
+          for (const line of lines) {
+            const { caption: cap, fontSize: fSize } = line;
+            const fontName = cap.isEmphasis ? "'Playfair Display'" : "Inter";
+            const weight = cap.isEmphasis ? "italic 700" : "400";
+            ctx.font = `${weight} ${fSize}px ${fontName}, system-ui, sans-serif`;
+
+            const displayText = captionConfig.uppercase
+              ? cap.text.toUpperCase()
+              : cap.text;
+
+            const drawY = currentY + line.lineHeight / 2;
+
+            // Shadow
+            ctx.shadowColor = "rgba(0,0,0,0.7)";
+            ctx.shadowBlur = 8;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 2;
+
+            // Main text
+            ctx.fillStyle = "#FFFFFF";
+            ctx.fillText(displayText, WIDTH / 2, drawY);
+
+            // Reset shadow
+            ctx.shadowColor = "transparent";
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+
+            currentY += line.lineHeight;
+          }
+        } else if (activeCaptions.length > 0) {
+          const activeCaption = activeCaptions[0];
           const cFont = getCanvasFontName(captionConfig.fontFamily);
           const cSize = captionConfig.fontSize;
           ctx.font = `${captionConfig.fontWeight} ${cSize}px ${cFont}, Inter, system-ui, sans-serif`;

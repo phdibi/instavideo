@@ -66,29 +66,81 @@ function getPositionClass(position: CaptionConfig["position"]) {
 /**
  * CaptionOverlay — Phrase-based captions (2-4 words).
  * Reads captionConfig from store for full customization.
- * Uses mode="sync" to avoid gaps between captions.
+ * Supports stacked stanza display (multiple words with mixed typography).
  */
 export default function CaptionOverlay({ currentTime }: Props) {
   const { phraseCaptions, captionConfig } = useProjectStore();
 
-  const activeCaption = useMemo(() => {
-    return phraseCaptions.find(
+  // Find ALL active captions at current time
+  const activeCaptions = useMemo(() => {
+    return phraseCaptions.filter(
       (c) => currentTime >= c.startTime && currentTime < c.endTime
-    ) || null;
+    );
   }, [phraseCaptions, currentTime]);
+
+  // Check if active captions form a stanza (multiple captions with same stanzaId)
+  const isStanza = activeCaptions.length > 1 && activeCaptions[0]?.stanzaId;
 
   return (
     <div className="absolute inset-0 pointer-events-none">
       <AnimatePresence mode="popLayout">
-        {activeCaption && (
-          <PhraseDisplay
-            key={activeCaption.id}
-            caption={activeCaption}
+        {isStanza ? (
+          <StanzaDisplay
+            key={activeCaptions[0].stanzaId!}
+            captions={activeCaptions}
             config={captionConfig}
           />
-        )}
+        ) : activeCaptions[0] ? (
+          <PhraseDisplay
+            key={activeCaptions[0].id}
+            caption={activeCaptions[0]}
+            config={captionConfig}
+          />
+        ) : null}
       </AnimatePresence>
     </div>
+  );
+}
+
+/** Stacked stanza display — multiple words stacked vertically with mixed typography */
+function StanzaDisplay({ captions, config }: { captions: PhraseCaption[]; config: CaptionConfig }) {
+  const positionClass = getPositionClass(config.position);
+
+  return (
+    <motion.div
+      className={`absolute left-0 right-0 ${positionClass} px-4 flex justify-center`}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
+      layout
+    >
+      <div className="flex flex-col items-center gap-0">
+        {captions.map((caption) => (
+          <motion.span
+            key={caption.id}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.15 }}
+            style={{
+              fontSize: caption.isEmphasis
+                ? 'clamp(28px, 7cqw, 56px)'
+                : 'clamp(16px, 4cqw, 32px)',
+              fontWeight: caption.isEmphasis ? 700 : 400,
+              fontStyle: caption.isEmphasis ? 'italic' : 'normal',
+              fontFamily: caption.isEmphasis
+                ? 'var(--font-playfair), Georgia, serif'
+                : 'var(--font-inter), system-ui, sans-serif',
+              color: '#FFFFFF',
+              textShadow: '0 2px 8px rgba(0,0,0,0.7)',
+              lineHeight: 1.1,
+            }}
+          >
+            {config.uppercase ? caption.text.toUpperCase() : caption.text}
+          </motion.span>
+        ))}
+      </div>
+    </motion.div>
   );
 }
 

@@ -16,6 +16,7 @@ export const AVAILABLE_FONTS: FontOption[] = [
   { name: "Bangers", family: "var(--font-bangers), cursive" },
   { name: "Permanent Marker", family: "var(--font-marker), cursive" },
   { name: "Russo One", family: "var(--font-russo), system-ui, sans-serif" },
+  { name: "Playfair Display", family: "var(--font-playfair), Georgia, serif" },
 ];
 
 /** Get CSS font-family value by display name */
@@ -40,6 +41,7 @@ const CANVAS_FONT_MAP: Record<string, string> = {
   "Bangers": "Bangers",
   "Permanent Marker": "'Permanent Marker'",
   "Russo One": "'Russo One'",
+  "Playfair Display": "'Playfair Display'",
 };
 
 export function getCanvasFontName(name: string): string {

@@ -12,6 +12,7 @@ import {
   Bangers,
   Permanent_Marker,
   Russo_One,
+  Playfair_Display,
 } from "next/font/google";
 import "./globals.css";
 
@@ -85,6 +86,13 @@ const russoOne = Russo_One({
   weight: "400",
 });
 
+const playfairDisplay = Playfair_Display({
+  variable: "--font-playfair",
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  style: ["normal", "italic"],
+});
+
 export const metadata: Metadata = {
   title: "CineAI — AI Video Editor",
   description:
@@ -109,6 +117,7 @@ export default function RootLayout({
     bangers.variable,
     permanentMarker.variable,
     russoOne.variable,
+    playfairDisplay.variable,
   ].join(" ");
 
   return (

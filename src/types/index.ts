@@ -246,6 +246,8 @@ export interface PhraseCaption {
   startTime: number;
   endTime: number;
   text: string; // 1-2 words
+  isEmphasis?: boolean;  // word gets large/bold/italic serif treatment
+  stanzaId?: string;     // groups words that stack together on screen
 }
 
 export interface MusicTrack {

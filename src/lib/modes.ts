@@ -12,7 +12,24 @@ export function getModeAt(segments: ModeSegment[], time: number): VideoMode {
   return seg?.mode || "presenter";
 }
 
-/** Generate phrase captions (1-2 words each) from transcription word timings */
+/** Check if a word should receive emphasis (large/bold/italic serif) treatment */
+function isEmphasisWord(word: string): boolean {
+  const cleaned = word.replace(/[.,!?;:]/g, '').toLowerCase();
+  if (/\d/.test(cleaned)) return true; // números
+  const connectors = new Set([
+    'a','o','e','em','de','do','da','no','na','um','uma','que',
+    'para','por','com','se','os','as','dos','das','nos','nas',
+    'ao','à','the','an','in','on','of','to','and','or','is',
+    'are','was','with','for','at','by','it','eu','ele','ela',
+    'mas','mais','não','como','seu','sua','isso','este','esta',
+  ]);
+  if (connectors.has(cleaned)) return false;
+  return cleaned.length >= 3; // palavras substantivas
+}
+
+/** Generate phrase captions (1-2 words each) from transcription word timings.
+ *  Every ~8s, creates a "stanza" of 4-5 words that stack vertically on screen
+ *  with mixed typography (emphasis vs connector). */
 export function generatePhraseCaptions(transcription: TranscriptionResult): PhraseCaption[] {
   const allWords: { word: string; start: number; end: number }[] = [];
 
@@ -35,20 +52,47 @@ export function generatePhraseCaptions(transcription: TranscriptionResult): Phra
 
   const phrases: PhraseCaption[] = [];
   let i = 0;
+  let lastStanzaEnd = 0;
 
   while (i < allWords.length) {
-    // Group 1-2 words per phrase
-    const groupSize = Math.min(allWords.length - i, 2);
-    const group = allWords.slice(i, i + groupSize);
+    const currentWord = allWords[i];
+    const remaining = allWords.length - i;
+    const timeSinceLastStanza = currentWord.start - lastStanzaEnd;
 
-    phrases.push({
-      id: uuid(),
-      startTime: group[0].start,
-      endTime: group[group.length - 1].end,
-      text: group.map((w) => w.word).join(" "),
-    });
+    // Create a stanza every ~8s if we have enough words
+    if (timeSinceLastStanza >= 8 && remaining >= 4) {
+      const stanzaSize = Math.min(remaining, 5);
+      const stanzaWords = allWords.slice(i, i + stanzaSize);
+      const stanzaEndTime = stanzaWords[stanzaWords.length - 1].end;
+      const sid = uuid();
 
-    i += groupSize;
+      for (const sw of stanzaWords) {
+        phrases.push({
+          id: uuid(),
+          startTime: sw.start,
+          endTime: stanzaEndTime, // all words stay visible until stanza ends
+          text: sw.word,
+          isEmphasis: isEmphasisWord(sw.word),
+          stanzaId: sid,
+        });
+      }
+
+      lastStanzaEnd = stanzaEndTime;
+      i += stanzaSize;
+    } else {
+      // Normal phrase: 1-2 words, no stanzaId
+      const groupSize = Math.min(remaining, 2);
+      const group = allWords.slice(i, i + groupSize);
+
+      phrases.push({
+        id: uuid(),
+        startTime: group[0].start,
+        endTime: group[group.length - 1].end,
+        text: group.map((w) => w.word).join(" "),
+      });
+
+      i += groupSize;
+    }
   }
 
   return phrases;

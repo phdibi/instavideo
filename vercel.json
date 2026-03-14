@@ -15,14 +15,17 @@
     }
   ],
   "functions": {
-    "src/app/api/transcribe/route.ts": {
+    "src/app/api/transcribe-whisper/route.ts": {
       "maxDuration": 300
     },
-    "src/app/api/analyze/route.ts": {
+    "src/app/api/analyze-modes/route.ts": {
       "maxDuration": 300
     },
-    "src/app/api/generate-broll/route.ts": {
-      "maxDuration": 120
+    "src/app/api/search-broll/route.ts": {
+      "maxDuration": 30
+    },
+    "src/app/api/proxy-video/route.ts": {
+      "maxDuration": 60
     }
   }
 }

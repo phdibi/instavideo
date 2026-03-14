@@ -3,7 +3,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { Loader2, CheckCircle } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
-import { extractAudioFromVideo } from "@/lib/audioExtractor";
+import { FFmpegService } from "@/lib/ffmpeg";
 import { generatePhraseCaptions } from "@/lib/modes";
 import type { TranscriptionResult, ModeSegment, PexelsVideoResult } from "@/types";
 
@@ -37,11 +37,11 @@ export default function ProcessingScreen() {
     }
 
     try {
-      // Step 1: Extract audio
+      // Step 1: Extract audio using FFmpeg WASM (works on all browsers including iOS Safari)
       setStatus("extracting-audio", "Extraindo áudio do vídeo...");
       let audioBlob: Blob;
       try {
-        audioBlob = await extractAudioFromVideo(videoFile);
+        audioBlob = await FFmpegService.extractAndCleanAudio(videoFile);
       } catch (audioErr) {
         console.error("Audio extraction failed:", audioErr);
         throw new Error("Falha ao extrair áudio do vídeo. Verifique o formato do arquivo.");

@@ -6,6 +6,7 @@ import { useProjectStore } from "@/store/useProjectStore";
 import { formatTime } from "@/lib/formatTime";
 import { getCurrentMode } from "@/lib/modes";
 import { computeBRollEffect, effectToCSS } from "@/lib/brollEffects";
+import { triggerTransitionSFX, resetSFXTracker } from "@/lib/sfx";
 import CaptionOverlay from "./CaptionOverlay";
 import TypographyCard from "./TypographyCard";
 
@@ -23,6 +24,7 @@ export default function VideoPreview() {
     currentTime,
     isPlaying,
     modeSegments,
+    sfxConfig,
     setCurrentTime,
     setIsPlaying,
     setVideoDuration,
@@ -35,6 +37,18 @@ export default function VideoPreview() {
   );
 
   const currentMode = currentSegment?.mode || "presenter";
+  const brollLayout = currentSegment?.brollLayout || "fullscreen";
+
+  // ── SFX on mode transitions ─────────────────────────────────────────
+  const prevModeRef = useRef(currentMode);
+  useEffect(() => {
+    if (currentMode !== prevModeRef.current && isPlayingRef.current) {
+      if (sfxConfig.profile !== "none") {
+        triggerTransitionSFX(currentMode, sfxConfig.masterVolume);
+      }
+    }
+    prevModeRef.current = currentMode;
+  }, [currentMode, sfxConfig.profile, sfxConfig.masterVolume]);
 
   // ── SEEK SYNC ───────────────────────────────────────────────────────
   const seekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -147,7 +161,6 @@ export default function VideoPreview() {
       (currentTime - currentSegment.startTime) / segDuration,
       1
     );
-    // Alternate: even segments zoom in, odd segments zoom out
     const zoomIn = presenterIdx % 2 === 0;
     return zoomIn ? 1 + progress * 0.06 : 1.06 - progress * 0.06;
   }, [currentMode, currentSegment, currentTime, presenterIdx]);
@@ -194,6 +207,7 @@ export default function VideoPreview() {
     vid.currentTime = 0;
     setIsPlaying(false);
     setCurrentTime(0);
+    resetSFXTracker();
   }, [setCurrentTime, setIsPlaying]);
 
   const seekTo = useCallback(
@@ -202,6 +216,7 @@ export default function VideoPreview() {
       if (!vid) return;
       vid.currentTime = time;
       setCurrentTime(time);
+      resetSFXTracker();
     },
     [setCurrentTime]
   );
@@ -251,6 +266,13 @@ export default function VideoPreview() {
     ? currentTime - currentSegment.startTime
     : 0;
 
+  // ── B-Roll entry animation progress (0→1 over first 0.3s) ──────────
+  const brollEntryProgress = useMemo(() => {
+    if (currentMode !== "broll" || !currentSegment) return 1;
+    const elapsed = currentTime - currentSegment.startTime;
+    return Math.min(elapsed / 0.3, 1);
+  }, [currentMode, currentSegment, currentTime]);
+
   return (
     <div className="flex flex-col h-full">
       {/* Video Container — 9:16 aspect ratio, centered, fills available space */}
@@ -265,13 +287,23 @@ export default function VideoPreview() {
             {/* ── Layer 1: Background ── */}
             <div className="absolute inset-0 bg-[#0a0a0a]" />
 
-            {/* ── Layer 2: Presenter Video (fullscreen 9:16) ── */}
+            {/* ── Layer 2: Presenter Video ── */}
+            {/* In "split" layout, presenter stays visible on the left half */}
             <div
-              className={`absolute inset-0 overflow-hidden transition-opacity duration-200 ease-in-out ${
-                currentMode === "presenter" ? "opacity-100" : "opacity-0"
+              className={`absolute overflow-hidden transition-opacity duration-200 ease-in-out ${
+                currentMode === "presenter"
+                  ? "inset-0 opacity-100"
+                  : currentMode === "broll" && brollLayout === "split"
+                    ? "opacity-100"
+                    : currentMode === "broll" && brollLayout === "overlay"
+                      ? "inset-0 opacity-100"
+                      : "inset-0 opacity-0"
               }`}
               style={{
-                transform: `scale(${presenterScale})`,
+                ...(currentMode === "broll" && brollLayout === "split"
+                  ? { top: 0, bottom: 0, left: 0, width: "50%" }
+                  : {}),
+                transform: `scale(${currentMode === "presenter" ? presenterScale : 1})`,
                 willChange: "transform",
               }}
             >
@@ -300,11 +332,38 @@ export default function VideoPreview() {
               />
             </div>
 
-          {/* ── Layer 2b: B-Roll Video (Mode B) ── */}
+          {/* ── Layer 2b: B-Roll Video ── */}
+          {/* Fullscreen: fills entire frame */}
+          {/* Split: right half, side by side with presenter */}
+          {/* Overlay: floating card with 3D perspective over presenter */}
           <div
-            className={`absolute inset-0 transition-opacity duration-200 ease-in-out overflow-hidden ${
-              currentMode === "broll" ? "opacity-100" : "opacity-0 pointer-events-none"
+            className={`absolute transition-all duration-300 ease-out overflow-hidden ${
+              currentMode === "broll"
+                ? "opacity-100"
+                : "opacity-0 pointer-events-none"
+            } ${
+              brollLayout === "overlay"
+                ? "rounded-2xl shadow-2xl"
+                : brollLayout === "split"
+                  ? ""
+                  : ""
             }`}
+            style={{
+              ...(brollLayout === "fullscreen"
+                ? { inset: 0 }
+                : brollLayout === "split"
+                  ? { top: 0, bottom: 0, right: 0, width: "50%", borderLeft: "2px solid rgba(255,255,255,0.1)" }
+                  : brollLayout === "overlay"
+                    ? {
+                        bottom: "15%",
+                        left: "8%",
+                        right: "8%",
+                        height: "45%",
+                        transform: `perspective(800px) rotateY(-2deg) scale(${0.85 + brollEntryProgress * 0.15})`,
+                        opacity: brollEntryProgress,
+                      }
+                    : { inset: 0 }),
+            }}
           >
             <div
               className="w-full h-full"
@@ -322,8 +381,19 @@ export default function VideoPreview() {
               />
             </div>
             {/* Dark overlay on b-roll */}
-            <div className="absolute inset-0 bg-black/25" />
+            <div className={`absolute inset-0 ${
+              brollLayout === "overlay" ? "bg-black/10" : "bg-black/25"
+            }`} />
+            {/* Overlay border glow */}
+            {brollLayout === "overlay" && currentMode === "broll" && (
+              <div className="absolute inset-0 rounded-2xl ring-1 ring-white/20" />
+            )}
           </div>
+
+          {/* Split divider line */}
+          {currentMode === "broll" && brollLayout === "split" && (
+            <div className="absolute top-0 bottom-0 left-1/2 w-px bg-white/20 z-10" />
+          )}
 
           {/* ── Layer 2c: Typography Card (Mode C) ── */}
           {currentMode === "typography" && currentSegment?.typographyText && (

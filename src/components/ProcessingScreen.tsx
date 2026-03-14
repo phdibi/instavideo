@@ -138,9 +138,12 @@ export default function ProcessingScreen() {
         })
       );
 
-      // Set varied default b-roll effects for visual dynamism
+      // Set varied default b-roll effects and layouts for visual dynamism
       const brollEffectsRotation = [
         "zoom-in", "ken-burns", "pan-left", "zoom-out", "pan-right", "parallax",
+      ] as const;
+      const brollLayoutRotation = [
+        "fullscreen", "split", "overlay", "fullscreen", "split", "overlay",
       ] as const;
       let brollIdx = 0;
       for (let i = 0; i < updatedSegments.length; i++) {
@@ -149,6 +152,7 @@ export default function ProcessingScreen() {
             ...updatedSegments[i],
             brollEffect: brollEffectsRotation[brollIdx % brollEffectsRotation.length],
             brollEffectIntensity: 1.0,
+            brollLayout: brollLayoutRotation[brollIdx % brollLayoutRotation.length],
           };
           brollIdx++;
         }

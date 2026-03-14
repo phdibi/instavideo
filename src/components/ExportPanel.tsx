@@ -7,6 +7,7 @@ import { getCurrentMode } from "@/lib/modes";
 import { getTrackById } from "@/lib/musicLibrary";
 import { computeBRollEffect } from "@/lib/brollEffects";
 import { getCanvasFontName } from "@/lib/fonts";
+import { renderSFXToBuffer } from "@/lib/sfx";
 
 export default function ExportPanel() {
   const {
@@ -17,6 +18,7 @@ export default function ExportPanel() {
     musicConfig,
     selectedMusicTrack,
     captionConfig,
+    sfxConfig,
     setStatus,
   } = useProjectStore();
 
@@ -112,6 +114,28 @@ export default function ExportPanel() {
         }
       }
 
+      // SFX — render transition sounds into the audio stream
+      if (sfxConfig.profile !== "none") {
+        try {
+          // Create a short SFX buffer and play it alongside
+          const sfxDuration = videoDuration + 1;
+          const offlineCtx = new OfflineAudioContext(
+            2,
+            Math.ceil(sfxDuration * audioCtx.sampleRate),
+            audioCtx.sampleRate
+          );
+          await renderSFXToBuffer(offlineCtx, modeSegments, sfxConfig.masterVolume);
+          const sfxBuffer = await offlineCtx.startRendering();
+
+          const sfxSource = audioCtx.createBufferSource();
+          sfxSource.buffer = sfxBuffer;
+          sfxSource.connect(dest);
+          sfxSource.start(0);
+        } catch (e) {
+          console.warn("SFX render failed:", e);
+        }
+      }
+
       // Combine canvas + audio into MediaRecorder
       const canvasStream = canvas.captureStream(FPS);
       for (const track of dest.stream.getAudioTracks()) {
@@ -160,6 +184,7 @@ export default function ExportPanel() {
         // Get current mode
         const segment = getCurrentMode(modeSegments, time);
         const mode = segment?.mode || "presenter";
+        const layout = segment?.brollLayout || "fullscreen";
 
         // Clear canvas
         ctx.clearRect(0, 0, WIDTH, HEIGHT);
@@ -178,7 +203,6 @@ export default function ExportPanel() {
               vol = 0.3;
               break;
           }
-          // Fade out at end
           if (time > videoDuration - musicConfig.fadeOutDuration) {
             const fadeProgress =
               (videoDuration - time) / musicConfig.fadeOutDuration;
@@ -191,13 +215,8 @@ export default function ExportPanel() {
           // Presenter fills entire 9:16 frame with dynamic Ken Burns
           const presenterSegs = modeSegments.filter((s) => s.mode === "presenter");
           const presenterIndex = segment ? presenterSegs.findIndex((s) => s.id === segment.id) : 0;
-          const segDur = segment
-            ? segment.endTime - segment.startTime
-            : 1;
-          const segProgress = segment
-            ? Math.min((time - segment.startTime) / segDur, 1)
-            : 0;
-          // Alternate zoom direction per presenter segment
+          const segDur = segment ? segment.endTime - segment.startTime : 1;
+          const segProgress = segment ? Math.min((time - segment.startTime) / segDur, 1) : 0;
           const zoomIn = presenterIndex % 2 === 0;
           const scale = zoomIn ? 1 + segProgress * 0.06 : 1.06 - segProgress * 0.06;
 
@@ -208,36 +227,138 @@ export default function ExportPanel() {
           drawVideoCover(ctx, video, 0, 0, WIDTH, HEIGHT);
           ctx.restore();
         } else if (mode === "broll") {
-          // B-roll fullscreen with effect
           const brollVid = segment ? brollVideos[segment.id] : null;
 
-          if (brollVid && brollVid.readyState >= 2) {
-            // Apply b-roll effect
-            const effect = segment?.brollEffect || "static";
-            const intensity = segment?.brollEffectIntensity ?? 1.0;
-            const segDur = segment ? segment.endTime - segment.startTime : 1;
-            const segProgress = segment
-              ? Math.min((time - segment.startTime) / segDur, 1)
-              : 0;
-            const transform = computeBRollEffect(effect, segProgress, intensity);
-
+          if (layout === "split") {
+            // ── Split: presenter left, b-roll right ──
+            // Left half: presenter
             ctx.save();
-            ctx.translate(WIDTH / 2, HEIGHT / 2);
-            ctx.scale(transform.scale, transform.scale);
-            ctx.translate(
-              -WIDTH / 2 + (transform.translateX / 100) * WIDTH,
-              -HEIGHT / 2 + (transform.translateY / 100) * HEIGHT
-            );
-            drawVideoCover(ctx, brollVid, 0, 0, WIDTH, HEIGHT);
+            ctx.beginPath();
+            ctx.rect(0, 0, WIDTH / 2, HEIGHT);
+            ctx.clip();
+            drawVideoCover(ctx, video, 0, 0, WIDTH / 2, HEIGHT);
             ctx.restore();
+
+            // Right half: b-roll with effect
+            if (brollVid && brollVid.readyState >= 2) {
+              const effect = segment?.brollEffect || "static";
+              const intensity = segment?.brollEffectIntensity ?? 1.0;
+              const segDur = segment ? segment.endTime - segment.startTime : 1;
+              const segProgress = segment ? Math.min((time - segment.startTime) / segDur, 1) : 0;
+              const transform = computeBRollEffect(effect, segProgress, intensity);
+
+              ctx.save();
+              ctx.beginPath();
+              ctx.rect(WIDTH / 2, 0, WIDTH / 2, HEIGHT);
+              ctx.clip();
+              ctx.translate(WIDTH * 0.75, HEIGHT / 2);
+              ctx.scale(transform.scale, transform.scale);
+              ctx.translate(
+                -WIDTH * 0.25 + (transform.translateX / 100) * (WIDTH / 2),
+                -HEIGHT / 2 + (transform.translateY / 100) * HEIGHT
+              );
+              drawVideoCover(ctx, brollVid, 0, 0, WIDTH / 2, HEIGHT);
+              ctx.restore();
+            }
+
+            // Divider line
+            ctx.fillStyle = "rgba(255,255,255,0.15)";
+            ctx.fillRect(WIDTH / 2 - 1, 0, 2, HEIGHT);
+
+          } else if (layout === "overlay") {
+            // ── Overlay: presenter background + b-roll card ──
+            // Background: presenter (dimmed slightly)
+            drawVideoCover(ctx, video, 0, 0, WIDTH, HEIGHT);
+            ctx.fillStyle = "rgba(0,0,0,0.15)";
+            ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+            if (brollVid && brollVid.readyState >= 2) {
+              const effect = segment?.brollEffect || "static";
+              const intensity = segment?.brollEffectIntensity ?? 1.0;
+              const segDur = segment ? segment.endTime - segment.startTime : 1;
+              const segProgress = segment ? Math.min((time - segment.startTime) / segDur, 1) : 0;
+              const transform = computeBRollEffect(effect, segProgress, intensity);
+
+              // Entry animation (0.3s)
+              const entryElapsed = time - (segment?.startTime || 0);
+              const entryProg = Math.min(entryElapsed / 0.3, 1);
+              const cardScale = 0.85 + entryProg * 0.15;
+
+              // Card dimensions
+              const cardW = WIDTH * 0.84;
+              const cardH = HEIGHT * 0.42;
+              const cardX = (WIDTH - cardW) / 2;
+              const cardY = HEIGHT * 0.38;
+              const cornerR = 24;
+
+              ctx.save();
+
+              // Card shadow
+              ctx.shadowColor = "rgba(0,0,0,0.4)";
+              ctx.shadowBlur = 30;
+              ctx.shadowOffsetX = 0;
+              ctx.shadowOffsetY = 8;
+
+              // Clip to rounded rect
+              ctx.translate(cardX + cardW / 2, cardY + cardH / 2);
+              ctx.scale(cardScale * transform.scale, cardScale * transform.scale);
+              ctx.translate(-cardW / 2, -cardH / 2);
+
+              roundedRect(ctx, 0, 0, cardW, cardH, cornerR);
+              ctx.clip();
+
+              // Draw b-roll inside card
+              ctx.translate(
+                (transform.translateX / 100) * cardW,
+                (transform.translateY / 100) * cardH
+              );
+              drawVideoCover(ctx, brollVid, 0, 0, cardW, cardH);
+
+              // Subtle overlay
+              ctx.fillStyle = "rgba(0,0,0,0.08)";
+              ctx.fillRect(0, 0, cardW, cardH);
+
+              ctx.restore();
+
+              // Card border (separate pass, no shadow)
+              ctx.save();
+              ctx.translate(cardX + cardW / 2, cardY + cardH / 2);
+              ctx.scale(cardScale, cardScale);
+              ctx.translate(-cardW / 2, -cardH / 2);
+              roundedRect(ctx, 0, 0, cardW, cardH, cornerR);
+              ctx.strokeStyle = "rgba(255,255,255,0.15)";
+              ctx.lineWidth = 2;
+              ctx.stroke();
+              ctx.restore();
+            }
+
           } else {
-            ctx.fillStyle = "#0a0a0a";
+            // ── Fullscreen (default) ──
+            if (brollVid && brollVid.readyState >= 2) {
+              const effect = segment?.brollEffect || "static";
+              const intensity = segment?.brollEffectIntensity ?? 1.0;
+              const segDur = segment ? segment.endTime - segment.startTime : 1;
+              const segProgress = segment ? Math.min((time - segment.startTime) / segDur, 1) : 0;
+              const transform = computeBRollEffect(effect, segProgress, intensity);
+
+              ctx.save();
+              ctx.translate(WIDTH / 2, HEIGHT / 2);
+              ctx.scale(transform.scale, transform.scale);
+              ctx.translate(
+                -WIDTH / 2 + (transform.translateX / 100) * WIDTH,
+                -HEIGHT / 2 + (transform.translateY / 100) * HEIGHT
+              );
+              drawVideoCover(ctx, brollVid, 0, 0, WIDTH, HEIGHT);
+              ctx.restore();
+            } else {
+              ctx.fillStyle = "#0a0a0a";
+              ctx.fillRect(0, 0, WIDTH, HEIGHT);
+            }
+
+            // Dark overlay
+            ctx.fillStyle = "rgba(0,0,0,0.25)";
             ctx.fillRect(0, 0, WIDTH, HEIGHT);
           }
-
-          // Dark overlay
-          ctx.fillStyle = "rgba(0,0,0,0.25)";
-          ctx.fillRect(0, 0, WIDTH, HEIGHT);
         } else if (mode === "typography") {
           // Typography card
           const bg = segment?.typographyBackground || "#F5F0E8";
@@ -374,6 +495,7 @@ export default function ExportPanel() {
     musicConfig,
     selectedMusicTrack,
     captionConfig,
+    sfxConfig,
     exporting,
     setStatus,
   ]);
@@ -486,38 +608,4 @@ function drawVideoCover(
   }
 
   ctx.drawImage(video, sx, sy, sw, sh, dx, dy, dw, dh);
-}
-
-// Helper: draw video contained within the given rect (no cropping)
-function drawVideoContain(
-  ctx: CanvasRenderingContext2D,
-  video: HTMLVideoElement,
-  dx: number,
-  dy: number,
-  dw: number,
-  dh: number
-) {
-  const vw = video.videoWidth;
-  const vh = video.videoHeight;
-  if (!vw || !vh) return;
-
-  const targetRatio = dw / dh;
-  const videoRatio = vw / vh;
-
-  let drawW = dw;
-  let drawH = dh;
-  let drawX = dx;
-  let drawY = dy;
-
-  if (videoRatio > targetRatio) {
-    // Video is wider — fit to width
-    drawH = dw / videoRatio;
-    drawY = dy + (dh - drawH) / 2;
-  } else {
-    // Video is taller — fit to height
-    drawW = dh * videoRatio;
-    drawX = dx + (dw - drawW) / 2;
-  }
-
-  ctx.drawImage(video, 0, 0, vw, vh, drawX, drawY, drawW, drawH);
 }

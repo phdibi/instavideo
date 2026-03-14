@@ -169,6 +169,9 @@ export type ProjectStatus =
   | "exporting"
   | "error";
 
+// ===== B-Roll Layout System =====
+export type BRollLayout = "fullscreen" | "split" | "overlay";
+
 // ===== B-Roll Effect System =====
 export type BRollEffect =
   | "zoom-in"
@@ -213,6 +216,7 @@ export interface ModeSegment {
   transcriptText?: string;
   brollEffect?: BRollEffect;
   brollEffectIntensity?: number;
+  brollLayout?: BRollLayout;
 }
 
 export interface PexelsVideoResult {

@@ -2,7 +2,7 @@
 
 import { useProjectStore } from "@/store/useProjectStore";
 import BRollSwapGrid from "../BRollSwapGrid";
-import type { BRollEffect } from "@/types";
+import type { BRollEffect, BRollLayout } from "@/types";
 import {
   ZoomIn,
   ZoomOut,
@@ -13,6 +13,9 @@ import {
   Clapperboard,
   Waves,
   Square,
+  Maximize,
+  Columns2,
+  PictureInPicture2,
 } from "lucide-react";
 
 const EFFECTS: { value: BRollEffect; label: string; icon: React.ReactNode }[] = [
@@ -25,6 +28,12 @@ const EFFECTS: { value: BRollEffect; label: string; icon: React.ReactNode }[] = 
   { value: "pan-down", label: "Pan ↓", icon: <ArrowDown className="w-4 h-4" /> },
   { value: "ken-burns", label: "Ken Burns", icon: <Clapperboard className="w-4 h-4" /> },
   { value: "parallax", label: "Parallax", icon: <Waves className="w-4 h-4" /> },
+];
+
+const LAYOUTS: { value: BRollLayout; label: string; icon: React.ReactNode }[] = [
+  { value: "fullscreen", label: "Tela cheia", icon: <Maximize className="w-4 h-4" /> },
+  { value: "split", label: "Split", icon: <Columns2 className="w-4 h-4" /> },
+  { value: "overlay", label: "Overlay", icon: <PictureInPicture2 className="w-4 h-4" /> },
 ];
 
 export default function BRollPanel() {
@@ -47,6 +56,7 @@ export default function BRollPanel() {
 
   const currentEffect = selectedSegment.brollEffect || "static";
   const currentIntensity = selectedSegment.brollEffectIntensity ?? 1.0;
+  const currentLayout = selectedSegment.brollLayout || "fullscreen";
 
   return (
     <div className="space-y-5 overflow-y-auto max-h-full">
@@ -60,6 +70,31 @@ export default function BRollPanel() {
             Query: <span className="text-[var(--foreground)]">{selectedSegment.brollQuery}</span>
           </p>
         )}
+      </div>
+
+      {/* Layout selector */}
+      <div className="px-4 space-y-2">
+        <label className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
+          Layout
+        </label>
+        <div className="grid grid-cols-3 gap-1.5">
+          {LAYOUTS.map((l) => (
+            <button
+              key={l.value}
+              onClick={() =>
+                updateModeSegment(selectedSegment.id, { brollLayout: l.value })
+              }
+              className={`flex flex-col items-center gap-1 py-2.5 px-1 rounded-lg text-[10px] transition-all ${
+                currentLayout === l.value
+                  ? "bg-orange-500 text-white"
+                  : "bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)]"
+              }`}
+            >
+              {l.icon}
+              {l.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Effect selector */}

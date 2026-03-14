@@ -45,15 +45,26 @@ export default function ExportPanel() {
       const canvas = document.createElement("canvas");
       canvas.width = WIDTH;
       canvas.height = HEIGHT;
-      const ctx = canvas.getContext("2d")!;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas 2D context não disponível");
+
+      /** Seek with timeout to prevent infinite hang */
+      const seekVideo = (vid: HTMLVideoElement, t: number) =>
+        new Promise<void>((resolve) => {
+          vid.currentTime = t;
+          const timer = setTimeout(resolve, 3000);
+          vid.onseeked = () => { clearTimeout(timer); resolve(); };
+        });
 
       // Load presenter video
       const video = document.createElement("video");
       video.src = videoUrl;
       video.muted = true;
       video.playsInline = true;
-      await new Promise<void>((resolve) => {
-        video.onloadeddata = () => resolve();
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("Timeout carregando vídeo")), 15000);
+        video.onloadeddata = () => { clearTimeout(timer); resolve(); };
+        video.onerror = () => { clearTimeout(timer); reject(new Error("Erro ao carregar vídeo")); };
         video.load();
       });
 
@@ -71,11 +82,13 @@ export default function ExportPanel() {
               bv.muted = true;
               bv.playsInline = true;
               bv.crossOrigin = "anonymous";
+              const timer = setTimeout(resolve, 10000); // 10s timeout per b-roll
               bv.onloadeddata = () => {
+                clearTimeout(timer);
                 brollVideos[seg.id] = bv;
                 resolve();
               };
-              bv.onerror = () => resolve();
+              bv.onerror = () => { clearTimeout(timer); resolve(); };
               bv.load();
             })
         )
@@ -118,7 +131,7 @@ export default function ExportPanel() {
       if (sfxConfig.profile !== "none") {
         try {
           // Create a short SFX buffer and play it alongside
-          const sfxDuration = videoDuration + 1;
+          const sfxDuration = Math.max(2, videoDuration + 1);
           const offlineCtx = new OfflineAudioContext(
             2,
             Math.ceil(sfxDuration * audioCtx.sampleRate),
@@ -144,7 +157,9 @@ export default function ExportPanel() {
 
       const mimeType = MediaRecorder.isTypeSupported("video/mp4; codecs=avc1")
         ? "video/mp4; codecs=avc1"
-        : "video/webm; codecs=vp9";
+        : MediaRecorder.isTypeSupported("video/webm; codecs=vp9")
+          ? "video/webm; codecs=vp9"
+          : "video/webm";
 
       const recorder = new MediaRecorder(canvasStream, {
         mimeType,
@@ -164,10 +179,7 @@ export default function ExportPanel() {
 
       // Render loop
       const totalFrames = Math.ceil(videoDuration * FPS);
-      video.currentTime = 0;
-      await new Promise<void>((r) => {
-        video.onseeked = () => r();
-      });
+      await seekVideo(video, 0);
       video.play();
 
       for (let frame = 0; frame < totalFrames; frame++) {
@@ -175,10 +187,7 @@ export default function ExportPanel() {
 
         // Seek video
         if (Math.abs(video.currentTime - time) > 0.1) {
-          video.currentTime = time;
-          await new Promise<void>((r) => {
-            video.onseeked = () => r();
-          });
+          await seekVideo(video, time);
         }
 
         // Get current mode
@@ -228,10 +237,19 @@ export default function ExportPanel() {
           ctx.restore();
         } else if (mode === "broll") {
           const brollVid = segment ? brollVideos[segment.id] : null;
+          const hasBroll = brollVid && brollVid.readyState >= 2;
+
+          // Compute effect transform once (shared across all layouts)
+          const segDur = segment ? segment.endTime - segment.startTime : 1;
+          const segProgress = segment ? Math.min((time - segment.startTime) / segDur, 1) : 0;
+          const transform = computeBRollEffect(
+            segment?.brollEffect || "static",
+            segProgress,
+            segment?.brollEffectIntensity ?? 1.0
+          );
 
           if (layout === "split") {
             // ── Split: presenter left, b-roll right ──
-            // Left half: presenter
             ctx.save();
             ctx.beginPath();
             ctx.rect(0, 0, WIDTH / 2, HEIGHT);
@@ -239,14 +257,7 @@ export default function ExportPanel() {
             drawVideoCover(ctx, video, 0, 0, WIDTH / 2, HEIGHT);
             ctx.restore();
 
-            // Right half: b-roll with effect
-            if (brollVid && brollVid.readyState >= 2) {
-              const effect = segment?.brollEffect || "static";
-              const intensity = segment?.brollEffectIntensity ?? 1.0;
-              const segDur = segment ? segment.endTime - segment.startTime : 1;
-              const segProgress = segment ? Math.min((time - segment.startTime) / segDur, 1) : 0;
-              const transform = computeBRollEffect(effect, segProgress, intensity);
-
+            if (hasBroll) {
               ctx.save();
               ctx.beginPath();
               ctx.rect(WIDTH / 2, 0, WIDTH / 2, HEIGHT);
@@ -261,66 +272,44 @@ export default function ExportPanel() {
               ctx.restore();
             }
 
-            // Divider line
             ctx.fillStyle = "rgba(255,255,255,0.15)";
             ctx.fillRect(WIDTH / 2 - 1, 0, 2, HEIGHT);
 
           } else if (layout === "overlay") {
             // ── Overlay: presenter background + b-roll card ──
-            // Background: presenter (dimmed slightly)
             drawVideoCover(ctx, video, 0, 0, WIDTH, HEIGHT);
             ctx.fillStyle = "rgba(0,0,0,0.15)";
             ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-            if (brollVid && brollVid.readyState >= 2) {
-              const effect = segment?.brollEffect || "static";
-              const intensity = segment?.brollEffectIntensity ?? 1.0;
-              const segDur = segment ? segment.endTime - segment.startTime : 1;
-              const segProgress = segment ? Math.min((time - segment.startTime) / segDur, 1) : 0;
-              const transform = computeBRollEffect(effect, segProgress, intensity);
-
-              // Entry animation (0.3s)
-              const entryElapsed = time - (segment?.startTime || 0);
-              const entryProg = Math.min(entryElapsed / 0.3, 1);
+            if (hasBroll) {
+              const entryProg = Math.min((time - (segment?.startTime || 0)) / 0.3, 1);
               const cardScale = 0.85 + entryProg * 0.15;
-
-              // Card dimensions
               const cardW = WIDTH * 0.84;
               const cardH = HEIGHT * 0.42;
               const cardX = (WIDTH - cardW) / 2;
               const cardY = HEIGHT * 0.38;
               const cornerR = 24;
 
+              // Card with shadow
               ctx.save();
-
-              // Card shadow
               ctx.shadowColor = "rgba(0,0,0,0.4)";
               ctx.shadowBlur = 30;
-              ctx.shadowOffsetX = 0;
               ctx.shadowOffsetY = 8;
-
-              // Clip to rounded rect
               ctx.translate(cardX + cardW / 2, cardY + cardH / 2);
               ctx.scale(cardScale * transform.scale, cardScale * transform.scale);
               ctx.translate(-cardW / 2, -cardH / 2);
-
               roundedRect(ctx, 0, 0, cardW, cardH, cornerR);
               ctx.clip();
-
-              // Draw b-roll inside card
               ctx.translate(
                 (transform.translateX / 100) * cardW,
                 (transform.translateY / 100) * cardH
               );
               drawVideoCover(ctx, brollVid, 0, 0, cardW, cardH);
-
-              // Subtle overlay
               ctx.fillStyle = "rgba(0,0,0,0.08)";
               ctx.fillRect(0, 0, cardW, cardH);
-
               ctx.restore();
 
-              // Card border (separate pass, no shadow)
+              // Card border
               ctx.save();
               ctx.translate(cardX + cardW / 2, cardY + cardH / 2);
               ctx.scale(cardScale, cardScale);
@@ -334,13 +323,7 @@ export default function ExportPanel() {
 
           } else {
             // ── Fullscreen (default) ──
-            if (brollVid && brollVid.readyState >= 2) {
-              const effect = segment?.brollEffect || "static";
-              const intensity = segment?.brollEffectIntensity ?? 1.0;
-              const segDur = segment ? segment.endTime - segment.startTime : 1;
-              const segProgress = segment ? Math.min((time - segment.startTime) / segDur, 1) : 0;
-              const transform = computeBRollEffect(effect, segProgress, intensity);
-
+            if (hasBroll) {
               ctx.save();
               ctx.translate(WIDTH / 2, HEIGHT / 2);
               ctx.scale(transform.scale, transform.scale);
@@ -355,7 +338,6 @@ export default function ExportPanel() {
               ctx.fillRect(0, 0, WIDTH, HEIGHT);
             }
 
-            // Dark overlay
             ctx.fillStyle = "rgba(0,0,0,0.25)";
             ctx.fillRect(0, 0, WIDTH, HEIGHT);
           }

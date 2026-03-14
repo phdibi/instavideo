@@ -297,7 +297,7 @@ export default function Timeline() {
             {brollSegments.map((seg) => {
               const left = timeToX(seg.startTime);
               const width = timeToX(seg.endTime) - left;
-              const isSelected = selectedItem?.id === seg.id;
+              const isSelected = selectedItem?.type === "segment" && selectedItem?.id === seg.id;
               const effectLabel = seg.brollEffect || "static";
 
               return (

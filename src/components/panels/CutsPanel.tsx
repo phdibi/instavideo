@@ -43,9 +43,10 @@ export default function CutsPanel() {
     // Set required fields when cycling modes
     const updates: Partial<typeof seg> = { mode: nextMode };
     if (nextMode === "broll") {
-      updates.brollQuery = updates.brollQuery || seg.brollQuery || "";
+      updates.brollQuery = seg.brollQuery || "";
       updates.brollEffect = "zoom-in";
       updates.brollEffectIntensity = 1.0;
+      updates.brollLayout = seg.brollLayout || "fullscreen";
     } else if (nextMode === "typography") {
       updates.typographyText = seg.typographyText || seg.transcriptText || "";
       updates.typographyBackground = "#F5F0E8";

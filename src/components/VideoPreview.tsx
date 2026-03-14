@@ -44,11 +44,11 @@ export default function VideoPreview() {
   useEffect(() => {
     if (currentMode !== prevModeRef.current && isPlayingRef.current) {
       if (sfxConfig.profile !== "none") {
-        triggerTransitionSFX(currentMode, sfxConfig.masterVolume);
+        triggerTransitionSFX(currentMode, sfxConfig.masterVolume, brollLayout);
       }
     }
     prevModeRef.current = currentMode;
-  }, [currentMode, sfxConfig.profile, sfxConfig.masterVolume]);
+  }, [currentMode, sfxConfig.profile, sfxConfig.masterVolume, brollLayout]);
 
   // ── SEEK SYNC ───────────────────────────────────────────────────────
   const seekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);

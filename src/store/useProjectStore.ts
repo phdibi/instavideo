@@ -416,16 +416,7 @@ export const useProjectStore = create<ProjectStore>((set) => ({
       }
 
       segments.splice(idx, 1, ...newSegments);
-
-      // Auto-generate SFX markers for b-roll transition
-      const brollSeg = newSegments.find((s) => s.mode === "broll")!;
-      const newMarkers: SFXMarker[] = [
-        ...state.sfxMarkers,
-        { id: uuidv4(), time: brollSeg.startTime, soundType: "whoosh" as const },
-        { id: uuidv4(), time: brollSeg.endTime, soundType: "whoosh-out" as const },
-      ].sort((a, b) => a.time - b.time);
-
-      return { modeSegments: segments, sfxMarkers: newMarkers };
+      return { modeSegments: segments };
     }),
 
   batchOffsetItems: (items, deltaTime) =>

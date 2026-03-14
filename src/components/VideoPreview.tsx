@@ -6,7 +6,7 @@ import { useProjectStore } from "@/store/useProjectStore";
 import { formatTime } from "@/lib/formatTime";
 import { getCurrentMode } from "@/lib/modes";
 import { computeBRollEffect, effectToCSS } from "@/lib/brollEffects";
-import { playTransitionSFX, SFX_PLAY_MAP } from "@/lib/sfx";
+import { SFX_PLAY_MAP } from "@/lib/sfx";
 import CaptionOverlay from "./CaptionOverlay";
 import TypographyCard from "./TypographyCard";
 
@@ -41,16 +41,7 @@ export default function VideoPreview() {
   const currentMode = currentSegment?.mode || "presenter";
   const brollLayout = currentSegment?.brollLayout || "fullscreen";
 
-  // ── SFX on mode transitions ─────────────────────────────────────────
   const prevModeRef = useRef(currentMode);
-  useEffect(() => {
-    const prevMode = prevModeRef.current;
-    prevModeRef.current = currentMode;
-
-    if (currentMode !== prevMode && isPlayingRef.current && sfxConfig.profile !== "none") {
-      playTransitionSFX(prevMode, currentMode, sfxConfig.masterVolume, brollLayout);
-    }
-  }, [currentMode, sfxConfig.profile, sfxConfig.masterVolume, brollLayout]);
 
   // ── SFX Marker Playback ────────────────────────────────────────────
   const firedMarkersRef = useRef<Set<string>>(new Set());

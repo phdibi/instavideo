@@ -245,7 +245,7 @@ export interface PhraseCaption {
   id: string;
   startTime: number;
   endTime: number;
-  text: string; // 2-4 words
+  text: string; // 1-2 words
 }
 
 export interface MusicTrack {

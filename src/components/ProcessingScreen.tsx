@@ -191,22 +191,40 @@ export default function ProcessingScreen() {
         })
       );
 
-      // Set varied default b-roll effects and layouts for visual dynamism
+      // Set b-roll effects and layouts: sequence-aware for cinematic sequences
       const brollEffectsRotation = [
         "zoom-in", "ken-burns", "pan-left", "zoom-out", "pan-right", "parallax",
       ] as const;
-      const brollLayoutRotation = [
-        "fullscreen", "split", "overlay", "fullscreen", "split", "overlay",
+      const standaloneLayoutRotation = [
+        "fullscreen", "cinematic", "pip", "fullscreen", "cinematic", "overlay",
       ] as const;
       let brollIdx = 0;
+      let standaloneIdx = 0;
       for (let i = 0; i < updatedSegments.length; i++) {
         if (updatedSegments[i].mode === "broll") {
-          updatedSegments[i] = {
-            ...updatedSegments[i],
-            brollEffect: brollEffectsRotation[brollIdx % brollEffectsRotation.length],
-            brollEffectIntensity: 1.0,
-            brollLayout: brollLayoutRotation[brollIdx % brollLayoutRotation.length],
-          };
+          const prevIsBroll = i > 0 && updatedSegments[i - 1].mode === "broll";
+          const nextIsBroll = i < updatedSegments.length - 1 && updatedSegments[i + 1].mode === "broll";
+          const isInSequence = prevIsBroll || nextIsBroll;
+          const isFirstInSequence = !prevIsBroll && nextIsBroll;
+
+          if (isInSequence) {
+            // Sequence b-roll: cinematic letterbox for first, fullscreen for rest
+            updatedSegments[i] = {
+              ...updatedSegments[i],
+              brollEffect: brollEffectsRotation[brollIdx % brollEffectsRotation.length],
+              brollEffectIntensity: 0.8,
+              brollLayout: isFirstInSequence ? "cinematic" : "fullscreen",
+            };
+          } else {
+            // Standalone b-roll: varied rotation
+            updatedSegments[i] = {
+              ...updatedSegments[i],
+              brollEffect: brollEffectsRotation[brollIdx % brollEffectsRotation.length],
+              brollEffectIntensity: 1.0,
+              brollLayout: standaloneLayoutRotation[standaloneIdx % standaloneLayoutRotation.length],
+            };
+            standaloneIdx++;
+          }
           brollIdx++;
         }
       }

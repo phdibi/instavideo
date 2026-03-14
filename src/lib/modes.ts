@@ -12,7 +12,7 @@ export function getModeAt(segments: ModeSegment[], time: number): VideoMode {
   return seg?.mode || "presenter";
 }
 
-/** Generate phrase captions (2-4 words each) from transcription word timings */
+/** Generate phrase captions (1-2 words each) from transcription word timings */
 export function generatePhraseCaptions(transcription: TranscriptionResult): PhraseCaption[] {
   const allWords: { word: string; start: number; end: number }[] = [];
 
@@ -37,11 +37,8 @@ export function generatePhraseCaptions(transcription: TranscriptionResult): Phra
   let i = 0;
 
   while (i < allWords.length) {
-    // Group 2-4 words per phrase
-    const groupSize = Math.min(
-      allWords.length - i,
-      i + 3 <= allWords.length ? 3 : 2
-    );
+    // Group 1-2 words per phrase
+    const groupSize = Math.min(allWords.length - i, 2);
     const group = allWords.slice(i, i + groupSize);
 
     phrases.push({

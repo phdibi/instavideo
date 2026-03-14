@@ -25,21 +25,26 @@ There are 3 modes:
 
 Rules:
 1. ALWAYS start with "presenter" mode for the first 2-4 seconds (hook the viewer with the speaker)
-2. Aim for roughly 35% presenter, 45% broll, 20% typography
-3. NEVER place two consecutive "broll" segments — always insert presenter or typography between
+2. Aim for roughly 25% presenter, 55% broll, 20% typography
+3. B-ROLL SEQUENCES ARE ENCOURAGED: place 2-4 consecutive "broll" segments to form mini-documentary sequences with a visual arc (wide establishing shot → medium shot → close-up detail). These sequences create cinematic storytelling moments.
 4. NEVER place two consecutive "typography" segments
 5. Alternate naturally between modes to create dynamic pacing
 6. Typography segments should be 2-3 seconds long
-7. B-roll segments should be 3-8 seconds long
+7. B-roll segments in a SEQUENCE should be 3-5 seconds each; STANDALONE b-roll segments can be 3-8 seconds
 8. Presenter segments vary based on content (shorter = more dynamic feel)
 9. Typography background should alternate between "#F5F0E8" (beige) and "#0a0a0a" (dark)
 
 B-ROLL CINEMATOGRAPHY GUIDELINES (CRITICAL):
 - B-roll queries must be SPECIFIC and CINEMATIC. Use detailed search terms like "close up hands typing on modern keyboard dark background", "aerial drone shot of modern city at sunset", "slow motion brain neural network visualization"
 - Create THEMATIC CONTINUITY between b-rolls: if the topic is about technology, use a connected visual narrative (e.g., "person working on laptop" → later "futuristic digital interface" → later "team celebrating in modern office")
+- B-ROLL SEQUENCES should follow a NARRATIVE ARC within the sequence:
+  * First shot: WIDE/ESTABLISHING (aerial, wide angle, context-setting)
+  * Middle shots: MEDIUM (subject interaction, process, action)
+  * Final shot: CLOSE-UP/DETAIL (texture, hands, eyes, specific detail)
+  * Each shot in the sequence must have THEMATIC CONTINUITY with the others
 - Use VARIED SHOT TYPES: mix close-ups, wide shots, aerial shots, detail shots, and abstract visuals
 - Match the EMOTIONAL TONE: dramatic topic → dramatic visuals (dark backgrounds, slow motion), positive topic → bright and dynamic visuals
-- Include CINEMATIC DETAILS in queries: mention lighting (e.g., "golden hour", "dramatic lighting", "neon lights"), camera movement (e.g., "slow motion", "tracking shot"), and atmosphere (e.g., "moody", "professional", "futuristic")
+- Include CINEMATIC DETAILS in queries: mention lighting (e.g., "golden hour", "dramatic lighting", "neon lights"), camera movement (e.g., "slow motion", "tracking shot", "dolly zoom"), and atmosphere (e.g., "moody", "professional", "futuristic", "bokeh background")
 - Each b-roll query should be 5-12 words for specificity
 
 Respond with a JSON array only, no other text. Each element must have:

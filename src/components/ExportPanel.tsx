@@ -207,9 +207,21 @@ export default function ExportPanel() {
 
       recorder.start(100);
 
-      // Render loop — pre-compute stanza font names (avoid per-frame lookups)
+      // Render loop — pre-compute stanza values (avoid per-frame lookups)
       const stanzaEmphFont = getCanvasFontName(stanzaConfig.emphasisFontFamily);
       const stanzaNormFont = getCanvasFontName(stanzaConfig.normalFontFamily);
+      const isCascading = stanzaConfig.stanzaLayout === "cascading";
+      const stanzaBaseY = isCascading
+        ? HEIGHT * 0.78
+        : captionConfig.position === "top"
+          ? HEIGHT * 0.15
+          : captionConfig.position === "center"
+            ? HEIGHT * 0.5
+            : HEIGHT * 0.85;
+      const stanzaBaseX = isCascading ? WIDTH * 0.06 : WIDTH / 2;
+      const stanzaEmphSize = isCascading
+        ? stanzaConfig.emphasisFontSize * 1.2
+        : stanzaConfig.emphasisFontSize;
       const totalFrames = Math.ceil(videoDuration * FPS);
       await seekVideo(video, 0);
       video.play();
@@ -577,22 +589,20 @@ export default function ExportPanel() {
 
         if (isStanza) {
           // Stacked stanza rendering — multiple words with mixed typography
-          ctx.textAlign = "center";
+          ctx.textAlign = isCascading ? "left" : "center";
           ctx.textBaseline = "middle";
 
-          let baseCaptionY = HEIGHT * 0.85;
-          if (captionConfig.position === "top") baseCaptionY = HEIGHT * 0.15;
-          else if (captionConfig.position === "center") baseCaptionY = HEIGHT * 0.5;
-
           // Calculate line heights for each caption
-          const emphSize = stanzaConfig.emphasisFontSize;
           const normalSize = stanzaConfig.normalFontSize;
-          const lines = activeCaptions.map((cap) => {
-            const size = cap.isEmphasis ? emphSize : normalSize;
-            return { caption: cap, fontSize: size, lineHeight: size * 1.2 };
+          const lines = activeCaptions.map((cap, index) => {
+            const size = cap.isEmphasis ? stanzaEmphSize : normalSize;
+            const indent = isCascading
+              ? Math.min(index * WIDTH * 0.05 + (cap.isEmphasis ? -WIDTH * 0.015 : 0), WIDTH * 0.4)
+              : 0;
+            return { caption: cap, fontSize: size, lineHeight: size * 1.2, indent };
           });
           const totalHeight = lines.reduce((sum, l) => sum + l.lineHeight, 0);
-          let currentY = baseCaptionY - totalHeight / 2;
+          let currentY = stanzaBaseY - totalHeight / 2;
 
           for (const line of lines) {
             const { caption: cap, fontSize: fSize } = line;
@@ -614,7 +624,7 @@ export default function ExportPanel() {
 
             // Main text
             ctx.fillStyle = "#FFFFFF";
-            ctx.fillText(displayText, WIDTH / 2, drawY);
+            ctx.fillText(displayText, stanzaBaseX + line.indent, drawY);
 
             // Reset shadow
             ctx.shadowColor = "transparent";

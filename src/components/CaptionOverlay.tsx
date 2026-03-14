@@ -103,43 +103,64 @@ export default function CaptionOverlay({ currentTime }: Props) {
   );
 }
 
+// Animation variants — hoisted to avoid per-render allocations
+const CASCADING_INITIAL = { opacity: 0, x: -12 };
+const CASCADING_ANIMATE = { opacity: 1, x: 0 };
+const CENTERED_INITIAL = { opacity: 0, y: 8 };
+const CENTERED_ANIMATE = { opacity: 1, y: 0 };
+const CENTERED_TRANSITION = { duration: 0.15 };
+
 /** Stacked stanza display — multiple words stacked vertically with mixed typography */
 function StanzaDisplay({ captions, config, stanzaConfig }: { captions: PhraseCaption[]; config: CaptionConfig; stanzaConfig: StanzaConfig }) {
-  const positionClass = getPositionClass(config.position);
+  const isCascading = stanzaConfig.stanzaLayout === "cascading";
+  const positionClass = isCascading ? "bottom-[12%]" : getPositionClass(config.position);
   const emphFamily = getFontValue(stanzaConfig.emphasisFontFamily);
   const normalFamily = getFontValue(stanzaConfig.normalFontFamily);
+  const emphFontSize = isCascading
+    ? stanzaConfig.emphasisFontSize * 1.2
+    : stanzaConfig.emphasisFontSize;
 
   return (
     <motion.div
-      className={`absolute left-0 right-0 ${positionClass} px-4 flex justify-center`}
+      className={`absolute left-0 right-0 ${positionClass} px-4 ${isCascading ? "flex justify-start" : "flex justify-center"}`}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
       layout
     >
-      <div className="flex flex-col items-center gap-0">
-        {captions.map((caption) => (
-          <motion.span
-            key={caption.id}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.15 }}
-            style={{
-              fontSize: caption.isEmphasis
-                ? `clamp(28px, 7cqw, ${stanzaConfig.emphasisFontSize}px)`
-                : `clamp(16px, 4cqw, ${stanzaConfig.normalFontSize}px)`,
-              fontWeight: caption.isEmphasis ? 700 : 400,
-              fontStyle: caption.isEmphasis ? 'italic' : 'normal',
-              fontFamily: caption.isEmphasis ? emphFamily : normalFamily,
-              color: '#FFFFFF',
-              textShadow: '0 2px 8px rgba(0,0,0,0.7)',
-              lineHeight: 1.1,
-            }}
-          >
-            {config.uppercase ? caption.text.toUpperCase() : caption.text}
-          </motion.span>
-        ))}
+      <div className={`flex flex-col ${isCascading ? "items-start" : "items-center"} gap-0`}>
+        {captions.map((caption, index) => {
+          const indent = isCascading
+            ? Math.min(index * 28 + (caption.isEmphasis ? -8 : 0), 200)
+            : 0;
+
+          return (
+            <motion.span
+              key={caption.id}
+              initial={isCascading ? CASCADING_INITIAL : CENTERED_INITIAL}
+              animate={isCascading ? CASCADING_ANIMATE : CENTERED_ANIMATE}
+              transition={isCascading
+                ? { duration: 0.15, delay: index * 0.04 }
+                : CENTERED_TRANSITION
+              }
+              style={{
+                marginLeft: isCascading ? `${indent}px` : undefined,
+                fontSize: caption.isEmphasis
+                  ? `clamp(28px, 7cqw, ${emphFontSize}px)`
+                  : `clamp(16px, 4cqw, ${stanzaConfig.normalFontSize}px)`,
+                fontWeight: caption.isEmphasis ? 700 : 400,
+                fontStyle: caption.isEmphasis ? 'italic' : 'normal',
+                fontFamily: caption.isEmphasis ? emphFamily : normalFamily,
+                color: '#FFFFFF',
+                textShadow: '0 2px 8px rgba(0,0,0,0.7)',
+                lineHeight: 1.1,
+              }}
+            >
+              {config.uppercase ? caption.text.toUpperCase() : caption.text}
+            </motion.span>
+          );
+        })}
       </div>
     </motion.div>
   );

@@ -554,6 +554,32 @@ export default function CaptionPanel() {
 
         {stanzaConfig.enabled && (
           <>
+            {/* Layout selector */}
+            <Section title="Layout">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setStanzaConfig({ stanzaLayout: "centered" })}
+                  className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${
+                    stanzaConfig.stanzaLayout === "centered"
+                      ? "bg-[var(--accent)] text-white"
+                      : "bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)]"
+                  }`}
+                >
+                  Centrado
+                </button>
+                <button
+                  onClick={() => setStanzaConfig({ stanzaLayout: "cascading" })}
+                  className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${
+                    stanzaConfig.stanzaLayout === "cascading"
+                      ? "bg-[var(--accent)] text-white"
+                      : "bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)]"
+                  }`}
+                >
+                  Cascata
+                </button>
+              </div>
+            </Section>
+
             {/* Interval slider */}
             <Section title={`Frequência: ${stanzaConfig.intervalSeconds}s`}>
               <input

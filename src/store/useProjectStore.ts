@@ -141,6 +141,7 @@ const defaultStanzaConfig: StanzaConfig = {
   normalFontSize: 28,
   emphasisFontFamily: "Playfair Display",
   normalFontFamily: "Inter",
+  stanzaLayout: "centered",
 };
 
 const defaultCaptionConfig: CaptionConfig = {

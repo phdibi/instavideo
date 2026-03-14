@@ -209,6 +209,7 @@ export interface StanzaConfig {
   normalFontSize: number;     // default: 28
   emphasisFontFamily: string; // default: "Playfair Display"
   normalFontFamily: string;   // default: "Inter"
+  stanzaLayout: "centered" | "cascading"; // default: "centered"
 }
 
 // ===== New Mode System (vibefounder style) =====

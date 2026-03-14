@@ -5,8 +5,6 @@ import { Loader2, CheckCircle } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { FFmpegService } from "@/lib/ffmpeg";
 import { generatePhraseCaptions } from "@/lib/modes";
-import { generateSFXMarkers } from "@/lib/sfx";
-import { v4 as uuidv4 } from "uuid";
 import type { TranscriptionResult, ModeSegment, PexelsVideoResult, PexelsPhotoResult } from "@/types";
 
 const steps = [
@@ -27,7 +25,6 @@ export default function ProcessingScreen() {
     setStatus,
     setModeSegments,
     setPhraseCaptions,
-    setSFXMarkers,
   } = useProjectStore();
 
   const hasStarted = useRef(false);
@@ -180,10 +177,6 @@ export default function ProcessingScreen() {
 
       setModeSegments(updatedSegments);
 
-      // Step 4b: Auto-generate SFX markers from mode transitions
-      const sfxMarkers = generateSFXMarkers(updatedSegments, uuidv4);
-      setSFXMarkers(sfxMarkers);
-
       // Step 5: Generate phrase captions
       setStatus("building-video", "Montando seu vídeo...");
       const phrases = generatePhraseCaptions(transcription);
@@ -198,7 +191,7 @@ export default function ProcessingScreen() {
         error instanceof Error ? error.message : "Erro desconhecido no processamento"
       );
     }
-  }, [videoFile, setStatus, setModeSegments, setPhraseCaptions, setSFXMarkers]);
+  }, [videoFile, setStatus, setModeSegments, setPhraseCaptions]);
 
   useEffect(() => {
     if (hasStarted.current) return;

@@ -22,10 +22,11 @@ export default function Timeline() {
     modeSegments,
     phraseCaptions,
     sfxMarkers,
-    selectedItem,
+    selectedItems,
     setCurrentTime,
     setIsPlaying,
     setSelectedItem,
+    toggleSelectedItem,
     updateModeSegment,
     updatePhraseCaption,
     addSFXMarker,
@@ -243,12 +244,20 @@ export default function Timeline() {
     [pixelToTime, updateSFXMarker]
   );
 
+  // Helper: check if item is in multi-selection
+  const isItemSelected = useCallback(
+    (type: string, id: string) =>
+      selectedItems.some((i) => i.type === type && i.id === id),
+    [selectedItems]
+  );
+
   // Body drag for mode segments (horizontal reposition)
   const handleSegmentBodyDrag = useCallback(
     (e: React.MouseEvent, seg: ModeSegment) => {
       if (e.button !== 0) return; // left-click only
       e.stopPropagation();
       const startClientX = e.clientX;
+      const isCmd = e.metaKey || e.ctrlKey;
       const duration = seg.endTime - seg.startTime;
       let hasMoved = false;
 
@@ -283,10 +292,12 @@ export default function Timeline() {
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
         if (!hasMoved) {
-          // It was a click, not a drag — toggle selection
-          setSelectedItem(
-            selectedItem?.id === seg.id ? null : { type: "segment", id: seg.id }
-          );
+          const item = { type: "segment" as const, id: seg.id };
+          if (isCmd) {
+            toggleSelectedItem(item);
+          } else {
+            setSelectedItem(isItemSelected("segment", seg.id) ? null : item);
+          }
         }
       };
 
@@ -294,7 +305,7 @@ export default function Timeline() {
       document.addEventListener("mouseup", handleUp);
       document.body.style.userSelect = "none";
     },
-    [pixelToTime, timeToX, videoDuration, updateModeSegment, setSelectedItem, selectedItem]
+    [pixelToTime, timeToX, videoDuration, updateModeSegment, setSelectedItem, toggleSelectedItem, isItemSelected]
   );
 
   // Body drag for phrase captions
@@ -303,6 +314,7 @@ export default function Timeline() {
       if (e.button !== 0) return; // left-click only
       e.stopPropagation();
       const startClientX = e.clientX;
+      const isCmd = e.metaKey || e.ctrlKey;
       const duration = cap.endTime - cap.startTime;
       let hasMoved = false;
 
@@ -336,8 +348,12 @@ export default function Timeline() {
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
         if (!hasMoved) {
-          const isSelected = selectedItem?.type === "phrase" && selectedItem.id === cap.id;
-          setSelectedItem(isSelected ? null : { type: "phrase", id: cap.id });
+          const item = { type: "phrase" as const, id: cap.id };
+          if (isCmd) {
+            toggleSelectedItem(item);
+          } else {
+            setSelectedItem(isItemSelected("phrase", cap.id) ? null : item);
+          }
         }
       };
 
@@ -345,7 +361,7 @@ export default function Timeline() {
       document.addEventListener("mouseup", handleUp);
       document.body.style.userSelect = "none";
     },
-    [pixelToTime, timeToX, videoDuration, updatePhraseCaption, setSelectedItem, selectedItem]
+    [pixelToTime, timeToX, videoDuration, updatePhraseCaption, setSelectedItem, toggleSelectedItem, isItemSelected]
   );
 
   // Double-click on SFX track to add a new marker
@@ -397,7 +413,7 @@ export default function Timeline() {
             {modeSegments.map((seg) => {
               const left = timeToX(seg.startTime);
               const width = timeToX(seg.endTime) - left;
-              const isSelected = selectedItem?.id === seg.id;
+              const isSelected = isItemSelected("segment", seg.id);
               const color = getModeColor(seg.mode);
 
               return (
@@ -450,7 +466,7 @@ export default function Timeline() {
             {phraseCaptions.map((cap) => {
               const left = timeToX(cap.startTime);
               const width = timeToX(cap.endTime) - left;
-              const isSelected = selectedItem?.type === "phrase" && selectedItem.id === cap.id;
+              const isSelected = isItemSelected("phrase", cap.id);
 
               return (
                 <div
@@ -484,7 +500,7 @@ export default function Timeline() {
             {brollSegments.map((seg) => {
               const left = timeToX(seg.startTime);
               const width = timeToX(seg.endTime) - left;
-              const isSelected = selectedItem?.type === "segment" && selectedItem?.id === seg.id;
+              const isSelected = isItemSelected("segment", seg.id);
               const effectLabel = seg.brollEffect || "static";
 
               return (
@@ -530,7 +546,7 @@ export default function Timeline() {
             )}
             {sfxMarkers.map((marker) => {
               const x = timeToX(marker.time);
-              const isSelected = selectedItem?.type === "sfx" && selectedItem.id === marker.id;
+              const isSelected = isItemSelected("sfx", marker.id);
 
               return (
                 <div
@@ -546,9 +562,12 @@ export default function Timeline() {
                   title={`${SFX_LABELS[marker.soundType]} — ${marker.time.toFixed(1)}s`}
                   onClick={(e) => {
                     e.stopPropagation();
-                    setSelectedItem(
-                      isSelected ? null : { type: "sfx", id: marker.id }
-                    );
+                    const item = { type: "sfx" as const, id: marker.id };
+                    if (e.metaKey || e.ctrlKey) {
+                      toggleSelectedItem(item);
+                    } else {
+                      setSelectedItem(isSelected ? null : item);
+                    }
                   }}
                   onMouseDown={(e) => handleSFXMarkerDrag(e, marker)}
                 >

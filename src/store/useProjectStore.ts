@@ -31,6 +31,7 @@ interface ProjectStore {
   isPlaying: boolean;
   segments: VideoSegment[];
   selectedItem: { type: "caption" | "effect" | "broll" | "segment" | "phrase" | "sfx"; id: string } | null;
+  selectedItems: { type: "caption" | "effect" | "broll" | "segment" | "phrase" | "sfx"; id: string }[];
   teleprompterSettings: TeleprompterSettings;
   brandingConfig: BrandingConfig;
   sfxConfig: SFXConfig;
@@ -73,6 +74,7 @@ interface ProjectStore {
   setCurrentTime: (time: number) => void;
   setIsPlaying: (playing: boolean) => void;
   setSelectedItem: (item: { type: "caption" | "effect" | "broll" | "segment" | "phrase" | "sfx"; id: string } | null) => void;
+  toggleSelectedItem: (item: { type: "caption" | "effect" | "broll" | "segment" | "phrase" | "sfx"; id: string }) => void;
   setTeleprompterSettings: (settings: Partial<TeleprompterSettings>) => void;
   setBrandingConfig: (config: Partial<BrandingConfig>) => void;
   setSFXConfig: (config: Partial<SFXConfig>) => void;
@@ -155,6 +157,7 @@ const initialState = {
   currentTime: 0,
   isPlaying: false,
   selectedItem: null,
+  selectedItems: [],
   teleprompterSettings: { ...defaultTeleprompterSettings },
   brandingConfig: { ...defaultBrandingConfig },
   sfxConfig: { ...defaultSFXConfig },
@@ -304,7 +307,20 @@ export const useProjectStore = create<ProjectStore>((set) => ({
   setEditPlan: (plan) => set({ editPlan: plan }),
   setCurrentTime: (time) => set({ currentTime: time }),
   setIsPlaying: (playing) => set({ isPlaying: playing }),
-  setSelectedItem: (item) => set({ selectedItem: item }),
+  setSelectedItem: (item) => set({ selectedItem: item, selectedItems: item ? [item] : [] }),
+  toggleSelectedItem: (item) =>
+    set((state) => {
+      const exists = state.selectedItems.some((i) => i.id === item.id && i.type === item.type);
+      if (exists) {
+        const filtered = state.selectedItems.filter((i) => !(i.id === item.id && i.type === item.type));
+        return {
+          selectedItems: filtered,
+          selectedItem: filtered.length > 0 ? filtered[filtered.length - 1] : null,
+        };
+      }
+      const newItems = [...state.selectedItems, item];
+      return { selectedItems: newItems, selectedItem: item };
+    }),
   setTeleprompterSettings: (settings) =>
     set((state) => ({
       teleprompterSettings: { ...state.teleprompterSettings, ...settings },

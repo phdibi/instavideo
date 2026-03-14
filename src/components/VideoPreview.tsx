@@ -41,8 +41,6 @@ export default function VideoPreview() {
   const currentMode = currentSegment?.mode || "presenter";
   const brollLayout = currentSegment?.brollLayout || "fullscreen";
 
-  const prevModeRef = useRef(currentMode);
-
   // ── SFX Marker Playback ────────────────────────────────────────────
   const firedMarkersRef = useRef<Set<string>>(new Set());
 
@@ -234,7 +232,6 @@ export default function VideoPreview() {
     vid.currentTime = 0;
     setIsPlaying(false);
     setCurrentTime(0);
-    prevModeRef.current = "presenter";
     firedMarkersRef.current.clear();
   }, [setCurrentTime, setIsPlaying]);
 
@@ -244,7 +241,6 @@ export default function VideoPreview() {
       if (!vid) return;
       vid.currentTime = time;
       setCurrentTime(time);
-      prevModeRef.current = "presenter";
       firedMarkersRef.current.clear();
     },
     [setCurrentTime]

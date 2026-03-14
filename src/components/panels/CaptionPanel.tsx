@@ -211,12 +211,21 @@ export default function CaptionPanel() {
               </button>
             </div>
 
-            {/* Words with navigation */}
+            {/* Editable text */}
+            <input
+              type="text"
+              value={selectedPhrase.text}
+              onChange={(e) => updatePhraseCaption(selectedPhrase.id, { text: e.target.value })}
+              className="w-full px-3 py-2 bg-white/5 border border-[var(--border)] rounded-lg text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+              placeholder="Editar texto..."
+            />
+
+            {/* Words preview */}
             <div className="flex flex-wrap gap-1.5">
               {selectedPhrase.text.split(" ").map((word, i) => (
                 <span
                   key={i}
-                  className="px-2 py-1 bg-white/10 rounded-md text-sm font-semibold"
+                  className="px-2 py-1 bg-white/10 rounded-md text-xs font-medium"
                 >
                   {word}
                 </span>

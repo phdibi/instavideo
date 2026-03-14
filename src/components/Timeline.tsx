@@ -63,16 +63,22 @@ export default function Timeline() {
     [modeSegments]
   );
 
+  /** Convert raw pixel position (from scroll container) to time, accounting for label offset */
+  const pixelToTime = useCallback(
+    (rawX: number) => xToTime(rawX - LABEL_WIDTH),
+    [xToTime]
+  );
+
   const handleRulerClick = useCallback(
     (e: React.MouseEvent) => {
       const scroll = scrollRef.current;
       if (!scroll) return;
       const rect = scroll.getBoundingClientRect();
       const x = e.clientX - rect.left + scroll.scrollLeft;
-      setCurrentTime(xToTime(x));
+      setCurrentTime(pixelToTime(x));
       setIsPlaying(false);
     },
-    [xToTime, setCurrentTime, setIsPlaying]
+    [pixelToTime, setCurrentTime, setIsPlaying]
   );
 
   const handlePlayheadDragStart = useCallback(
@@ -85,7 +91,7 @@ export default function Timeline() {
         if (!scroll) return;
         const rect = scroll.getBoundingClientRect();
         const x = ev.clientX - rect.left + scroll.scrollLeft;
-        setCurrentTime(xToTime(x));
+        setCurrentTime(pixelToTime(x));
       };
 
       const handleUp = () => {
@@ -101,7 +107,7 @@ export default function Timeline() {
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
     },
-    [xToTime, setCurrentTime]
+    [pixelToTime, setCurrentTime]
   );
 
   // Generic edge drag for mode segments
@@ -115,7 +121,7 @@ export default function Timeline() {
         if (!scroll) return;
         const rect = scroll.getBoundingClientRect();
         const x = ev.clientX - rect.left + scroll.scrollLeft;
-        const time = xToTime(x);
+        const time = pixelToTime(x);
 
         if (edge === "start") {
           updateModeSegment(seg.id, { startTime: Math.min(time, seg.endTime - 0.3) });
@@ -137,7 +143,7 @@ export default function Timeline() {
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
     },
-    [xToTime, updateModeSegment]
+    [pixelToTime, updateModeSegment]
   );
 
   // Edge drag for phrase captions
@@ -151,7 +157,7 @@ export default function Timeline() {
         if (!scroll) return;
         const rect = scroll.getBoundingClientRect();
         const x = ev.clientX - rect.left + scroll.scrollLeft;
-        const time = xToTime(x);
+        const time = pixelToTime(x);
 
         if (edge === "start") {
           updatePhraseCaption(cap.id, { startTime: Math.min(time, cap.endTime - 0.1) });
@@ -173,7 +179,7 @@ export default function Timeline() {
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
     },
-    [xToTime, updatePhraseCaption]
+    [pixelToTime, updatePhraseCaption]
   );
 
   const playheadX = timeToX(currentTime);

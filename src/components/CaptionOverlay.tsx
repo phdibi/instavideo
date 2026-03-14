@@ -17,28 +17,28 @@ function getAnimationVariants(animation: CaptionConfig["animation"]) {
         initial: { opacity: 0 },
         animate: { opacity: 1 },
         exit: { opacity: 0 },
-        transition: { duration: 0.2 },
+        transition: { duration: 0.1 },
       };
     case "pop":
       return {
-        initial: { opacity: 0, scale: 0.5, y: 10 },
-        animate: { opacity: 1, scale: 1, y: 0 },
-        exit: { opacity: 0, scale: 0.9 },
-        transition: { type: "spring" as const, damping: 12, stiffness: 400, duration: 0.2 },
+        initial: { opacity: 0, scale: 0.7 },
+        animate: { opacity: 1, scale: 1 },
+        exit: { opacity: 0 },
+        transition: { duration: 0.08, ease: [0.34, 1.56, 0.64, 1] as const },
       };
     case "slide-up":
       return {
-        initial: { opacity: 0, y: 30 },
+        initial: { opacity: 0, y: 12 },
         animate: { opacity: 1, y: 0 },
-        exit: { opacity: 0, y: -15 },
-        transition: { type: "spring" as const, damping: 15, stiffness: 300 },
+        exit: { opacity: 0 },
+        transition: { duration: 0.1, ease: "easeOut" as const },
       };
     case "typewriter":
       return {
-        initial: { opacity: 0, scaleX: 0.8 },
+        initial: { opacity: 0, scaleX: 0.85 },
         animate: { opacity: 1, scaleX: 1 },
         exit: { opacity: 0 },
-        transition: { duration: 0.1 },
+        transition: { duration: 0.08 },
       };
     case "none":
     default:
@@ -46,7 +46,7 @@ function getAnimationVariants(animation: CaptionConfig["animation"]) {
         initial: { opacity: 1 },
         animate: { opacity: 1 },
         exit: { opacity: 0 },
-        transition: { duration: 0.05 },
+        transition: { duration: 0.02 },
       };
   }
 }
@@ -64,8 +64,9 @@ function getPositionClass(position: CaptionConfig["position"]) {
 }
 
 /**
- * CaptionOverlay — Phrase-based captions (2-4 words), vibefounder style.
- * Now reads captionConfig from store for full customization.
+ * CaptionOverlay — Phrase-based captions (2-4 words).
+ * Reads captionConfig from store for full customization.
+ * Uses mode="sync" to avoid gaps between captions.
  */
 export default function CaptionOverlay({ currentTime }: Props) {
   const { phraseCaptions, captionConfig } = useProjectStore();
@@ -78,7 +79,7 @@ export default function CaptionOverlay({ currentTime }: Props) {
 
   return (
     <div className="absolute inset-0 pointer-events-none">
-      <AnimatePresence mode="wait">
+      <AnimatePresence mode="popLayout">
         {activeCaption && (
           <PhraseDisplay
             key={activeCaption.id}
@@ -102,22 +103,25 @@ function PhraseDisplay({ caption, config }: { caption: PhraseCaption; config: Ca
 
   return (
     <motion.div
-      className={`absolute left-0 right-0 ${positionClass} px-6 flex justify-center`}
+      className={`absolute left-0 right-0 ${positionClass} px-4 flex justify-center`}
       initial={anim.initial}
       animate={anim.animate}
       exit={anim.exit}
       transition={anim.transition}
+      layout
     >
       <span
         style={{
           fontFamily: getFontValue(config.fontFamily),
-          fontSize: `clamp(18px, 5vw, ${config.fontSize}px)`,
+          fontSize: `clamp(14px, 4.5cqw, ${config.fontSize}px)`,
           fontWeight: config.fontWeight,
           color: config.color,
           textShadow: `0 2px ${config.shadowBlur}px ${config.shadowColor}`,
           lineHeight: 1.2,
           textAlign: "center",
           letterSpacing: `${config.letterSpacing}em`,
+          wordBreak: "break-word",
+          maxWidth: "100%",
           ...strokeStyle,
         }}
       >

@@ -253,12 +253,12 @@ export default function VideoPreview() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Video Container — 9:16 aspect ratio, centered */}
-      <div className="flex-1 flex items-center justify-center bg-black mx-2 mt-2 md:mx-4 md:mt-4">
+      {/* Video Container — 9:16 aspect ratio, centered, fills available space */}
+      <div className="flex-1 flex items-center justify-center bg-black mx-2 mt-1 md:mx-4 md:mt-2 overflow-hidden">
         <div
           ref={containerRef}
-          className="relative bg-black rounded-xl overflow-hidden h-full"
-          style={{ aspectRatio: "9/16", maxWidth: "100%" }}
+          className="relative bg-black rounded-xl overflow-hidden"
+          style={{ aspectRatio: "9/16", maxWidth: "100%", maxHeight: "100%", width: "auto", height: "100%" }}
         >
           <div className="absolute inset-0 overflow-hidden">
 

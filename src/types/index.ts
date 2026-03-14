@@ -169,6 +169,34 @@ export type ProjectStatus =
   | "exporting"
   | "error";
 
+// ===== B-Roll Effect System =====
+export type BRollEffect =
+  | "zoom-in"
+  | "zoom-out"
+  | "pan-left"
+  | "pan-right"
+  | "pan-up"
+  | "pan-down"
+  | "ken-burns"
+  | "parallax"
+  | "static";
+
+// ===== Caption Config (user-customizable) =====
+export interface CaptionConfig {
+  fontFamily: string;
+  fontSize: number;
+  fontWeight: number;
+  color: string;
+  strokeColor: string;
+  strokeWidth: number;
+  shadowColor: string;
+  shadowBlur: number;
+  position: "top" | "center" | "bottom";
+  animation: "none" | "fade" | "pop" | "slide-up" | "typewriter";
+  uppercase: boolean;
+  letterSpacing: number;
+}
+
 // ===== New Mode System (vibefounder style) =====
 export type VideoMode = "presenter" | "broll" | "typography";
 
@@ -183,6 +211,8 @@ export interface ModeSegment {
   typographyText?: string;
   typographyBackground?: "#F5F0E8" | "#0a0a0a";
   transcriptText?: string;
+  brollEffect?: BRollEffect;
+  brollEffectIntensity?: number;
 }
 
 export interface PexelsVideoResult {

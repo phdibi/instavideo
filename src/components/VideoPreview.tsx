@@ -5,6 +5,7 @@ import { Play, Pause, RotateCcw, Volume2, VolumeX } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { formatTime } from "@/lib/formatTime";
 import { getCurrentMode } from "@/lib/modes";
+import { computeBRollEffect, effectToCSS } from "@/lib/brollEffects";
 import CaptionOverlay from "./CaptionOverlay";
 import TypographyCard from "./TypographyCard";
 
@@ -143,6 +144,21 @@ export default function VideoPreview() {
     return 1 + progress * 0.03; // 1.0 → 1.03
   }, [currentMode, currentSegment, currentTime]);
 
+  // B-roll effect transform
+  const brollTransformCSS = useMemo(() => {
+    if (currentMode !== "broll" || !currentSegment) return "";
+    const effect = currentSegment.brollEffect || "static";
+    const intensity = currentSegment.brollEffectIntensity ?? 1.0;
+    const segDuration = currentSegment.endTime - currentSegment.startTime;
+    if (segDuration <= 0) return "";
+    const progress = Math.min(
+      (currentTime - currentSegment.startTime) / segDuration,
+      1
+    );
+    const transform = computeBRollEffect(effect, progress, intensity);
+    return effectToCSS(transform);
+  }, [currentMode, currentSegment, currentTime]);
+
   // ── PLAY/PAUSE/SEEK CONTROLS ──────────────────────────────────────────
 
   const togglePlay = useCallback(() => {
@@ -246,8 +262,9 @@ export default function VideoPreview() {
             }`}
           >
             <div
-              className="w-[85%] h-[50%] rounded-3xl overflow-hidden"
+              className="w-[90%] max-h-[85%] rounded-3xl overflow-hidden"
               style={{
+                aspectRatio: "9/16",
                 transform: `scale(${presenterScale})`,
                 willChange: "transform",
               }}
@@ -255,7 +272,7 @@ export default function VideoPreview() {
               <video
                 ref={videoRef}
                 src={videoUrl}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-contain"
                 onLoadedMetadata={(e) => {
                   const vid = e.target as HTMLVideoElement;
                   if (Number.isFinite(vid.duration) && vid.duration > 0) {
@@ -280,17 +297,25 @@ export default function VideoPreview() {
 
           {/* ── Layer 2b: B-Roll Video (Mode B) ── */}
           <div
-            className={`absolute inset-0 transition-opacity duration-0 ${
+            className={`absolute inset-0 transition-opacity duration-0 overflow-hidden ${
               currentMode === "broll" ? "opacity-100" : "opacity-0 pointer-events-none"
             }`}
           >
-            <video
-              ref={brollVideoRef}
-              className="w-full h-full object-cover"
-              loop
-              muted
-              playsInline
-            />
+            <div
+              className="w-full h-full"
+              style={{
+                transform: brollTransformCSS || undefined,
+                willChange: brollTransformCSS ? "transform" : undefined,
+              }}
+            >
+              <video
+                ref={brollVideoRef}
+                className="w-full h-full object-cover"
+                loop
+                muted
+                playsInline
+              />
+            </div>
             {/* Dark overlay on b-roll */}
             <div className="absolute inset-0 bg-black/25" />
           </div>

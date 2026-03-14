@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type {
   Caption,
+  CaptionConfig,
   EditEffect,
   BRollImage,
   EditPlan,
@@ -35,7 +36,9 @@ interface ProjectStore {
   phraseCaptions: PhraseCaption[];
   musicConfig: MusicConfig;
   selectedMusicTrack: string | null;
+  captionConfig: CaptionConfig;
 
+  setCaptionConfig: (config: Partial<CaptionConfig>) => void;
   setModeSegments: (segments: ModeSegment[]) => void;
   updateModeSegment: (id: string, updates: Partial<ModeSegment>) => void;
   setPhraseCaptions: (captions: PhraseCaption[]) => void;
@@ -111,6 +114,21 @@ const defaultMusicConfig: MusicConfig = {
   fadeOutDuration: 0.5,
 };
 
+const defaultCaptionConfig: CaptionConfig = {
+  fontFamily: "Inter",
+  fontSize: 48,
+  fontWeight: 800,
+  color: "#FFFFFF",
+  strokeColor: "#000000",
+  strokeWidth: 0,
+  shadowColor: "rgba(0,0,0,0.7)",
+  shadowBlur: 8,
+  position: "bottom",
+  animation: "pop",
+  uppercase: false,
+  letterSpacing: -0.02,
+};
+
 
 const initialState = {
   videoFile: null,
@@ -133,6 +151,7 @@ const initialState = {
   phraseCaptions: [],
   musicConfig: { ...defaultMusicConfig },
   selectedMusicTrack: null,
+  captionConfig: { ...defaultCaptionConfig },
 };
 
 export const useProjectStore = create<ProjectStore>((set) => ({
@@ -180,6 +199,10 @@ export const useProjectStore = create<ProjectStore>((set) => ({
   deleteBRollImage: (id) =>
     set((state) => ({
       bRollImages: state.bRollImages.filter((b) => b.id !== id),
+    })),
+  setCaptionConfig: (config) =>
+    set((state) => ({
+      captionConfig: { ...state.captionConfig, ...config },
     })),
   setModeSegments: (segments) => set({ modeSegments: segments }),
   updateModeSegment: (id, updates) =>

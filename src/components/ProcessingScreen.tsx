@@ -138,6 +138,17 @@ export default function ProcessingScreen() {
         })
       );
 
+      // Set default b-roll effects on all broll segments
+      for (let i = 0; i < updatedSegments.length; i++) {
+        if (updatedSegments[i].mode === "broll") {
+          updatedSegments[i] = {
+            ...updatedSegments[i],
+            brollEffect: "zoom-in",
+            brollEffectIntensity: 1.0,
+          };
+        }
+      }
+
       setModeSegments(updatedSegments);
 
       // Step 5: Generate phrase captions

@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback } from "react";
 import { Download, Loader2, Film } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { getCurrentMode } from "@/lib/modes";
 import { getTrackById } from "@/lib/musicLibrary";
+import { computeBRollEffect } from "@/lib/brollEffects";
+import { getCanvasFontName } from "@/lib/fonts";
 
 export default function ExportPanel() {
   const {
@@ -14,13 +16,12 @@ export default function ExportPanel() {
     phraseCaptions,
     musicConfig,
     selectedMusicTrack,
-    status,
+    captionConfig,
     setStatus,
   } = useProjectStore();
 
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState(0);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const handleExport = useCallback(async () => {
     if (!videoUrl || exporting) return;
@@ -32,8 +33,12 @@ export default function ExportPanel() {
     const WIDTH = 1080;
     const HEIGHT = 1920;
     const FPS = 30;
+    let audioCtx: AudioContext | null = null;
 
     try {
+      // Wait for fonts to be ready
+      await document.fonts.ready;
+
       // Create offscreen canvas
       const canvas = document.createElement("canvas");
       canvas.width = WIDTH;
@@ -68,14 +73,14 @@ export default function ExportPanel() {
                 brollVideos[seg.id] = bv;
                 resolve();
               };
-              bv.onerror = () => resolve(); // Skip failed loads
+              bv.onerror = () => resolve();
               bv.load();
             })
         )
       );
 
       // Set up audio
-      const audioCtx = new AudioContext();
+      audioCtx = new AudioContext();
       const dest = audioCtx.createMediaStreamDestination();
 
       // Voice audio from video
@@ -187,9 +192,9 @@ export default function ExportPanel() {
           ctx.fillStyle = "#0a0a0a";
           ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-          // Presenter video centered, rounded, 50% height
-          const presenterH = HEIGHT * 0.5;
-          const presenterW = WIDTH * 0.85;
+          // Presenter video — proportional 9:16 aspect ratio
+          const presenterW = WIDTH * 0.90;
+          const presenterH = presenterW * (16 / 9);
           const px = (WIDTH - presenterW) / 2;
           const py = (HEIGHT - presenterH) / 2;
 
@@ -214,15 +219,33 @@ export default function ExportPanel() {
           ctx.scale(scale, scale);
           ctx.translate(-cx, -cy);
 
-          // Draw video (cover crop)
-          drawVideoCover(ctx, video, px, py, presenterW, presenterH);
+          // Draw video (contain — fit without cropping)
+          drawVideoContain(ctx, video, px, py, presenterW, presenterH);
 
           ctx.restore();
         } else if (mode === "broll") {
-          // B-roll fullscreen
+          // B-roll fullscreen with effect
           const brollVid = segment ? brollVideos[segment.id] : null;
+
           if (brollVid && brollVid.readyState >= 2) {
+            // Apply b-roll effect
+            const effect = segment?.brollEffect || "static";
+            const intensity = segment?.brollEffectIntensity ?? 1.0;
+            const segDur = segment ? segment.endTime - segment.startTime : 1;
+            const segProgress = segment
+              ? Math.min((time - segment.startTime) / segDur, 1)
+              : 0;
+            const transform = computeBRollEffect(effect, segProgress, intensity);
+
+            ctx.save();
+            ctx.translate(WIDTH / 2, HEIGHT / 2);
+            ctx.scale(transform.scale, transform.scale);
+            ctx.translate(
+              -WIDTH / 2 + (transform.translateX / 100) * WIDTH,
+              -HEIGHT / 2 + (transform.translateY / 100) * HEIGHT
+            );
             drawVideoCover(ctx, brollVid, 0, 0, WIDTH, HEIGHT);
+            ctx.restore();
           } else {
             ctx.fillStyle = "#0a0a0a";
             ctx.fillRect(0, 0, WIDTH, HEIGHT);
@@ -280,25 +303,51 @@ export default function ExportPanel() {
           });
         }
 
-        // Captions on top (all modes)
+        // Captions on top (all modes) — using captionConfig
         const activeCaption = phraseCaptions.find(
           (c) => time >= c.startTime && time < c.endTime
         );
         if (activeCaption) {
-          const captionFontSize = 48;
-          ctx.font = `800 ${captionFontSize}px Inter, system-ui, sans-serif`;
+          const cFont = getCanvasFontName(captionConfig.fontFamily);
+          const cSize = captionConfig.fontSize;
+          ctx.font = `${captionConfig.fontWeight} ${cSize}px ${cFont}, Inter, system-ui, sans-serif`;
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
 
-          const captionY = HEIGHT * 0.85;
+          // Position
+          let captionY = HEIGHT * 0.85; // bottom
+          if (captionConfig.position === "top") captionY = HEIGHT * 0.15;
+          else if (captionConfig.position === "center") captionY = HEIGHT * 0.5;
 
-          // Text shadow
-          ctx.fillStyle = "rgba(0,0,0,0.7)";
-          ctx.fillText(activeCaption.text, WIDTH / 2 + 2, captionY + 2);
+          const displayText = captionConfig.uppercase
+            ? activeCaption.text.toUpperCase()
+            : activeCaption.text;
+
+          // Shadow
+          if (captionConfig.shadowBlur > 0) {
+            ctx.shadowColor = captionConfig.shadowColor;
+            ctx.shadowBlur = captionConfig.shadowBlur;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 2;
+          }
+
+          // Stroke
+          if (captionConfig.strokeWidth > 0) {
+            ctx.strokeStyle = captionConfig.strokeColor;
+            ctx.lineWidth = captionConfig.strokeWidth * 2;
+            ctx.lineJoin = "round";
+            ctx.strokeText(displayText, WIDTH / 2, captionY);
+          }
 
           // Main text
-          ctx.fillStyle = "#FFFFFF";
-          ctx.fillText(activeCaption.text, WIDTH / 2, captionY);
+          ctx.fillStyle = captionConfig.color;
+          ctx.fillText(displayText, WIDTH / 2, captionY);
+
+          // Reset shadow
+          ctx.shadowColor = "transparent";
+          ctx.shadowBlur = 0;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
         }
 
         setProgress(Math.round((frame / totalFrames) * 100));
@@ -324,12 +373,12 @@ export default function ExportPanel() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      audioCtx.close();
       setStatus("ready", "Export concluído!");
     } catch (error) {
       console.error("Export error:", error);
       setStatus("ready", "Erro no export");
     } finally {
+      try { audioCtx?.close(); } catch { /* already closed */ }
       setExporting(false);
       setProgress(0);
     }
@@ -340,6 +389,7 @@ export default function ExportPanel() {
     phraseCaptions,
     musicConfig,
     selectedMusicTrack,
+    captionConfig,
     exporting,
     setStatus,
   ]);
@@ -396,7 +446,6 @@ export default function ExportPanel() {
         </div>
       )}
 
-      <canvas ref={canvasRef} className="hidden" />
     </div>
   );
 }
@@ -453,4 +502,38 @@ function drawVideoCover(
   }
 
   ctx.drawImage(video, sx, sy, sw, sh, dx, dy, dw, dh);
+}
+
+// Helper: draw video contained within the given rect (no cropping)
+function drawVideoContain(
+  ctx: CanvasRenderingContext2D,
+  video: HTMLVideoElement,
+  dx: number,
+  dy: number,
+  dw: number,
+  dh: number
+) {
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+  if (!vw || !vh) return;
+
+  const targetRatio = dw / dh;
+  const videoRatio = vw / vh;
+
+  let drawW = dw;
+  let drawH = dh;
+  let drawX = dx;
+  let drawY = dy;
+
+  if (videoRatio > targetRatio) {
+    // Video is wider — fit to width
+    drawH = dw / videoRatio;
+    drawY = dy + (dh - drawH) / 2;
+  } else {
+    // Video is taller — fit to height
+    drawW = dh * videoRatio;
+    drawX = dx + (dw - drawW) / 2;
+  }
+
+  ctx.drawImage(video, 0, 0, vw, vh, drawX, drawY, drawW, drawH);
 }

@@ -249,6 +249,19 @@ export default function ExportPanel() {
           musicGain.gain.value = vol;
         }
 
+        // Seek b-roll video to correct time within this frame
+        if (mode === "broll" && segment) {
+          const bv = brollVideos[segment.id];
+          if (bv && bv.readyState >= 2) {
+            const brollElapsed = time - segment.startTime;
+            const safeDuration = Number.isFinite(bv.duration) && bv.duration > 0 ? bv.duration : 1;
+            const brollTime = brollElapsed % safeDuration;
+            if (Math.abs(bv.currentTime - brollTime) > 0.15) {
+              await seekVideo(bv, brollTime);
+            }
+          }
+        }
+
         if (mode === "presenter") {
           // Draw background image behind presenter
           if (bgImage.complete && bgImage.naturalWidth > 0) {

@@ -15,6 +15,21 @@ const TRACK_GAP = 2;
 const LABEL_WIDTH = 72;
 const DRAG_HANDLE_WIDTH = 6;
 
+/** Convert a touch event to look like a mouse event for our drag handlers */
+function touchToMouse(e: React.TouchEvent): React.MouseEvent | null {
+  const touch = e.touches[0] || e.changedTouches[0];
+  if (!touch) return null;
+  return {
+    clientX: touch.clientX,
+    clientY: touch.clientY,
+    button: 0,
+    metaKey: false,
+    ctrlKey: false,
+    stopPropagation: () => e.stopPropagation(),
+    preventDefault: () => e.preventDefault(),
+  } as unknown as React.MouseEvent;
+}
+
 export default function Timeline() {
   const {
     videoDuration,
@@ -117,11 +132,12 @@ export default function Timeline() {
       e.stopPropagation();
       setIsDraggingPlayhead(true);
 
-      const handleMove = (ev: MouseEvent) => {
+      const handleMove = (ev: MouseEvent | TouchEvent) => {
+        const clientX = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
         const scroll = scrollRef.current;
         if (!scroll) return;
         const rect = scroll.getBoundingClientRect();
-        const x = ev.clientX - rect.left + scroll.scrollLeft;
+        const x = clientX - rect.left + scroll.scrollLeft;
         setCurrentTime(pixelToTime(x));
       };
 
@@ -129,12 +145,16 @@ export default function Timeline() {
         setIsDraggingPlayhead(false);
         document.removeEventListener("mousemove", handleMove);
         document.removeEventListener("mouseup", handleUp);
+        document.removeEventListener("touchmove", handleMove);
+        document.removeEventListener("touchend", handleUp);
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
       };
 
       document.addEventListener("mousemove", handleMove);
       document.addEventListener("mouseup", handleUp);
+      document.addEventListener("touchmove", handleMove, { passive: false });
+      document.addEventListener("touchend", handleUp);
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
     },
@@ -147,11 +167,13 @@ export default function Timeline() {
       e.stopPropagation();
       setDragEdge({ id: seg.id, track: "mode", edge });
 
-      const handleMove = (ev: MouseEvent) => {
+      const handleMove = (ev: MouseEvent | TouchEvent) => {
+        if ("touches" in ev) ev.preventDefault();
+        const clientX = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
         const scroll = scrollRef.current;
         if (!scroll) return;
         const rect = scroll.getBoundingClientRect();
-        const x = ev.clientX - rect.left + scroll.scrollLeft;
+        const x = clientX - rect.left + scroll.scrollLeft;
         const time = pixelToTime(x);
 
         if (edge === "start") {
@@ -165,12 +187,16 @@ export default function Timeline() {
         setDragEdge(null);
         document.removeEventListener("mousemove", handleMove);
         document.removeEventListener("mouseup", handleUp);
+        document.removeEventListener("touchmove", handleMove);
+        document.removeEventListener("touchend", handleUp);
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
       };
 
       document.addEventListener("mousemove", handleMove);
       document.addEventListener("mouseup", handleUp);
+      document.addEventListener("touchmove", handleMove, { passive: false });
+      document.addEventListener("touchend", handleUp);
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
     },
@@ -183,11 +209,13 @@ export default function Timeline() {
       e.stopPropagation();
       setDragEdge({ id: cap.id, track: "caption", edge });
 
-      const handleMove = (ev: MouseEvent) => {
+      const handleMove = (ev: MouseEvent | TouchEvent) => {
+        if ("touches" in ev) ev.preventDefault();
+        const clientX = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
         const scroll = scrollRef.current;
         if (!scroll) return;
         const rect = scroll.getBoundingClientRect();
-        const x = ev.clientX - rect.left + scroll.scrollLeft;
+        const x = clientX - rect.left + scroll.scrollLeft;
         const time = pixelToTime(x);
 
         if (edge === "start") {
@@ -201,29 +229,52 @@ export default function Timeline() {
         setDragEdge(null);
         document.removeEventListener("mousemove", handleMove);
         document.removeEventListener("mouseup", handleUp);
+        document.removeEventListener("touchmove", handleMove);
+        document.removeEventListener("touchend", handleUp);
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
       };
 
       document.addEventListener("mousemove", handleMove);
       document.addEventListener("mouseup", handleUp);
+      document.addEventListener("touchmove", handleMove, { passive: false });
+      document.addEventListener("touchend", handleUp);
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
     },
     [pixelToTime, updatePhraseCaption]
   );
 
-  // Drag SFX marker horizontally
+  // Helper: check if item is in multi-selection
+  const isItemSelected = useCallback(
+    (type: string, id: string) =>
+      selectedItems.some((i) => i.type === type && i.id === id),
+    [selectedItems]
+  );
+
+  // Drag SFX marker horizontally (with 3px threshold to distinguish click vs drag)
   const handleSFXMarkerDrag = useCallback(
     (e: React.MouseEvent, marker: SFXMarker) => {
+      if (e.button !== 0) return;
       e.stopPropagation();
-      setIsDraggingSFX(true);
+      const startClientX = e.clientX;
+      const isCmd = e.metaKey || e.ctrlKey;
+      let hasMoved = false;
 
-      const handleMove = (ev: MouseEvent) => {
+      const handleMove = (ev: MouseEvent | TouchEvent) => {
+        if ("touches" in ev) ev.preventDefault();
+        const clientX = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
+        if (!hasMoved && Math.abs(clientX - startClientX) <= 3) return;
+        if (!hasMoved) {
+          hasMoved = true;
+          setIsDraggingSFX(true);
+          document.body.style.cursor = "grabbing";
+        }
+
         const scroll = scrollRef.current;
         if (!scroll) return;
         const rect = scroll.getBoundingClientRect();
-        const x = ev.clientX - rect.left + scroll.scrollLeft;
+        const x = clientX - rect.left + scroll.scrollLeft;
         const time = pixelToTime(x);
         updateSFXMarker(marker.id, { time });
       };
@@ -232,23 +283,29 @@ export default function Timeline() {
         setIsDraggingSFX(false);
         document.removeEventListener("mousemove", handleMove);
         document.removeEventListener("mouseup", handleUp);
+        document.removeEventListener("touchmove", handleMove);
+        document.removeEventListener("touchend", handleUp);
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
+
+        if (!hasMoved) {
+          // It was a click, not a drag
+          const item = { type: "sfx" as const, id: marker.id };
+          if (isCmd) {
+            toggleSelectedItem(item);
+          } else {
+            setSelectedItem(isItemSelected("sfx", marker.id) ? null : item);
+          }
+        }
       };
 
       document.addEventListener("mousemove", handleMove);
       document.addEventListener("mouseup", handleUp);
-      document.body.style.cursor = "grab";
+      document.addEventListener("touchmove", handleMove, { passive: false });
+      document.addEventListener("touchend", handleUp);
       document.body.style.userSelect = "none";
     },
-    [pixelToTime, updateSFXMarker]
-  );
-
-  // Helper: check if item is in multi-selection
-  const isItemSelected = useCallback(
-    (type: string, id: string) =>
-      selectedItems.some((i) => i.type === type && i.id === id),
-    [selectedItems]
+    [pixelToTime, updateSFXMarker, setSelectedItem, toggleSelectedItem, isItemSelected]
   );
 
   // Body drag for mode segments (horizontal reposition)
@@ -267,15 +324,17 @@ export default function Timeline() {
       const startX = e.clientX - rect.left + scroll.scrollLeft;
       const offsetX = startX - (timeToX(seg.startTime) + LABEL_WIDTH);
 
-      const handleMove = (ev: MouseEvent) => {
-        if (!hasMoved && Math.abs(ev.clientX - startClientX) <= 3) return;
+      const handleMove = (ev: MouseEvent | TouchEvent) => {
+        if ("touches" in ev) ev.preventDefault();
+        const clientX = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
+        if (!hasMoved && Math.abs(clientX - startClientX) <= 3) return;
         hasMoved = true;
         document.body.style.cursor = "grabbing";
 
         const s = scrollRef.current;
         if (!s) return;
         const r = s.getBoundingClientRect();
-        const x = ev.clientX - r.left + s.scrollLeft;
+        const x = clientX - r.left + s.scrollLeft;
         let newStart = pixelToTime(x - offsetX);
         let newEnd = newStart + duration;
 
@@ -289,6 +348,8 @@ export default function Timeline() {
       const handleUp = () => {
         document.removeEventListener("mousemove", handleMove);
         document.removeEventListener("mouseup", handleUp);
+        document.removeEventListener("touchmove", handleMove);
+        document.removeEventListener("touchend", handleUp);
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
         if (!hasMoved) {
@@ -303,6 +364,8 @@ export default function Timeline() {
 
       document.addEventListener("mousemove", handleMove);
       document.addEventListener("mouseup", handleUp);
+      document.addEventListener("touchmove", handleMove, { passive: false });
+      document.addEventListener("touchend", handleUp);
       document.body.style.userSelect = "none";
     },
     [pixelToTime, timeToX, videoDuration, updateModeSegment, setSelectedItem, toggleSelectedItem, isItemSelected]
@@ -324,15 +387,17 @@ export default function Timeline() {
       const startX = e.clientX - rect.left + scroll.scrollLeft;
       const offsetX = startX - (timeToX(cap.startTime) + LABEL_WIDTH);
 
-      const handleMove = (ev: MouseEvent) => {
-        if (!hasMoved && Math.abs(ev.clientX - startClientX) <= 3) return;
+      const handleMove = (ev: MouseEvent | TouchEvent) => {
+        if ("touches" in ev) ev.preventDefault();
+        const clientX = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
+        if (!hasMoved && Math.abs(clientX - startClientX) <= 3) return;
         hasMoved = true;
         document.body.style.cursor = "grabbing";
 
         const s = scrollRef.current;
         if (!s) return;
         const r = s.getBoundingClientRect();
-        const x = ev.clientX - r.left + s.scrollLeft;
+        const x = clientX - r.left + s.scrollLeft;
         let newStart = pixelToTime(x - offsetX);
         let newEnd = newStart + duration;
 
@@ -345,6 +410,8 @@ export default function Timeline() {
       const handleUp = () => {
         document.removeEventListener("mousemove", handleMove);
         document.removeEventListener("mouseup", handleUp);
+        document.removeEventListener("touchmove", handleMove);
+        document.removeEventListener("touchend", handleUp);
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
         if (!hasMoved) {
@@ -359,6 +426,8 @@ export default function Timeline() {
 
       document.addEventListener("mousemove", handleMove);
       document.addEventListener("mouseup", handleUp);
+      document.addEventListener("touchmove", handleMove, { passive: false });
+      document.addEventListener("touchend", handleUp);
       document.body.style.userSelect = "none";
     },
     [pixelToTime, timeToX, videoDuration, updatePhraseCaption, setSelectedItem, toggleSelectedItem, isItemSelected]
@@ -392,6 +461,7 @@ export default function Timeline() {
             className="sticky top-0 z-20 bg-[var(--surface)] border-b border-[var(--border)] cursor-pointer"
             style={{ height: RULER_HEIGHT, paddingLeft: LABEL_WIDTH }}
             onClick={handleRulerClick}
+            onTouchStart={(e) => { e.preventDefault(); const m = touchToMouse(e); if (m) handleRulerClick(m); }}
           >
             {rulerMarks.map((mark) => (
               <div
@@ -429,6 +499,7 @@ export default function Timeline() {
                     borderLeft: `3px solid ${color}`,
                   }}
                   onMouseDown={(e) => handleSegmentBodyDrag(e, seg)}
+                  onTouchStart={(e) => { e.preventDefault(); const m = touchToMouse(e); if (m) handleSegmentBodyDrag(m, seg); }}
                   onContextMenu={(e) => {
                     if (seg.mode === "typography") return; // no context menu for typography
                     e.preventDefault();
@@ -481,6 +552,7 @@ export default function Timeline() {
                     borderLeft: "2px solid rgba(255,255,255,0.5)",
                   }}
                   onMouseDown={(e) => handleCaptionBodyDrag(e, cap)}
+                  onTouchStart={(e) => { e.preventDefault(); const m = touchToMouse(e); if (m) handleCaptionBodyDrag(m, cap); }}
                 >
                   <div className="absolute inset-0 flex items-center px-1.5 overflow-hidden">
                     <span className="text-[9px] text-white/80 truncate font-medium">
@@ -516,6 +588,7 @@ export default function Timeline() {
                     borderLeft: "2px solid rgba(249,115,22,0.6)",
                   }}
                   onMouseDown={(e) => handleSegmentBodyDrag(e, seg)}
+                  onTouchStart={(e) => { e.preventDefault(); const m = touchToMouse(e); if (m) handleSegmentBodyDrag(m, seg); }}
                 >
                   <div className="absolute inset-0 flex items-center px-1.5 overflow-hidden">
                     <span className="text-[9px] text-orange-400/80 truncate font-medium">
@@ -560,16 +633,8 @@ export default function Timeline() {
                     height: TRACK_HEIGHT - 8,
                   }}
                   title={`${SFX_LABELS[marker.soundType]} — ${marker.time.toFixed(1)}s`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const item = { type: "sfx" as const, id: marker.id };
-                    if (e.metaKey || e.ctrlKey) {
-                      toggleSelectedItem(item);
-                    } else {
-                      setSelectedItem(isSelected ? null : item);
-                    }
-                  }}
                   onMouseDown={(e) => handleSFXMarkerDrag(e, marker)}
+                  onTouchStart={(e) => { e.preventDefault(); const m = touchToMouse(e); if (m) handleSFXMarkerDrag(m, marker); }}
                 >
                   <div
                     className={`w-3.5 h-3.5 rotate-45 mx-auto mt-2 transition-all ${
@@ -593,6 +658,7 @@ export default function Timeline() {
               width: 2,
             }}
             onMouseDown={handlePlayheadDragStart}
+            onTouchStart={(e) => { e.preventDefault(); const m = touchToMouse(e); if (m) handlePlayheadDragStart(m); }}
           >
             <div className="absolute inset-0 bg-red-500" />
             <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-red-500 rounded-full shadow-md" />
@@ -659,6 +725,7 @@ function EdgeHandle({
       className={`absolute ${side === "left" ? "left-0" : "right-0"} top-0 bottom-0 cursor-col-resize opacity-0 group-hover:opacity-100 transition-opacity`}
       style={{ width: DRAG_HANDLE_WIDTH }}
       onMouseDown={onMouseDown}
+      onTouchStart={(e) => { e.preventDefault(); e.stopPropagation(); const m = touchToMouse(e); if (m) onMouseDown(m); }}
     >
       <div className={`absolute ${side === "left" ? "left-0" : "right-0"} top-1/2 -translate-y-1/2 w-1 h-4 rounded-full bg-white/60`} />
     </div>

@@ -28,6 +28,14 @@ export default function ProcessingScreen() {
   } = useProjectStore();
 
   const hasStarted = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
 
   const runPipeline = useCallback(async () => {
     if (!videoFile) {
@@ -36,13 +44,21 @@ export default function ProcessingScreen() {
       return;
     }
 
+    // Create AbortController for this pipeline run
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const { signal } = controller;
+
     try {
       // Step 1: Extract audio using FFmpeg WASM (works on all browsers including iOS Safari)
       setStatus("extracting-audio", "Extraindo áudio do vídeo...");
       let audioBlob: Blob;
       try {
         audioBlob = await FFmpegService.extractAndCleanAudio(videoFile);
+        if (signal.aborted) return;
       } catch (audioErr) {
+        if (signal.aborted) return;
         console.error("Audio extraction failed:", audioErr);
         throw new Error("Falha ao extrair áudio do vídeo. Verifique o formato do arquivo.");
       }
@@ -55,6 +71,7 @@ export default function ProcessingScreen() {
       const transcribeRes = await fetch("/api/transcribe-whisper", {
         method: "POST",
         body: formData,
+        signal,
       });
 
       if (!transcribeRes.ok) {
@@ -66,6 +83,7 @@ export default function ProcessingScreen() {
       }
 
       const transcription: TranscriptionResult = await transcribeRes.json();
+      if (signal.aborted) return;
 
       if (!transcription.segments || transcription.segments.length === 0) {
         throw new Error("Nenhuma fala detectada no vídeo. Verifique se o vídeo tem áudio.");
@@ -87,6 +105,7 @@ export default function ProcessingScreen() {
           transcription: transcriptionText,
           duration: currentDuration || 60, // fallback to 60s if duration unknown
         }),
+        signal,
       });
 
       if (!analyzeRes.ok) {
@@ -104,21 +123,38 @@ export default function ProcessingScreen() {
         throw new Error("Nenhum segmento de modo foi gerado. Tente novamente.");
       }
 
-      setModeSegments(modeSegments);
+      // Validate segments have required fields
+      const validSegments = modeSegments.filter(
+        (s) =>
+          s.id &&
+          typeof s.startTime === "number" &&
+          typeof s.endTime === "number" &&
+          s.endTime > s.startTime &&
+          ["presenter", "broll", "typography"].includes(s.mode)
+      );
+
+      if (validSegments.length === 0) {
+        throw new Error("Segmentos inválidos retornados pela IA. Tente novamente.");
+      }
+
+      setModeSegments(validSegments);
+
+      if (signal.aborted) return;
 
       // Step 4: Fetch b-roll videos for Mode B segments
       setStatus("fetching-broll", "Buscando b-rolls...");
-      const brollSegments = modeSegments.filter(
+      const brollSegments = validSegments.filter(
         (s) => s.mode === "broll" && s.brollQuery
       );
 
-      const updatedSegments = [...modeSegments];
+      const updatedSegments = [...validSegments];
 
       await Promise.all(
         brollSegments.map(async (seg) => {
           try {
             const res = await fetch(
-              `/api/search-broll?query=${encodeURIComponent(seg.brollQuery!)}`
+              `/api/search-broll?query=${encodeURIComponent(seg.brollQuery!)}`,
+              { signal }
             );
             if (!res.ok) return;
             const data: { videos: PexelsVideoResult[]; photos: PexelsPhotoResult[] } =
@@ -185,6 +221,7 @@ export default function ProcessingScreen() {
       // Done
       setStatus("ready", "Pronto!");
     } catch (error) {
+      if (signal.aborted) return; // User cancelled, don't show error
       console.error("Processing pipeline error:", error);
       setStatus(
         "error",

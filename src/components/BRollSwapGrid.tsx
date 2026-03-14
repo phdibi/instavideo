@@ -169,7 +169,7 @@ export default function BRollSwapGrid({ segment }: Props) {
           <p className="text-xs text-purple-400 font-medium uppercase tracking-wider">
             Geradas com IA
           </p>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {generatedImages.map((url) => (
               <div
                 key={`ai-${url}`}
@@ -183,7 +183,7 @@ export default function BRollSwapGrid({ segment }: Props) {
                 <img
                   src={`/api/proxy-video?url=${encodeURIComponent(url)}`}
                   alt=""
-                  className="w-full aspect-[9/16] object-cover"
+                  className="w-full aspect-square object-cover"
                 />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
                   <span className="text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity font-medium">
@@ -200,7 +200,7 @@ export default function BRollSwapGrid({ segment }: Props) {
       )}
 
       {/* Combined grid: videos + photos */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         {alternatives.map((video) => (
           <div
             key={`v-${video.id}`}
@@ -214,7 +214,7 @@ export default function BRollSwapGrid({ segment }: Props) {
             <img
               src={`/api/proxy-video?url=${encodeURIComponent(video.thumbnail)}`}
               alt=""
-              className="w-full aspect-[9/16] object-cover"
+              className="w-full aspect-square object-cover"
             />
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
               <span className="text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity font-medium">
@@ -244,7 +244,7 @@ export default function BRollSwapGrid({ segment }: Props) {
             <img
               src={`/api/proxy-video?url=${encodeURIComponent(photo.thumbnail)}`}
               alt=""
-              className="w-full aspect-[9/16] object-cover"
+              className="w-full aspect-square object-cover"
             />
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
               <span className="text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity font-medium">

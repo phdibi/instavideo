@@ -19,6 +19,7 @@ export default function ExportPanel() {
     selectedMusicTrack,
     captionConfig,
     sfxConfig,
+    sfxMarkers,
     setStatus,
   } = useProjectStore();
 
@@ -137,7 +138,7 @@ export default function ExportPanel() {
             Math.ceil(sfxDuration * audioCtx.sampleRate),
             audioCtx.sampleRate
           );
-          await renderSFXToBuffer(offlineCtx, modeSegments, sfxConfig.masterVolume);
+          await renderSFXToBuffer(offlineCtx, modeSegments, sfxConfig.masterVolume, sfxMarkers);
           const sfxBuffer = await offlineCtx.startRendering();
 
           const sfxSource = audioCtx.createBufferSource();
@@ -321,6 +322,104 @@ export default function ExportPanel() {
               ctx.restore();
             }
 
+          } else if (layout === "pip") {
+            // ── PIP: b-roll fullscreen, presenter in circle ──
+            if (hasBroll) {
+              ctx.save();
+              ctx.translate(WIDTH / 2, HEIGHT / 2);
+              ctx.scale(transform.scale, transform.scale);
+              ctx.translate(
+                -WIDTH / 2 + (transform.translateX / 100) * WIDTH,
+                -HEIGHT / 2 + (transform.translateY / 100) * HEIGHT
+              );
+              drawVideoCover(ctx, brollVid, 0, 0, WIDTH, HEIGHT);
+              ctx.restore();
+            }
+            ctx.fillStyle = "rgba(0,0,0,0.25)";
+            ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+            // Draw presenter in circle (bottom-right)
+            const pipSize = WIDTH * 0.25;
+            const pipX = WIDTH - pipSize - WIDTH * 0.04;
+            const pipY = HEIGHT - pipSize - HEIGHT * 0.04;
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(pipX + pipSize / 2, pipY + pipSize / 2, pipSize / 2, 0, Math.PI * 2);
+            ctx.clip();
+            drawVideoCover(ctx, video, pipX, pipY, pipSize, pipSize);
+            ctx.restore();
+            // PIP border
+            ctx.beginPath();
+            ctx.arc(pipX + pipSize / 2, pipY + pipSize / 2, pipSize / 2, 0, Math.PI * 2);
+            ctx.strokeStyle = "rgba(255,255,255,0.3)";
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+          } else if (layout === "cinematic") {
+            // ── Cinematic: b-roll with letterbox bars ──
+            if (hasBroll) {
+              ctx.save();
+              ctx.translate(WIDTH / 2, HEIGHT / 2);
+              ctx.scale(transform.scale, transform.scale);
+              ctx.translate(
+                -WIDTH / 2 + (transform.translateX / 100) * WIDTH,
+                -HEIGHT / 2 + (transform.translateY / 100) * HEIGHT
+              );
+              drawVideoCover(ctx, brollVid, 0, 0, WIDTH, HEIGHT);
+              ctx.restore();
+            }
+            ctx.fillStyle = "rgba(0,0,0,0.25)";
+            ctx.fillRect(0, 0, WIDTH, HEIGHT);
+            // Letterbox bars (12% top and bottom)
+            const barH = HEIGHT * 0.12;
+            ctx.fillStyle = "#000000";
+            ctx.fillRect(0, 0, WIDTH, barH);
+            ctx.fillRect(0, HEIGHT - barH, WIDTH, barH);
+
+          } else if (layout === "diagonal") {
+            // ── Diagonal: presenter left triangle, b-roll right triangle ──
+            // Presenter side
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(WIDTH * 0.6, 0);
+            ctx.lineTo(WIDTH * 0.4, HEIGHT);
+            ctx.lineTo(0, HEIGHT);
+            ctx.closePath();
+            ctx.clip();
+            drawVideoCover(ctx, video, 0, 0, WIDTH, HEIGHT);
+            ctx.restore();
+
+            // B-roll side
+            if (hasBroll) {
+              ctx.save();
+              ctx.beginPath();
+              ctx.moveTo(WIDTH * 0.6, 0);
+              ctx.lineTo(WIDTH, 0);
+              ctx.lineTo(WIDTH, HEIGHT);
+              ctx.lineTo(WIDTH * 0.4, HEIGHT);
+              ctx.closePath();
+              ctx.clip();
+              ctx.translate(WIDTH / 2, HEIGHT / 2);
+              ctx.scale(transform.scale, transform.scale);
+              ctx.translate(
+                -WIDTH / 2 + (transform.translateX / 100) * WIDTH,
+                -HEIGHT / 2 + (transform.translateY / 100) * HEIGHT
+              );
+              drawVideoCover(ctx, brollVid, 0, 0, WIDTH, HEIGHT);
+              ctx.restore();
+            }
+
+            // Diagonal divider line
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(WIDTH * 0.6, 0);
+            ctx.lineTo(WIDTH * 0.4, HEIGHT);
+            ctx.strokeStyle = "rgba(255,255,255,0.2)";
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            ctx.restore();
+
           } else {
             // ── Fullscreen (default) ──
             if (hasBroll) {
@@ -478,6 +577,7 @@ export default function ExportPanel() {
     selectedMusicTrack,
     captionConfig,
     sfxConfig,
+    sfxMarkers,
     exporting,
     setStatus,
   ]);

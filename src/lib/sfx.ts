@@ -11,7 +11,7 @@
  * - Pop:        "TPOK"    — subtle pop for element appearance
  */
 
-import type { VideoMode, BRollLayout } from "@/types";
+import type { VideoMode, BRollLayout, SFXSoundType, SFXMarker } from "@/types";
 
 // ── Audio Context Singleton ───────────────────────────────────────────
 
@@ -275,6 +275,207 @@ export function playPop(volume = 0.06) {
   } catch { /* ignore */ }
 }
 
+/**
+ * "FWIP" — Fast swoosh, narrow-band noise + descending osc.
+ */
+export function playSwoosh(volume = 0.10) {
+  try {
+    const ctx = getCtx();
+    const t = ctx.currentTime;
+    const dur = 0.18;
+
+    const noise = ctx.createBufferSource();
+    noise.buffer = makeNoise(ctx, dur, 0.5);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.Q.value = 4;
+    bp.frequency.setValueAtTime(4000, t);
+    bp.frequency.exponentialRampToValueAtTime(300, t + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(volume, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    noise.connect(bp).connect(g).connect(ctx.destination);
+    noise.start(t);
+    noise.stop(t + dur);
+
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(600, t);
+    osc.frequency.exponentialRampToValueAtTime(100, t + dur);
+    const g2 = ctx.createGain();
+    g2.gain.setValueAtTime(volume * 0.25, t);
+    g2.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    osc.connect(g2).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + dur);
+  } catch { /* ignore */ }
+}
+
+/**
+ * "TING" — Pure sine 1200Hz with fast decay + harmonic.
+ */
+export function playDing(volume = 0.08) {
+  try {
+    const ctx = getCtx();
+    const t = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.value = 1200;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(volume, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    osc.connect(g).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.35);
+
+    const harm = ctx.createOscillator();
+    harm.type = "sine";
+    harm.frequency.value = 2400;
+    const g2 = ctx.createGain();
+    g2.gain.setValueAtTime(volume * 0.3, t);
+    g2.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+    harm.connect(g2).connect(ctx.destination);
+    harm.start(t);
+    harm.stop(t + 0.25);
+  } catch { /* ignore */ }
+}
+
+/**
+ * "THOMP" — Sub bass 50Hz with short transient noise.
+ */
+export function playThud(volume = 0.12) {
+  try {
+    const ctx = getCtx();
+    const t = ctx.currentTime;
+
+    const sub = ctx.createOscillator();
+    sub.type = "sine";
+    sub.frequency.setValueAtTime(50, t);
+    sub.frequency.exponentialRampToValueAtTime(25, t + 0.25);
+    const gSub = ctx.createGain();
+    gSub.gain.setValueAtTime(volume * 1.3, t);
+    gSub.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    sub.connect(gSub).connect(ctx.destination);
+    sub.start(t);
+    sub.stop(t + 0.35);
+
+    const crack = ctx.createBufferSource();
+    crack.buffer = makeNoise(ctx, 0.02, 0.8);
+    const gC = ctx.createGain();
+    gC.gain.setValueAtTime(volume * 0.4, t);
+    gC.gain.exponentialRampToValueAtTime(0.001, t + 0.02);
+    crack.connect(gC).connect(ctx.destination);
+    crack.start(t);
+    crack.stop(t + 0.02);
+  } catch { /* ignore */ }
+}
+
+/**
+ * "SHHIIIN" — Highpass filtered noise with slow envelope.
+ */
+export function playShimmer(volume = 0.07) {
+  try {
+    const ctx = getCtx();
+    const t = ctx.currentTime;
+    const dur = 0.5;
+
+    const noise = ctx.createBufferSource();
+    noise.buffer = makeNoise(ctx, dur, 0.4);
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.setValueAtTime(4000, t);
+    hp.frequency.linearRampToValueAtTime(8000, t + dur * 0.5);
+    hp.frequency.linearRampToValueAtTime(4000, t + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(volume, t + dur * 0.3);
+    g.gain.setValueAtTime(volume * 0.8, t + dur * 0.5);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    noise.connect(hp).connect(g).connect(ctx.destination);
+    noise.start(t);
+    noise.stop(t + dur);
+  } catch { /* ignore */ }
+}
+
+/**
+ * "TSHK" — Ultra-short noise burst (0.015s).
+ */
+export function playSnap(volume = 0.10) {
+  try {
+    const ctx = getCtx();
+    const t = ctx.currentTime;
+
+    const noise = ctx.createBufferSource();
+    noise.buffer = makeNoise(ctx, 0.015, 1);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.Q.value = 2;
+    bp.frequency.value = 3000;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(volume, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.015);
+    noise.connect(bp).connect(g).connect(ctx.destination);
+    noise.start(t);
+    noise.stop(t + 0.02);
+  } catch { /* ignore */ }
+}
+
+/**
+ * "WHUUMP" — Reverse envelope (crescendo → cut) with sub bass.
+ */
+export function playReverseHit(volume = 0.12) {
+  try {
+    const ctx = getCtx();
+    const t = ctx.currentTime;
+    const dur = 0.35;
+
+    const sub = ctx.createOscillator();
+    sub.type = "sine";
+    sub.frequency.setValueAtTime(30, t);
+    sub.frequency.linearRampToValueAtTime(80, t + dur * 0.85);
+    sub.frequency.setValueAtTime(80, t + dur * 0.85);
+    const gSub = ctx.createGain();
+    gSub.gain.setValueAtTime(0, t);
+    gSub.gain.linearRampToValueAtTime(volume * 1.2, t + dur * 0.85);
+    gSub.gain.linearRampToValueAtTime(0, t + dur);
+    sub.connect(gSub).connect(ctx.destination);
+    sub.start(t);
+    sub.stop(t + dur + 0.01);
+
+    const noise = ctx.createBufferSource();
+    noise.buffer = makeNoise(ctx, dur, 0.6);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.Q.value = 1.5;
+    bp.frequency.setValueAtTime(200, t);
+    bp.frequency.linearRampToValueAtTime(2000, t + dur * 0.8);
+    const gN = ctx.createGain();
+    gN.gain.setValueAtTime(0, t);
+    gN.gain.linearRampToValueAtTime(volume * 0.6, t + dur * 0.8);
+    gN.gain.linearRampToValueAtTime(0, t + dur);
+    noise.connect(bp).connect(gN).connect(ctx.destination);
+    noise.start(t);
+    noise.stop(t + dur + 0.01);
+  } catch { /* ignore */ }
+}
+
+// ── SFX Play Map ────────────────────────────────────────────────────────
+export const SFX_PLAY_MAP: Record<SFXSoundType, (vol: number) => void> = {
+  "whoosh": playWhoosh,
+  "whoosh-out": playWhooshOut,
+  "impact": playImpact,
+  "rise": playRise,
+  "slide": playSlide,
+  "pop": playPop,
+  "swoosh": playSwoosh,
+  "ding": playDing,
+  "thud": playThud,
+  "shimmer": playShimmer,
+  "snap": playSnap,
+  "reverse-hit": playReverseHit,
+};
+
 // ── Transition Player (stateless — caller tracks mode changes) ────────
 
 /**
@@ -293,6 +494,12 @@ export function playTransitionSFX(
   if (toMode === "broll") {
     if (layout === "split") {
       playSlide(volume);
+    } else if (layout === "diagonal") {
+      playSwoosh(volume);
+    } else if (layout === "cinematic") {
+      playReverseHit(volume);
+    } else if (layout === "pip") {
+      playPop(volume);
     } else {
       playWhoosh(volume);
     }
@@ -380,7 +587,8 @@ function scheduleTone(
 export async function renderSFXToBuffer(
   ctx: OfflineAudioContext,
   modeSegments: ExportSegment[],
-  masterVolume = 0.15
+  masterVolume = 0.15,
+  sfxMarkers: SFXMarker[] = []
 ): Promise<void> {
   const sorted = [...modeSegments].sort((a, b) => a.startTime - b.startTime);
 
@@ -396,6 +604,17 @@ export async function renderSFXToBuffer(
       if (curr.brollLayout === "split") {
         // Slide: short filtered noise
         scheduleNoise(ctx, t, 0.12, 0.7, masterVolume, 3000, 800, 3);
+      } else if (curr.brollLayout === "diagonal") {
+        // Swoosh: fast narrow-band noise + descending tone
+        scheduleNoise(ctx, t, 0.18, 0.5, masterVolume, 4000, 300, 4);
+        scheduleTone(ctx, t, 0.18, masterVolume * 0.25, 600, 100);
+      } else if (curr.brollLayout === "cinematic") {
+        // Reverse hit: crescendo sub bass
+        scheduleTone(ctx, t, 0.35, masterVolume * 1.0, 30, 80);
+        scheduleNoise(ctx, t, 0.35, 0.6, masterVolume * 0.5, 200, 2000, 1.5);
+      } else if (curr.brollLayout === "pip") {
+        // Pop: short sine burst
+        scheduleTone(ctx, t, 0.06, masterVolume * 0.5, 800, 200);
       } else {
         // Whoosh in: noise sweep + tonal body
         scheduleNoise(ctx, t, 0.3, 0.6, masterVolume, 5000, 150, 1.5);
@@ -426,6 +645,59 @@ export async function renderSFXToBuffer(
       // Rise
       scheduleTone(ctx, t, 0.35, masterVolume * 0.4, 180, 900);
       continue;
+    }
+  }
+
+  // ── Render SFX Markers ──────────────────────────────────────────────
+  for (const marker of sfxMarkers) {
+    const t = marker.time;
+    if (t < 0 || t >= ctx.length / ctx.sampleRate) continue;
+
+    switch (marker.soundType) {
+      case "whoosh":
+        scheduleNoise(ctx, t, 0.3, 0.6, masterVolume, 5000, 150, 1.5);
+        scheduleTone(ctx, t, 0.2, masterVolume * 0.3, 400, 80);
+        break;
+      case "whoosh-out":
+        scheduleNoise(ctx, t, 0.22, 0.5, masterVolume * 0.7, 200, 4000, 1.8);
+        scheduleTone(ctx, t, 0.18, masterVolume * 0.15, 100, 600);
+        break;
+      case "impact":
+        scheduleTone(ctx, t, 0.3, masterVolume * 1.2, 90, 35);
+        scheduleTone(ctx, t, 0.08, masterVolume * 0.8, 200, 60, "triangle");
+        scheduleNoise(ctx, t, 0.015, 1, masterVolume * 0.5, 2000, 1000, 1);
+        break;
+      case "rise":
+        scheduleTone(ctx, t, 0.35, masterVolume * 0.4, 180, 900);
+        break;
+      case "slide":
+        scheduleNoise(ctx, t, 0.12, 0.7, masterVolume, 3000, 800, 3);
+        break;
+      case "pop":
+        scheduleTone(ctx, t, 0.06, masterVolume * 0.5, 800, 200);
+        break;
+      case "swoosh":
+        scheduleNoise(ctx, t, 0.18, 0.5, masterVolume, 4000, 300, 4);
+        scheduleTone(ctx, t, 0.18, masterVolume * 0.25, 600, 100);
+        break;
+      case "ding":
+        scheduleTone(ctx, t, 0.3, masterVolume * 0.6, 1200, 1200);
+        scheduleTone(ctx, t, 0.2, masterVolume * 0.2, 2400, 2400);
+        break;
+      case "thud":
+        scheduleTone(ctx, t, 0.3, masterVolume * 1.3, 50, 25);
+        scheduleNoise(ctx, t, 0.02, 0.8, masterVolume * 0.4, 2000, 1000, 1);
+        break;
+      case "shimmer":
+        scheduleNoise(ctx, t, 0.5, 0.4, masterVolume * 0.6, 4000, 8000, 1);
+        break;
+      case "snap":
+        scheduleNoise(ctx, t, 0.015, 1, masterVolume * 0.8, 3000, 3000, 2);
+        break;
+      case "reverse-hit":
+        scheduleTone(ctx, t, 0.35, masterVolume * 1.0, 30, 80);
+        scheduleNoise(ctx, t, 0.35, 0.6, masterVolume * 0.5, 200, 2000, 1.5);
+        break;
     }
   }
 }

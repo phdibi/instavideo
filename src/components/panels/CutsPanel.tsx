@@ -104,10 +104,17 @@ export default function CutsPanel() {
                     {seg.brollQuery}
                   </p>
                 )}
-                {seg.mode === "typography" && seg.typographyText && (
-                  <p className="text-[10px] text-[var(--text-secondary)] truncate">
-                    {seg.typographyText}
-                  </p>
+                {seg.mode === "typography" && (
+                  <input
+                    type="text"
+                    value={seg.typographyText || ""}
+                    onChange={(e) =>
+                      updateModeSegment(seg.id, { typographyText: e.target.value })
+                    }
+                    onClick={(e) => e.stopPropagation()}
+                    placeholder="Texto..."
+                    className="text-[10px] text-[var(--foreground)] bg-transparent border-transparent hover:border-[var(--border)] focus:border-[var(--accent)] border rounded px-1 py-0.5 w-full outline-none transition-colors"
+                  />
                 )}
               </div>
 

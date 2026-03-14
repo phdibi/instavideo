@@ -6,7 +6,7 @@ import { useProjectStore } from "@/store/useProjectStore";
 import { formatTime } from "@/lib/formatTime";
 import { getCurrentMode } from "@/lib/modes";
 import { computeBRollEffect, effectToCSS } from "@/lib/brollEffects";
-import { playTransitionSFX } from "@/lib/sfx";
+import { playTransitionSFX, SFX_PLAY_MAP } from "@/lib/sfx";
 import CaptionOverlay from "./CaptionOverlay";
 import TypographyCard from "./TypographyCard";
 
@@ -25,6 +25,7 @@ export default function VideoPreview() {
     isPlaying,
     modeSegments,
     sfxConfig,
+    sfxMarkers,
     setCurrentTime,
     setIsPlaying,
     setVideoDuration,
@@ -49,6 +50,23 @@ export default function VideoPreview() {
       playTransitionSFX(prevMode, currentMode, sfxConfig.masterVolume, brollLayout);
     }
   }, [currentMode, sfxConfig.profile, sfxConfig.masterVolume, brollLayout]);
+
+  // ── SFX Marker Playback ────────────────────────────────────────────
+  const firedMarkersRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!isPlayingRef.current || sfxConfig.profile === "none") return;
+    for (const marker of sfxMarkers) {
+      if (
+        marker.time >= currentTime - 0.05 &&
+        marker.time <= currentTime + 0.05 &&
+        !firedMarkersRef.current.has(marker.id)
+      ) {
+        firedMarkersRef.current.add(marker.id);
+        SFX_PLAY_MAP[marker.soundType](sfxConfig.masterVolume);
+      }
+    }
+  }, [currentTime, sfxMarkers, sfxConfig.profile, sfxConfig.masterVolume]);
 
   // ── SEEK SYNC ───────────────────────────────────────────────────────
   const seekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -186,6 +204,7 @@ export default function VideoPreview() {
     const vid = videoRef.current;
     if (!vid) return;
     if (vid.paused) {
+      firedMarkersRef.current.clear();
       isPlayingRef.current = true;
       setIsPlaying(true);
       vid.play().catch(() => {
@@ -208,6 +227,7 @@ export default function VideoPreview() {
     setIsPlaying(false);
     setCurrentTime(0);
     prevModeRef.current = "presenter";
+    firedMarkersRef.current.clear();
   }, [setCurrentTime, setIsPlaying]);
 
   const seekTo = useCallback(
@@ -217,6 +237,7 @@ export default function VideoPreview() {
       vid.currentTime = time;
       setCurrentTime(time);
       prevModeRef.current = "presenter";
+      firedMarkersRef.current.clear();
     },
     [setCurrentTime]
   );
@@ -288,21 +309,28 @@ export default function VideoPreview() {
             <div className="absolute inset-0 bg-[#0a0a0a]" />
 
             {/* ── Layer 2: Presenter Video ── */}
-            {/* In "split" layout, presenter stays visible on the left half */}
             <div
               className={`absolute overflow-hidden transition-opacity duration-200 ease-in-out ${
                 currentMode === "presenter"
                   ? "inset-0 opacity-100"
                   : currentMode === "broll" && brollLayout === "split"
                     ? "opacity-100"
-                    : currentMode === "broll" && brollLayout === "overlay"
-                      ? "inset-0 opacity-100"
-                      : "inset-0 opacity-0"
+                  : currentMode === "broll" && brollLayout === "overlay"
+                    ? "inset-0 opacity-100"
+                  : currentMode === "broll" && brollLayout === "pip"
+                    ? "opacity-100"
+                  : currentMode === "broll" && brollLayout === "diagonal"
+                    ? "opacity-100"
+                    : "inset-0 opacity-0"
               }`}
               style={{
                 ...(currentMode === "broll" && brollLayout === "split"
                   ? { top: 0, bottom: 0, left: 0, width: "50%" }
-                  : {}),
+                  : currentMode === "broll" && brollLayout === "pip"
+                    ? { bottom: "4%", right: "4%", width: "25%", aspectRatio: "1", borderRadius: "50%", zIndex: 20 }
+                    : currentMode === "broll" && brollLayout === "diagonal"
+                      ? { inset: 0, clipPath: "polygon(0 0, 60% 0, 40% 100%, 0 100%)" }
+                      : {}),
                 transform: `scale(${currentMode === "presenter" ? presenterScale : 1})`,
                 willChange: "transform",
               }}
@@ -333,9 +361,6 @@ export default function VideoPreview() {
             </div>
 
           {/* ── Layer 2b: B-Roll Video ── */}
-          {/* Fullscreen: fills entire frame */}
-          {/* Split: right half, side by side with presenter */}
-          {/* Overlay: floating card with 3D perspective over presenter */}
           <div
             className={`absolute transition-all duration-300 ease-out overflow-hidden ${
               currentMode === "broll"
@@ -344,9 +369,7 @@ export default function VideoPreview() {
             } ${
               brollLayout === "overlay"
                 ? "rounded-2xl shadow-2xl"
-                : brollLayout === "split"
-                  ? ""
-                  : ""
+                : ""
             }`}
             style={{
               ...(brollLayout === "fullscreen"
@@ -362,7 +385,13 @@ export default function VideoPreview() {
                         transform: `perspective(800px) rotateY(-2deg) scale(${0.85 + brollEntryProgress * 0.15})`,
                         opacity: brollEntryProgress,
                       }
-                    : { inset: 0 }),
+                    : brollLayout === "pip"
+                      ? { inset: 0 }
+                      : brollLayout === "cinematic"
+                        ? { inset: 0 }
+                        : brollLayout === "diagonal"
+                          ? { inset: 0, clipPath: "polygon(60% 0, 100% 0, 100% 100%, 40% 100%)" }
+                          : { inset: 0 }),
             }}
           >
             <div
@@ -393,6 +422,26 @@ export default function VideoPreview() {
           {/* Split divider line */}
           {currentMode === "broll" && brollLayout === "split" && (
             <div className="absolute top-0 bottom-0 left-1/2 w-px bg-white/20 z-10" />
+          )}
+
+          {/* Cinematic letterbox bars */}
+          {currentMode === "broll" && brollLayout === "cinematic" && (
+            <>
+              <div className="absolute top-0 left-0 right-0 bg-black z-10" style={{ height: "12%" }} />
+              <div className="absolute bottom-0 left-0 right-0 bg-black z-10" style={{ height: "12%" }} />
+            </>
+          )}
+
+          {/* PIP presenter border ring */}
+          {currentMode === "broll" && brollLayout === "pip" && (
+            <div className="absolute z-20 rounded-full border-2 border-white/30" style={{ bottom: "4%", right: "4%", width: "25%", aspectRatio: "1" }} />
+          )}
+
+          {/* Diagonal divider line */}
+          {currentMode === "broll" && brollLayout === "diagonal" && (
+            <svg className="absolute inset-0 z-10 pointer-events-none" viewBox="0 0 100 100" preserveAspectRatio="none">
+              <line x1="60" y1="0" x2="40" y2="100" stroke="rgba(255,255,255,0.2)" strokeWidth="0.3" />
+            </svg>
           )}
 
           {/* ── Layer 2c: Typography Card (Mode C) ── */}

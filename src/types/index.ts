@@ -170,7 +170,7 @@ export type ProjectStatus =
   | "error";
 
 // ===== B-Roll Layout System =====
-export type BRollLayout = "fullscreen" | "split" | "overlay";
+export type BRollLayout = "fullscreen" | "split" | "overlay" | "pip" | "cinematic" | "diagonal";
 
 // ===== B-Roll Effect System =====
 export type BRollEffect =
@@ -307,6 +307,15 @@ export type ContentPillar =
   | "intersection"      // IA + Comportamento Humano
   | "cases"             // Cases & Resultados
   | "quick-tips";       // Dicas Rápidas
+
+// ===== SFX Sound Types =====
+export type SFXSoundType = "whoosh" | "whoosh-out" | "impact" | "rise" | "slide" | "pop" | "swoosh" | "ding" | "thud" | "shimmer" | "snap" | "reverse-hit";
+
+export interface SFXMarker {
+  id: string;
+  time: number;
+  soundType: SFXSoundType;
+}
 
 // ===== SFX System =====
 export type SFXProfile = "corporate" | "minimal" | "cinematic" | "none";

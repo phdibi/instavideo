@@ -1,10 +1,11 @@
 "use client";
 
 import { useRef, useCallback, useMemo, useState } from "react";
+import { v4 as uuidv4 } from "uuid";
 import { useProjectStore } from "@/store/useProjectStore";
 import { getModeColor, getModeLabel } from "@/lib/modes";
 import { formatTime } from "@/lib/formatTime";
-import type { ModeSegment, PhraseCaption } from "@/types";
+import type { ModeSegment, PhraseCaption, SFXMarker } from "@/types";
 
 const PIXELS_PER_SECOND = 60;
 const RULER_HEIGHT = 24;
@@ -19,12 +20,15 @@ export default function Timeline() {
     currentTime,
     modeSegments,
     phraseCaptions,
+    sfxMarkers,
     selectedItem,
     setCurrentTime,
     setIsPlaying,
     setSelectedItem,
     updateModeSegment,
     updatePhraseCaption,
+    addSFXMarker,
+    updateSFXMarker,
   } = useProjectStore();
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -34,6 +38,7 @@ export default function Timeline() {
     track: "mode" | "caption";
     edge: "start" | "end";
   } | null>(null);
+  const [isDraggingSFX, setIsDraggingSFX] = useState(false);
 
   const totalWidth = Math.max(videoDuration * PIXELS_PER_SECOND, 300);
 
@@ -182,8 +187,52 @@ export default function Timeline() {
     [pixelToTime, updatePhraseCaption]
   );
 
+  // Drag SFX marker horizontally
+  const handleSFXMarkerDrag = useCallback(
+    (e: React.MouseEvent, marker: SFXMarker) => {
+      e.stopPropagation();
+      setIsDraggingSFX(true);
+
+      const handleMove = (ev: MouseEvent) => {
+        const scroll = scrollRef.current;
+        if (!scroll) return;
+        const rect = scroll.getBoundingClientRect();
+        const x = ev.clientX - rect.left + scroll.scrollLeft;
+        const time = pixelToTime(x);
+        updateSFXMarker(marker.id, { time });
+      };
+
+      const handleUp = () => {
+        setIsDraggingSFX(false);
+        document.removeEventListener("mousemove", handleMove);
+        document.removeEventListener("mouseup", handleUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+
+      document.addEventListener("mousemove", handleMove);
+      document.addEventListener("mouseup", handleUp);
+      document.body.style.cursor = "grab";
+      document.body.style.userSelect = "none";
+    },
+    [pixelToTime, updateSFXMarker]
+  );
+
+  // Double-click on SFX track to add a new marker
+  const handleSFXTrackDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      const scroll = scrollRef.current;
+      if (!scroll) return;
+      const rect = scroll.getBoundingClientRect();
+      const x = e.clientX - rect.left + scroll.scrollLeft;
+      const time = pixelToTime(x);
+      addSFXMarker({ id: uuidv4(), time, soundType: "impact" });
+    },
+    [pixelToTime, addSFXMarker]
+  );
+
   const playheadX = timeToX(currentTime);
-  const totalContentHeight = RULER_HEIGHT + (TRACK_HEIGHT + TRACK_GAP) * 3 + 8;
+  const totalContentHeight = RULER_HEIGHT + (TRACK_HEIGHT + TRACK_GAP) * 4 + 8;
 
   return (
     <div className="h-full flex flex-col bg-[var(--background)]">
@@ -323,6 +372,48 @@ export default function Timeline() {
                       {effectLabel}
                     </span>
                   </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ═══ Track 4: Sons (SFX Markers) ═══ */}
+          <div
+            className="relative"
+            style={{ height: TRACK_HEIGHT, marginTop: TRACK_GAP }}
+            onDoubleClick={handleSFXTrackDoubleClick}
+          >
+            <TrackLabel label="Sons" />
+            {sfxMarkers.map((marker) => {
+              const x = timeToX(marker.time);
+              const isSelected = selectedItem?.type === "sfx" && selectedItem.id === marker.id;
+
+              return (
+                <div
+                  key={marker.id}
+                  className={`absolute top-1 cursor-grab group ${
+                    isSelected ? "z-10" : ""
+                  }`}
+                  style={{
+                    left: x + LABEL_WIDTH - 7,
+                    width: 14,
+                    height: TRACK_HEIGHT - 8,
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedItem(
+                      isSelected ? null : { type: "sfx", id: marker.id }
+                    );
+                  }}
+                  onMouseDown={(e) => handleSFXMarkerDrag(e, marker)}
+                >
+                  <div
+                    className={`w-3.5 h-3.5 rotate-45 mx-auto mt-2 transition-all ${
+                      isSelected
+                        ? "bg-yellow-400 ring-2 ring-white/60 shadow-lg"
+                        : "bg-yellow-500/70 group-hover:bg-yellow-400/90"
+                    }`}
+                  />
                 </div>
               );
             })}

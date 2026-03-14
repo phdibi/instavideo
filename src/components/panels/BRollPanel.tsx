@@ -16,6 +16,8 @@ import {
   Maximize,
   Columns2,
   PictureInPicture2,
+  Clapperboard as CinematicIcon,
+  Diamond,
 } from "lucide-react";
 
 const EFFECTS: { value: BRollEffect; label: string; icon: React.ReactNode }[] = [
@@ -34,6 +36,9 @@ const LAYOUTS: { value: BRollLayout; label: string; icon: React.ReactNode }[] = 
   { value: "fullscreen", label: "Tela cheia", icon: <Maximize className="w-4 h-4" /> },
   { value: "split", label: "Split", icon: <Columns2 className="w-4 h-4" /> },
   { value: "overlay", label: "Overlay", icon: <PictureInPicture2 className="w-4 h-4" /> },
+  { value: "pip", label: "PIP", icon: <PictureInPicture2 className="w-4 h-4" /> },
+  { value: "cinematic", label: "Cinematic", icon: <CinematicIcon className="w-4 h-4" /> },
+  { value: "diagonal", label: "Diagonal", icon: <Diamond className="w-4 h-4" /> },
 ];
 
 export default function BRollPanel() {

@@ -10,6 +10,7 @@ import type {
   VideoSegment,
   BrandingConfig,
   SFXConfig,
+  SFXMarker,
   ModeSegment,
   PhraseCaption,
   MusicConfig,
@@ -28,16 +29,21 @@ interface ProjectStore {
   currentTime: number;
   isPlaying: boolean;
   segments: VideoSegment[];
-  selectedItem: { type: "caption" | "effect" | "broll" | "segment" | "phrase"; id: string } | null;
+  selectedItem: { type: "caption" | "effect" | "broll" | "segment" | "phrase" | "sfx"; id: string } | null;
   teleprompterSettings: TeleprompterSettings;
   brandingConfig: BrandingConfig;
   sfxConfig: SFXConfig;
+  sfxMarkers: SFXMarker[];
   modeSegments: ModeSegment[];
   phraseCaptions: PhraseCaption[];
   musicConfig: MusicConfig;
   selectedMusicTrack: string | null;
   captionConfig: CaptionConfig;
 
+  setSFXMarkers: (markers: SFXMarker[]) => void;
+  addSFXMarker: (marker: SFXMarker) => void;
+  updateSFXMarker: (id: string, updates: Partial<SFXMarker>) => void;
+  deleteSFXMarker: (id: string) => void;
   setCaptionConfig: (config: Partial<CaptionConfig>) => void;
   setModeSegments: (segments: ModeSegment[]) => void;
   updateModeSegment: (id: string, updates: Partial<ModeSegment>) => void;
@@ -65,7 +71,7 @@ interface ProjectStore {
   setEditPlan: (plan: EditPlan) => void;
   setCurrentTime: (time: number) => void;
   setIsPlaying: (playing: boolean) => void;
-  setSelectedItem: (item: { type: "caption" | "effect" | "broll" | "segment" | "phrase"; id: string } | null) => void;
+  setSelectedItem: (item: { type: "caption" | "effect" | "broll" | "segment" | "phrase" | "sfx"; id: string } | null) => void;
   setTeleprompterSettings: (settings: Partial<TeleprompterSettings>) => void;
   setBrandingConfig: (config: Partial<BrandingConfig>) => void;
   setSFXConfig: (config: Partial<SFXConfig>) => void;
@@ -149,6 +155,7 @@ const initialState = {
   teleprompterSettings: { ...defaultTeleprompterSettings },
   brandingConfig: { ...defaultBrandingConfig },
   sfxConfig: { ...defaultSFXConfig },
+  sfxMarkers: [],
   modeSegments: [],
   phraseCaptions: [],
   musicConfig: { ...defaultMusicConfig },
@@ -306,6 +313,21 @@ export const useProjectStore = create<ProjectStore>((set) => ({
   setSFXConfig: (config) =>
     set((state) => ({
       sfxConfig: { ...state.sfxConfig, ...config },
+    })),
+  setSFXMarkers: (markers) => set({ sfxMarkers: markers }),
+  addSFXMarker: (marker) =>
+    set((state) => ({
+      sfxMarkers: [...state.sfxMarkers, marker].sort((a, b) => a.time - b.time),
+    })),
+  updateSFXMarker: (id, updates) =>
+    set((state) => ({
+      sfxMarkers: state.sfxMarkers
+        .map((m) => (m.id === id ? { ...m, ...updates } : m))
+        .sort((a, b) => a.time - b.time),
+    })),
+  deleteSFXMarker: (id) =>
+    set((state) => ({
+      sfxMarkers: state.sfxMarkers.filter((m) => m.id !== id),
     })),
   batchOffsetItems: (items, deltaTime) =>
     set((state) => {

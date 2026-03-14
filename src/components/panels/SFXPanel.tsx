@@ -1,9 +1,9 @@
 "use client";
 
 import { useProjectStore } from "@/store/useProjectStore";
-import { playWhoosh, playWhooshOut, playImpact, playRise, playSlide, playPop } from "@/lib/sfx";
-import { Volume2, Play } from "lucide-react";
-import type { SFXProfile } from "@/types";
+import { SFX_PLAY_MAP } from "@/lib/sfx";
+import { Volume2, Play, Trash2 } from "lucide-react";
+import type { SFXProfile, SFXSoundType } from "@/types";
 
 const PROFILES: { value: SFXProfile; label: string; desc: string }[] = [
   { value: "cinematic", label: "Cinematográfico", desc: "Sons ricos e dramáticos" },
@@ -12,20 +12,72 @@ const PROFILES: { value: SFXProfile; label: string; desc: string }[] = [
   { value: "none", label: "Sem sons", desc: "Desabilita todos os SFX" },
 ];
 
-const SOUNDS = [
-  { key: "whoosh", label: "Whoosh (entrada B-Roll)", play: (v: number) => playWhoosh(v) },
-  { key: "whooshOut", label: "Whoosh (saída B-Roll)", play: (v: number) => playWhooshOut(v) },
-  { key: "impact", label: "Impacto (tipografia)", play: (v: number) => playImpact(v) },
-  { key: "rise", label: "Rise (saída tipografia)", play: (v: number) => playRise(v) },
-  { key: "slide", label: "Slide (split-screen)", play: (v: number) => playSlide(v) },
-  { key: "pop", label: "Pop (elementos)", play: (v: number) => playPop(v) },
+const ALL_SOUNDS: { key: SFXSoundType; label: string }[] = [
+  { key: "whoosh", label: "Whoosh In" },
+  { key: "whoosh-out", label: "Whoosh Out" },
+  { key: "impact", label: "Impacto" },
+  { key: "rise", label: "Rise" },
+  { key: "slide", label: "Slide" },
+  { key: "pop", label: "Pop" },
+  { key: "swoosh", label: "Swoosh" },
+  { key: "ding", label: "Ding" },
+  { key: "thud", label: "Thud" },
+  { key: "shimmer", label: "Shimmer" },
+  { key: "snap", label: "Snap" },
+  { key: "reverse-hit", label: "Reverse Hit" },
 ];
 
 export default function SFXPanel() {
-  const { sfxConfig, setSFXConfig } = useProjectStore();
+  const { sfxConfig, setSFXConfig, sfxMarkers, selectedItem, updateSFXMarker, deleteSFXMarker, setSelectedItem } = useProjectStore();
+
+  const selectedMarker = selectedItem?.type === "sfx"
+    ? sfxMarkers.find((m) => m.id === selectedItem.id)
+    : null;
 
   return (
     <div className="space-y-5 overflow-y-auto max-h-full">
+      {/* Selected marker editing */}
+      {selectedMarker && (
+        <div className="px-4 pt-4 space-y-3 border-b border-[var(--border)] pb-4">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
+              Marcador SFX
+            </label>
+            <button
+              onClick={() => {
+                deleteSFXMarker(selectedMarker.id);
+                setSelectedItem(null);
+              }}
+              className="p-1.5 rounded-md hover:bg-red-500/20 transition-colors"
+              title="Deletar marcador"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-red-400" />
+            </button>
+          </div>
+          <p className="text-[10px] text-[var(--text-secondary)]">
+            Tempo: {selectedMarker.time.toFixed(2)}s
+          </p>
+          <div className="grid grid-cols-3 gap-1.5">
+            {ALL_SOUNDS.map((s) => (
+              <button
+                key={s.key}
+                onClick={() => {
+                  updateSFXMarker(selectedMarker.id, { soundType: s.key });
+                  SFX_PLAY_MAP[s.key](sfxConfig.masterVolume);
+                }}
+                className={`flex flex-col items-center gap-0.5 py-2 px-1 rounded-lg text-[10px] transition-all ${
+                  selectedMarker.soundType === s.key
+                    ? "bg-yellow-500 text-black font-semibold"
+                    : "bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)]"
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Profile selector */}
       <div className="px-4 pt-4 space-y-2">
         <label className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
@@ -73,17 +125,17 @@ export default function SFXPanel() {
         />
       </div>
 
-      {/* Preview sounds */}
+      {/* Preview all sounds */}
       {sfxConfig.profile !== "none" && (
         <div className="px-4 pb-4 space-y-2">
           <label className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
             Pré-visualizar Sons
           </label>
           <div className="space-y-1">
-            {SOUNDS.map((s) => (
+            {ALL_SOUNDS.map((s) => (
               <button
                 key={s.key}
-                onClick={() => s.play(sfxConfig.masterVolume)}
+                onClick={() => SFX_PLAY_MAP[s.key](sfxConfig.masterVolume)}
                 className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)] transition-colors text-left"
               >
                 <Play className="w-3.5 h-3.5 text-[var(--accent-light)] flex-shrink-0" />

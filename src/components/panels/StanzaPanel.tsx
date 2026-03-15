@@ -321,21 +321,29 @@ export default function StanzaPanel() {
             Regenerar estrofes
           </button>
 
-          {/* Per-word emphasis toggle */}
+          {/* Per-word text edit + emphasis toggle */}
           {selectedPhrase?.stanzaId && (
             <Section title="Palavra selecionada">
-              <div className="flex items-center justify-between bg-[var(--surface)] border border-[var(--border)] rounded-xl p-3">
-                <span className="text-xs font-medium truncate">{selectedPhrase.text}</span>
-                <button
-                  onClick={() => updatePhraseCaption(selectedPhrase.id, { isEmphasis: !selectedPhrase.isEmphasis })}
-                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
-                    selectedPhrase.isEmphasis
-                      ? "bg-[var(--accent)] text-white"
-                      : "bg-[var(--surface-hover)] border border-[var(--border)]"
-                  }`}
-                >
-                  {selectedPhrase.isEmphasis ? "Ênfase ON" : "Ênfase OFF"}
-                </button>
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  value={selectedPhrase.text}
+                  onChange={(e) => updatePhraseCaption(selectedPhrase.id, { text: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg text-xs font-medium bg-[var(--surface)] border border-[var(--border)] focus:border-[var(--accent)] focus:outline-none transition-colors"
+                />
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-[var(--text-secondary)]">Ênfase</span>
+                  <button
+                    onClick={() => updatePhraseCaption(selectedPhrase.id, { isEmphasis: !selectedPhrase.isEmphasis })}
+                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+                      selectedPhrase.isEmphasis
+                        ? "bg-[var(--accent)] text-white"
+                        : "bg-[var(--surface-hover)] border border-[var(--border)]"
+                    }`}
+                  >
+                    {selectedPhrase.isEmphasis ? "Ênfase ON" : "Ênfase OFF"}
+                  </button>
+                </div>
               </div>
             </Section>
           )}

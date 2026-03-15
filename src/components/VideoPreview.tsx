@@ -156,6 +156,7 @@ export default function VideoPreview() {
   // ── B-ROLL MEDIA MANAGEMENT (video or photo) ───────────────────────
   const prevBrollUrlRef = useRef<string | null>(null);
   const prevBrollImageUrlRef = useRef<string | null>(null);
+  const prevBrollSegmentIdRef = useRef<string | null>(null);
 
   const brollIsPhoto = currentSegment?.brollMediaType === "photo";
 
@@ -198,6 +199,11 @@ export default function VideoPreview() {
         brollVid.load();
         prevBrollUrlRef.current = currentSegment.brollVideoUrl;
       }
+      // Reset to start of b-roll clip only when entering a new segment
+      if (prevBrollSegmentIdRef.current !== currentSegment.id) {
+        brollVid.currentTime = 0;
+        prevBrollSegmentIdRef.current = currentSegment.id;
+      }
 
       const tryPlay = () => {
         if (brollVid.paused && isPlayingRef.current) {
@@ -215,8 +221,9 @@ export default function VideoPreview() {
       }
     } else {
       if (!brollVid.paused) brollVid.pause();
+      prevBrollSegmentIdRef.current = null;
     }
-  }, [currentMode, currentSegment?.brollVideoUrl, isPlaying, brollIsPhoto]);
+  }, [currentMode, currentSegment?.brollVideoUrl, currentSegment?.id, isPlaying, brollIsPhoto]);
 
   // Photo b-roll: set image src
   useEffect(() => {
@@ -246,13 +253,13 @@ export default function VideoPreview() {
       (currentTime - currentSegment.startTime) / segDuration,
       1
     );
-    const zoomType = currentSegment.presenterZoom ?? (presenterIdx % 2 === 0 ? "zoom-in" : "zoom-out");
+    const zoomType = currentSegment.presenterZoom ?? "zoom-in";
     return computePresenterEffect(
       zoomType,
       progress,
-      currentSegment.presenterZoomIntensity ?? 1.0,
+      currentSegment.presenterZoomIntensity ?? 1.5,
       presenterIdx,
-      currentSegment.presenterZoomEasing ?? "smooth"
+      currentSegment.presenterZoomEasing ?? "abrupt"
     );
   }, [currentMode, currentSegment, currentTime, presenterIdx]);
 
@@ -358,11 +365,11 @@ export default function VideoPreview() {
     ? currentTime - currentSegment.startTime
     : 0;
 
-  // ── B-Roll entry animation progress (0→1 over first 0.3s) ──────────
+  // ── B-Roll entry animation progress (0→1 over first 0.15s) ──────────
   const brollEntryProgress = useMemo(() => {
     if (currentMode !== "broll" || !currentSegment) return 1;
     const elapsed = currentTime - currentSegment.startTime;
-    return Math.min(elapsed / 0.3, 1);
+    return Math.min(elapsed / 0.15, 1);
   }, [currentMode, currentSegment, currentTime]);
 
   return (
@@ -436,7 +443,7 @@ export default function VideoPreview() {
 
           {/* ── Layer 2b: B-Roll Video ── */}
           <div
-            className={`absolute transition-all duration-300 ease-out overflow-hidden ${
+            className={`absolute transition-opacity duration-150 ease-out overflow-hidden ${
               currentMode === "broll"
                 ? "opacity-100"
                 : "opacity-0 pointer-events-none"

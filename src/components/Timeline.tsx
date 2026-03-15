@@ -16,7 +16,7 @@ const RULER_HEIGHT = 24;
 const TRACK_HEIGHT = 40;
 const TRACK_GAP = 2;
 const LABEL_WIDTH = 72;
-const DRAG_HANDLE_WIDTH = 6;
+const DRAG_HANDLE_WIDTH = 14;
 
 /** Convert a touch event to look like a mouse event for our drag handlers */
 function touchToMouse(e: React.TouchEvent): React.MouseEvent | null {
@@ -1167,12 +1167,12 @@ function EdgeHandle({
 }) {
   return (
     <div
-      className={`absolute ${side === "left" ? "left-0" : "right-0"} top-0 bottom-0 cursor-col-resize opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity`}
+      className={`absolute ${side === "left" ? "left-0" : "right-0"} top-0 bottom-0 cursor-col-resize opacity-100 md:opacity-40 md:hover:opacity-100 md:group-hover:opacity-100 transition-opacity`}
       style={{ width: DRAG_HANDLE_WIDTH }}
       onMouseDown={onMouseDown}
       onTouchStart={onTouchStart}
     >
-      <div className={`absolute ${side === "left" ? "left-0" : "right-0"} top-1/2 -translate-y-1/2 w-1 h-4 rounded-full bg-white/60`} />
+      <div className={`absolute ${side === "left" ? "left-0" : "right-0"} top-1/2 -translate-y-1/2 w-1.5 h-6 rounded-full bg-white/80`} />
     </div>
   );
 }

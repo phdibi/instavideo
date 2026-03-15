@@ -141,26 +141,26 @@ const defaultStanzaConfig: StanzaConfig = {
   enabled: true,
   intervalSeconds: 4,
   wordsPerStanza: 3,
-  emphasisFontSize: 56,
-  normalFontSize: 28,
+  emphasisFontSize: 60,
+  normalFontSize: 26,
   emphasisFontFamily: "Playfair Display",
-  normalFontFamily: "Inter",
-  stanzaLayout: "centered",
+  normalFontFamily: "Montserrat",
+  stanzaLayout: "cascading",
 };
 
 const defaultCaptionConfig: CaptionConfig = {
-  fontFamily: "Inter",
+  fontFamily: "Montserrat",
   fontSize: 48,
   fontWeight: 800,
   color: "#FFFFFF",
   strokeColor: "#000000",
   strokeWidth: 0,
-  shadowColor: "rgba(0,0,0,0.7)",
-  shadowBlur: 8,
+  shadowColor: "rgba(0,0,0,0.85)",
+  shadowBlur: 10,
   position: "bottom",
   animation: "pop",
-  uppercase: false,
-  letterSpacing: -0.02,
+  uppercase: true,
+  letterSpacing: 0.02,
 };
 
 

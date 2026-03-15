@@ -43,8 +43,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Invalid domain" }, { status: 403 });
     }
 
-    const response = await fetch(url);
-    if (!response.ok) {
+    // Forward Range header from client (critical for mobile Safari video playback)
+    const rangeHeader = request.headers.get("range");
+    const upstreamHeaders: HeadersInit = {};
+    if (rangeHeader) {
+      upstreamHeaders["Range"] = rangeHeader;
+    }
+
+    const response = await fetch(url, { headers: upstreamHeaders });
+    if (!response.ok && response.status !== 206) {
       throw new Error(`Upstream error: ${response.status}`);
     }
 
@@ -69,13 +76,27 @@ export async function GET(request: NextRequest) {
 
     const body = response.body;
 
+    // Build response headers
+    const resHeaders: Record<string, string> = {
+      "Content-Type": contentType,
+      "Cache-Control": "public, max-age=86400",
+      "Access-Control-Allow-Origin": "*",
+      "Cross-Origin-Resource-Policy": "cross-origin",
+      "Accept-Ranges": "bytes",
+    };
+
+    // Forward Range-related headers for partial content
+    if (contentLength) {
+      resHeaders["Content-Length"] = contentLength;
+    }
+    const contentRange = response.headers.get("content-range");
+    if (contentRange) {
+      resHeaders["Content-Range"] = contentRange;
+    }
+
     return new NextResponse(body, {
-      headers: {
-        "Content-Type": contentType,
-        "Cache-Control": "public, max-age=86400",
-        "Access-Control-Allow-Origin": "*",
-        "Cross-Origin-Resource-Policy": "cross-origin",
-      },
+      status: response.status, // 200 for full, 206 for partial
+      headers: resHeaders,
     });
   } catch (error) {
     console.error("Video proxy error:", error);

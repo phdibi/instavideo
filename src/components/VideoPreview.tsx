@@ -10,13 +10,19 @@ import { SFX_PLAY_MAP } from "@/lib/sfx";
 import CaptionOverlay from "./CaptionOverlay";
 import TypographyCard from "./TypographyCard";
 
+// Fixed reference resolution for consistent preview layout (9:16)
+const REF_WIDTH = 720;
+const REF_HEIGHT = 1280;
+
 export default function VideoPreview() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const brollVideoRef = useRef<HTMLVideoElement>(null);
   const brollImageRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const outerContainerRef = useRef<HTMLDivElement>(null);
   const animFrameRef = useRef<number>(0);
   const [muted, setMuted] = useState(false);
+  const [containerScale, setContainerScale] = useState(0.5);
   const isPlayingRef = useRef(false);
 
   const {
@@ -31,6 +37,20 @@ export default function VideoPreview() {
     setIsPlaying,
     setVideoDuration,
   } = useProjectStore();
+
+  // ResizeObserver to compute scale for fixed-resolution preview
+  useEffect(() => {
+    const outer = outerContainerRef.current;
+    if (!outer) return;
+    const ro = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      if (width > 0 && height > 0) {
+        setContainerScale(Math.min(width / REF_WIDTH, height / REF_HEIGHT));
+      }
+    });
+    ro.observe(outer);
+    return () => ro.disconnect();
+  }, []);
 
   // Current mode segment
   const currentSegment = useMemo(
@@ -348,13 +368,14 @@ export default function VideoPreview() {
   return (
     <div className="flex flex-col h-full">
       {/* Video Container — 9:16 aspect ratio, centered, fills available space */}
-      <div className="flex-1 flex items-center justify-center bg-black mx-2 mt-1 md:mx-4 md:mt-2 overflow-hidden">
-        <div
-          ref={containerRef}
-          className="relative bg-black rounded-xl overflow-hidden"
-          style={{ aspectRatio: "9/16", maxWidth: "100%", maxHeight: "100%", width: "auto", height: "100%", containerType: "inline-size" }}
-        >
-          <div className="absolute inset-0 overflow-hidden">
+      <div className="flex-1 flex items-center justify-center bg-black mx-2 mt-1 md:mx-4 md:mt-2 overflow-hidden" ref={outerContainerRef}>
+        <div className="relative" style={{ width: Math.round(REF_WIDTH * containerScale), height: Math.round(REF_HEIGHT * containerScale) }}>
+          <div
+            ref={containerRef}
+            className="absolute top-0 left-0 bg-black rounded-xl overflow-hidden"
+            style={{ width: REF_WIDTH, height: REF_HEIGHT, containerType: "inline-size", transform: `scale(${containerScale})`, transformOrigin: "top left" }}
+          >
+            <div className="absolute inset-0 overflow-hidden">
 
             {/* ── Layer 1: Background ── */}
             <div className="absolute inset-0 bg-[#0a0a0a]" />
@@ -534,7 +555,8 @@ export default function VideoPreview() {
           <div className="absolute inset-0 z-50 pointer-events-none">
             <CaptionOverlay currentTime={currentTime} />
           </div>
-        </div>
+          </div>
+          </div>
         </div>
       </div>
 

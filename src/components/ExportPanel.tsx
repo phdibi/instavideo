@@ -212,7 +212,7 @@ export default function ExportPanel() {
       const stanzaNormFont = getCanvasFontName(stanzaConfig.normalFontFamily);
       const isCascading = stanzaConfig.stanzaLayout === "cascading";
       const stanzaBaseY = isCascading
-        ? HEIGHT * 0.78
+        ? HEIGHT * 0.80
         : captionConfig.position === "top"
           ? HEIGHT * 0.15
           : captionConfig.position === "center"
@@ -220,7 +220,7 @@ export default function ExportPanel() {
             : HEIGHT * 0.85;
       const stanzaBaseX = isCascading ? WIDTH * 0.06 : WIDTH / 2;
       const stanzaEmphSize = isCascading
-        ? stanzaConfig.emphasisFontSize * 1.2
+        ? stanzaConfig.emphasisFontSize * 1.4
         : stanzaConfig.emphasisFontSize;
       const totalFrames = Math.ceil(videoDuration * FPS);
       await seekVideo(video, 0);
@@ -594,12 +594,16 @@ export default function ExportPanel() {
 
           // Calculate line heights for each caption
           const normalSize = stanzaConfig.normalFontSize;
+          const cascadeIndentStep = WIDTH * 0.055;
+          const cascadeEmphNudge = -WIDTH * 0.02;
+          const cascadeMaxIndent = WIDTH * 0.4;
           const lines = activeCaptions.map((cap, index) => {
             const size = cap.isEmphasis ? stanzaEmphSize : normalSize;
+            const emphPad = cap.isEmphasis && isCascading ? size * 0.15 : 0;
             const indent = isCascading
-              ? Math.min(index * WIDTH * 0.05 + (cap.isEmphasis ? -WIDTH * 0.015 : 0), WIDTH * 0.4)
+              ? Math.min(index * cascadeIndentStep + (cap.isEmphasis ? cascadeEmphNudge : 0), cascadeMaxIndent)
               : 0;
-            return { caption: cap, fontSize: size, lineHeight: size * 1.2, indent };
+            return { caption: cap, fontSize: size, lineHeight: size * 1.2 + emphPad, indent };
           });
           const totalHeight = lines.reduce((sum, l) => sum + l.lineHeight, 0);
           let currentY = stanzaBaseY - totalHeight / 2;
@@ -616,15 +620,22 @@ export default function ExportPanel() {
 
             const drawY = currentY + line.lineHeight / 2;
 
-            // Shadow
-            ctx.shadowColor = "rgba(0,0,0,0.7)";
-            ctx.shadowBlur = 8;
+            // Shadow — emphasis gets deeper shadow for depth
+            if (isCascading && cap.isEmphasis) {
+              ctx.shadowColor = "rgba(0,0,0,0.8)";
+              ctx.shadowBlur = 14;
+            } else {
+              ctx.shadowColor = "rgba(0,0,0,0.7)";
+              ctx.shadowBlur = 8;
+            }
             ctx.shadowOffsetX = 0;
             ctx.shadowOffsetY = 2;
 
-            // Main text
+            // Main text — normal words semi-transparent in cascading mode
+            ctx.globalAlpha = isCascading && !cap.isEmphasis ? 0.55 : 1;
             ctx.fillStyle = "#FFFFFF";
             ctx.fillText(displayText, stanzaBaseX + line.indent, drawY);
+            ctx.globalAlpha = 1;
 
             // Reset shadow
             ctx.shadowColor = "transparent";

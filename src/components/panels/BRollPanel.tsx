@@ -112,24 +112,56 @@ export default function BRollPanel() {
         </div>
 
         {currentZoom !== "none" && (
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
-              Intensidade: {currentZoomIntensity.toFixed(1)}x
-            </label>
-            <input
-              type="range"
-              min={0.5}
-              max={2.0}
-              step={0.1}
-              value={currentZoomIntensity}
-              onChange={(e) =>
-                updateModeSegment(selectedPresenterSegment.id, {
-                  presenterZoomIntensity: parseFloat(e.target.value),
-                })
-              }
-              className="w-full"
-            />
-          </div>
+          <>
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
+                Estilo
+              </label>
+              <div className="flex gap-1.5">
+                {([
+                  { value: "smooth" as const, label: "Suave" },
+                  { value: "abrupt" as const, label: "Abrupto" },
+                ]).map((opt) => {
+                  const currentEasing = selectedPresenterSegment.presenterZoomEasing ?? "smooth";
+                  const isActive = currentEasing === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => updateModeSegment(selectedPresenterSegment.id, {
+                        presenterZoomEasing: opt.value,
+                      })}
+                      className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${
+                        isActive
+                          ? "bg-blue-500 text-white"
+                          : "bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)]"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
+                Intensidade: {currentZoomIntensity.toFixed(1)}x
+              </label>
+              <input
+                type="range"
+                min={0.5}
+                max={2.0}
+                step={0.1}
+                value={currentZoomIntensity}
+                onChange={(e) =>
+                  updateModeSegment(selectedPresenterSegment.id, {
+                    presenterZoomIntensity: parseFloat(e.target.value),
+                  })
+                }
+                className="w-full"
+              />
+            </div>
+          </>
         )}
 
         {playheadOnPresenter && currentSegment && (

@@ -90,6 +90,13 @@ function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
+/** Abrupt easing: snap in first 10%, hold, snap out last 10% */
+function easeAbrupt(t: number): number {
+  if (t < 0.1) return t / 0.1;
+  if (t > 0.9) return (1 - t) / 0.1;
+  return 1;
+}
+
 /**
  * Compute the CSS transform values for a presenter zoom/parallax effect.
  * Uses cubic easing for more dynamic zoom and higher base intensity.
@@ -98,10 +105,11 @@ export function computePresenterEffect(
   zoom: string,
   progress: number,
   intensity: number = 1.0,
-  _segmentIndex: number = 0
+  _segmentIndex: number = 0,
+  easing: "smooth" | "abrupt" = "smooth"
 ): BRollTransform {
   const p = Math.min(1, Math.max(0, progress));
-  const easedP = easeInOutCubic(p);
+  const easedP = easing === "abrupt" ? easeAbrupt(p) : easeInOutCubic(p);
   const baseIntensity = intensity * 0.12;
 
   switch (zoom) {
@@ -119,12 +127,15 @@ export function computePresenterEffect(
         translateY: 0,
       };
 
-    case "parallax":
+    case "parallax": {
+      // For abrupt easing, use easedP as amplitude envelope (snap on/off)
+      const envelope = easing === "abrupt" ? easedP : 1;
       return {
-        scale: 1 + 0.08 * intensity,
-        translateX: Math.sin(p * Math.PI * 2) * 3 * intensity,
-        translateY: Math.cos(p * Math.PI) * 2 * intensity,
+        scale: 1 + 0.08 * intensity * envelope,
+        translateX: Math.sin(p * Math.PI * 2) * 3 * intensity * envelope,
+        translateY: Math.cos(p * Math.PI) * 2 * intensity * envelope,
       };
+    }
 
     case "none":
     default:

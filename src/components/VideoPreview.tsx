@@ -190,7 +190,8 @@ export default function VideoPreview() {
       zoomType,
       progress,
       currentSegment.presenterZoomIntensity ?? 1.0,
-      presenterIdx
+      presenterIdx,
+      currentSegment.presenterZoomEasing ?? "smooth"
     );
   }, [currentMode, currentSegment, currentTime, presenterIdx]);
 

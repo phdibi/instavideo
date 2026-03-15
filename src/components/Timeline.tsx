@@ -103,6 +103,26 @@ export default function Timeline() {
     return marks;
   }, [videoDuration, timeToX]);
 
+  // Separate captions: regular vs stanza
+  const regularCaptions = useMemo(
+    () => phraseCaptions.filter((c) => !c.stanzaId),
+    [phraseCaptions]
+  );
+  const stanzaCaptions = useMemo(
+    () => phraseCaptions.filter((c) => !!c.stanzaId),
+    [phraseCaptions]
+  );
+
+  // Group stanzas by stanzaId (for shared background)
+  const stanzaGroups = useMemo(() => {
+    const groups: Record<string, PhraseCaption[]> = {};
+    for (const cap of stanzaCaptions) {
+      const key = cap.stanzaId!;
+      (groups[key] ||= []).push(cap);
+    }
+    return groups;
+  }, [stanzaCaptions]);
+
   // B-roll segments (for the effects track)
   const brollSegments = useMemo(
     () => modeSegments.filter((s) => s.mode === "broll"),
@@ -447,7 +467,7 @@ export default function Timeline() {
   );
 
   const playheadX = timeToX(currentTime);
-  const totalContentHeight = RULER_HEIGHT + (TRACK_HEIGHT + TRACK_GAP) * 4 + 8;
+  const totalContentHeight = RULER_HEIGHT + (TRACK_HEIGHT + TRACK_GAP) * 5 + 8;
 
   return (
     <div className="h-full flex flex-col bg-[var(--background)]">
@@ -531,10 +551,10 @@ export default function Timeline() {
             })}
           </div>
 
-          {/* ═══ Track 2: Legendas ═══ */}
+          {/* ═══ Track 2: Legendas (regular only) ═══ */}
           <div className="relative" style={{ height: TRACK_HEIGHT, marginTop: TRACK_GAP }}>
             <TrackLabel label="Legendas" />
-            {phraseCaptions.map((cap) => {
+            {regularCaptions.map((cap) => {
               const left = timeToX(cap.startTime);
               const width = timeToX(cap.endTime) - left;
               const isSelected = isItemSelected("phrase", cap.id);
@@ -566,7 +586,73 @@ export default function Timeline() {
             })}
           </div>
 
-          {/* ═══ Track 3: Efeitos (B-Roll effects) ═══ */}
+          {/* ═══ Track 3: Estrofes (stanza captions) ═══ */}
+          <div className="relative" style={{ height: TRACK_HEIGHT, marginTop: TRACK_GAP }}>
+            <TrackLabel label="Estrofes" />
+            {/* Group backgrounds */}
+            {Object.entries(stanzaGroups).map(([stanzaId, caps]) => {
+              const minStart = Math.min(...caps.map((c) => c.startTime));
+              const maxEnd = Math.max(...caps.map((c) => c.endTime));
+              const left = timeToX(minStart);
+              const width = timeToX(maxEnd) - left;
+              return (
+                <div
+                  key={`stanza-bg-${stanzaId}`}
+                  className="absolute top-0.5 bottom-0.5 pointer-events-none"
+                  style={{
+                    left: left + LABEL_WIDTH,
+                    width: Math.max(width, 12),
+                    backgroundColor: "rgba(139,92,246,0.08)",
+                    borderRadius: 6,
+                  }}
+                />
+              );
+            })}
+            {/* Individual stanza words */}
+            {stanzaCaptions.map((cap) => {
+              const left = timeToX(cap.startTime);
+              const width = timeToX(cap.endTime) - left;
+              const isSelected = isItemSelected("phrase", cap.id);
+              const isEmphasis = !!cap.isEmphasis;
+
+              return (
+                <div
+                  key={cap.id}
+                  className={`absolute top-1 bottom-1 rounded-md cursor-grab group transition-shadow ${
+                    isSelected ? "ring-2 ring-purple-300/60 shadow-lg" : "hover:shadow-sm"
+                  }`}
+                  style={{
+                    left: left + LABEL_WIDTH,
+                    width: Math.max(width, 12),
+                    backgroundColor: isEmphasis
+                      ? "rgba(139,92,246,0.30)"
+                      : "rgba(139,92,246,0.15)",
+                    borderLeft: isEmphasis
+                      ? "3px solid rgba(139,92,246,0.9)"
+                      : "2px solid rgba(139,92,246,0.5)",
+                  }}
+                  onMouseDown={(e) => handleCaptionBodyDrag(e, cap)}
+                  onTouchStart={(e) => { e.preventDefault(); const m = touchToMouse(e); if (m) handleCaptionBodyDrag(m, cap); }}
+                >
+                  <div className="absolute inset-0 flex items-center px-1.5 overflow-hidden">
+                    <span
+                      className={`text-[9px] truncate ${
+                        isEmphasis
+                          ? "text-purple-200 font-bold"
+                          : "text-purple-300/80 font-medium"
+                      }`}
+                    >
+                      {isEmphasis ? "✦ " : ""}{cap.text}
+                    </span>
+                  </div>
+                  <EdgeHandle side="left" onMouseDown={(e) => handleCaptionEdgeDrag(e, cap, "start")} />
+                  <EdgeHandle side="right" onMouseDown={(e) => handleCaptionEdgeDrag(e, cap, "end")} />
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ═══ Track 4: Efeitos (B-Roll effects) ═══ */}
           <div className="relative" style={{ height: TRACK_HEIGHT, marginTop: TRACK_GAP }}>
             <TrackLabel label="Efeitos" />
             {brollSegments.map((seg) => {
@@ -600,7 +686,7 @@ export default function Timeline() {
             })}
           </div>
 
-          {/* ═══ Track 4: Sons (SFX Markers) ═══ */}
+          {/* ═══ Track 5: Sons (SFX Markers) ═══ */}
           <div
             className="relative"
             style={{ height: TRACK_HEIGHT, marginTop: TRACK_GAP }}

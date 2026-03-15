@@ -236,6 +236,7 @@ export interface ModeSegment {
   brollLayout?: BRollLayout;
   presenterZoom?: "none" | "zoom-in" | "zoom-out" | "parallax";
   presenterZoomIntensity?: number; // 0.5-2.0, default 1.0
+  presenterZoomEasing?: "smooth" | "abrupt";
 }
 
 export interface PexelsVideoResult {

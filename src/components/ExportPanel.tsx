@@ -302,7 +302,8 @@ export default function ExportPanel() {
             zoomType,
             segProgress,
             segment?.presenterZoomIntensity ?? 1.0,
-            presenterIndex
+            presenterIndex,
+            segment?.presenterZoomEasing ?? "smooth"
           );
 
           ctx.save();

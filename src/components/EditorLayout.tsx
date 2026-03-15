@@ -13,7 +13,7 @@ const MAX_TIMELINE_HEIGHT = 500;
 const DEFAULT_TIMELINE_HEIGHT = 200;
 
 export default function EditorLayout() {
-  const { reset, modeSegments, selectedItem, phraseCaptions } = useProjectStore();
+  const { reset, modeSegments, selectedItem } = useProjectStore();
   const [activeCategory, setActiveCategory] = useState<ToolbarCategory | null>(null);
   const [timelineHeight, setTimelineHeight] = useState(DEFAULT_TIMELINE_HEIGHT);
   const isDraggingRef = useRef(false);
@@ -27,13 +27,10 @@ export default function EditorLayout() {
       if (seg?.mode === "broll" || seg?.mode === "presenter") {
         setActiveCategory("broll");
       }
-    } else if (selectedItem?.type === "phrase") {
-      const phrase = phraseCaptions.find((c) => c.id === selectedItem.id);
-      if (phrase?.stanzaId) {
-        setActiveCategory("stanzas");
-      }
     }
-  }, [selectedItem, modeSegments, phraseCaptions]);
+    // Note: phrase selection no longer auto-switches to stanzas tab
+    // so users can edit per-phrase styles in the captions panel
+  }, [selectedItem, modeSegments]);
 
   // Cleanup drag styles on unmount
   useEffect(() => {
@@ -134,7 +131,7 @@ export default function EditorLayout() {
       <MusicController />
 
       {/* Video Preview (flex-1) */}
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-[200px]">
         <VideoPreview />
       </div>
 
@@ -144,21 +141,23 @@ export default function EditorLayout() {
         onCategoryChange={setActiveCategory}
       />
 
-      {/* Timeline resize handle (mouse + touch) */}
-      <div
-        className="h-2.5 bg-[var(--surface)] border-t border-[var(--border)] cursor-row-resize hover:bg-[var(--accent)]/20 active:bg-[var(--accent)]/30 transition-colors flex items-center justify-center shrink-0 group touch-none"
-        onMouseDown={handleResizeStart}
-        onTouchStart={handleTouchResizeStart}
-        onTouchMove={handleTouchResizeMove}
-        onTouchEnd={handleTouchResizeEnd}
-      >
-        <div className="w-8 h-0.5 rounded-full bg-[var(--text-secondary)]/30 group-hover:bg-[var(--accent)]/60 transition-colors" />
-      </div>
-
-      {/* Timeline - bottom, resizable */}
-      <div className="shrink-0" style={{ height: timelineHeight }}>
-        <Timeline />
-      </div>
+      {/* Timeline resize handle + Timeline — hidden when panel is open */}
+      {activeCategory === null && (
+        <>
+          <div
+            className="h-2.5 bg-[var(--surface)] border-t border-[var(--border)] cursor-row-resize hover:bg-[var(--accent)]/20 active:bg-[var(--accent)]/30 transition-colors flex items-center justify-center shrink-0 group touch-none"
+            onMouseDown={handleResizeStart}
+            onTouchStart={handleTouchResizeStart}
+            onTouchMove={handleTouchResizeMove}
+            onTouchEnd={handleTouchResizeEnd}
+          >
+            <div className="w-8 h-0.5 rounded-full bg-[var(--text-secondary)]/30 group-hover:bg-[var(--accent)]/60 transition-colors" />
+          </div>
+          <div className="shrink-0" style={{ height: timelineHeight }}>
+            <Timeline />
+          </div>
+        </>
+      )}
     </div>
   );
 }

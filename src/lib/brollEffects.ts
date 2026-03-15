@@ -85,6 +85,53 @@ export function computeBRollEffect(
   }
 }
 
+/** Cubic ease-in-out easing */
+function easeInOutCubic(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+/**
+ * Compute the CSS transform values for a presenter zoom/parallax effect.
+ * Uses cubic easing for more dynamic zoom and higher base intensity.
+ */
+export function computePresenterEffect(
+  zoom: string,
+  progress: number,
+  intensity: number = 1.0,
+  _segmentIndex: number = 0
+): BRollTransform {
+  const p = Math.min(1, Math.max(0, progress));
+  const easedP = easeInOutCubic(p);
+  const baseIntensity = intensity * 0.12;
+
+  switch (zoom) {
+    case "zoom-in":
+      return {
+        scale: 1 + easedP * baseIntensity,
+        translateX: 0,
+        translateY: 0,
+      };
+
+    case "zoom-out":
+      return {
+        scale: 1 + (1 - easedP) * baseIntensity,
+        translateX: 0,
+        translateY: 0,
+      };
+
+    case "parallax":
+      return {
+        scale: 1 + 0.08 * intensity,
+        translateX: Math.sin(p * Math.PI * 2) * 3 * intensity,
+        translateY: Math.cos(p * Math.PI) * 2 * intensity,
+      };
+
+    case "none":
+    default:
+      return { scale: 1, translateX: 0, translateY: 0 };
+  }
+}
+
 /** Convert a BRollTransform to a CSS transform string */
 export function effectToCSS(transform: BRollTransform): string {
   const { scale, translateX, translateY } = transform;

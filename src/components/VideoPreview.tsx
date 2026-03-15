@@ -5,7 +5,7 @@ import { Play, Pause, RotateCcw, Volume2, VolumeX } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { formatTime } from "@/lib/formatTime";
 import { getCurrentMode } from "@/lib/modes";
-import { computeBRollEffect, effectToCSS } from "@/lib/brollEffects";
+import { computeBRollEffect, computePresenterEffect, effectToCSS } from "@/lib/brollEffects";
 import { SFX_PLAY_MAP } from "@/lib/sfx";
 import CaptionOverlay from "./CaptionOverlay";
 import TypographyCard from "./TypographyCard";
@@ -177,18 +177,21 @@ export default function VideoPreview() {
     return presenterSegs.findIndex((s) => s.id === currentSegment.id);
   }, [currentSegment, modeSegments]);
 
-  const presenterScale = useMemo(() => {
-    if (currentMode !== "presenter" || !currentSegment) return 1;
+  const presenterTransform = useMemo(() => {
+    if (currentMode !== "presenter" || !currentSegment) return { scale: 1, translateX: 0, translateY: 0 };
     const segDuration = currentSegment.endTime - currentSegment.startTime;
-    if (segDuration <= 0) return 1;
+    if (segDuration <= 0) return { scale: 1, translateX: 0, translateY: 0 };
     const progress = Math.min(
       (currentTime - currentSegment.startTime) / segDuration,
       1
     );
     const zoomType = currentSegment.presenterZoom ?? (presenterIdx % 2 === 0 ? "zoom-in" : "zoom-out");
-    if (zoomType === "none") return 1;
-    const intensity = (currentSegment.presenterZoomIntensity ?? 1.0) * 0.06;
-    return zoomType === "zoom-in" ? 1 + progress * intensity : 1 + intensity - progress * intensity;
+    return computePresenterEffect(
+      zoomType,
+      progress,
+      currentSegment.presenterZoomIntensity ?? 1.0,
+      presenterIdx
+    );
   }, [currentMode, currentSegment, currentTime, presenterIdx]);
 
   // B-roll effect transform
@@ -344,7 +347,9 @@ export default function VideoPreview() {
                     : currentMode === "broll" && brollLayout === "diagonal"
                       ? { inset: 0, clipPath: "polygon(0 0, 60% 0, 40% 100%, 0 100%)" }
                       : {}),
-                transform: `scale(${currentMode === "presenter" ? presenterScale : 1})`,
+                transform: currentMode === "presenter"
+                  ? `scale(${presenterTransform.scale}) translate(${presenterTransform.translateX}%, ${presenterTransform.translateY}%)`
+                  : "scale(1)",
                 willChange: "transform",
               }}
             >

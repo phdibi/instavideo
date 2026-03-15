@@ -5,7 +5,7 @@ import { Download, Loader2, Film } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { getCurrentMode } from "@/lib/modes";
 import { getTrackById } from "@/lib/musicLibrary";
-import { computeBRollEffect } from "@/lib/brollEffects";
+import { computeBRollEffect, computePresenterEffect } from "@/lib/brollEffects";
 import { getCanvasFontName } from "@/lib/fonts";
 import { renderSFXToBuffer } from "@/lib/sfx";
 
@@ -298,13 +298,20 @@ export default function ExportPanel() {
           const segDur = segment ? segment.endTime - segment.startTime : 1;
           const segProgress = segment ? Math.min((time - segment.startTime) / segDur, 1) : 0;
           const zoomType = segment?.presenterZoom ?? (presenterIndex % 2 === 0 ? "zoom-in" : "zoom-out");
-          const zoomIntensity = (segment?.presenterZoomIntensity ?? 1.0) * 0.06;
-          const scale = zoomType === "none" ? 1 : zoomType === "zoom-in" ? 1 + segProgress * zoomIntensity : 1 + zoomIntensity - segProgress * zoomIntensity;
+          const pTransform = computePresenterEffect(
+            zoomType,
+            segProgress,
+            segment?.presenterZoomIntensity ?? 1.0,
+            presenterIndex
+          );
 
           ctx.save();
           ctx.translate(WIDTH / 2, HEIGHT / 2);
-          ctx.scale(scale, scale);
-          ctx.translate(-WIDTH / 2, -HEIGHT / 2);
+          ctx.scale(pTransform.scale, pTransform.scale);
+          ctx.translate(
+            -WIDTH / 2 + (pTransform.translateX / 100) * WIDTH,
+            -HEIGHT / 2 + (pTransform.translateY / 100) * HEIGHT
+          );
           drawVideoCover(ctx, video, 0, 0, WIDTH, HEIGHT);
           ctx.restore();
         } else if (mode === "broll") {

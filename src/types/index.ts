@@ -234,7 +234,7 @@ export interface ModeSegment {
   brollEffect?: BRollEffect;
   brollEffectIntensity?: number;
   brollLayout?: BRollLayout;
-  presenterZoom?: "none" | "zoom-in" | "zoom-out";
+  presenterZoom?: "none" | "zoom-in" | "zoom-out" | "parallax";
   presenterZoomIntensity?: number; // 0.5-2.0, default 1.0
 }
 

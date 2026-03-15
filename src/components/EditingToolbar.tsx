@@ -99,7 +99,7 @@ export default function EditingToolbar({ activeCategory, onCategoryChange }: Pro
             }}
             className="overflow-hidden bg-[var(--surface)] border-t border-[var(--border)]"
           >
-            <div className="max-h-[50vh] md:max-h-[50vh] overflow-y-auto overscroll-contain pb-safe">
+            <div className="max-h-[40vh] overflow-y-auto overscroll-contain pb-safe">
               {renderPanelContent()}
             </div>
           </motion.div>

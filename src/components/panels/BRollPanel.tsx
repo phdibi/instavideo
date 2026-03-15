@@ -87,6 +87,7 @@ export default function BRollPanel() {
               { value: "none", label: "Nenhum" },
               { value: "zoom-in", label: "Zoom In" },
               { value: "zoom-out", label: "Zoom Out" },
+              { value: "parallax", label: "Parallax" },
             ] as const).map((opt) => {
               const isActive = opt.value === "auto"
                 ? currentZoom === undefined

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useState, useRef } from "react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { AVAILABLE_FONTS } from "@/lib/fonts";
 import type { CaptionConfig } from "@/types";
@@ -113,15 +113,28 @@ export default function CaptionPanel() {
 
   const hasSelection = selectedPhrases.length > 0;
 
-  // Get selected phrase and its neighbors
-  const selectedPhrase = useMemo(() => {
-    if (selectedItem?.type !== "phrase") return null;
-    return phraseCaptions.find((c) => c.id === selectedItem.id) || null;
-  }, [selectedItem, phraseCaptions]);
+  // Effective config: merge global + override of selected phrase
+  const effectiveConfig = useMemo(() => {
+    if (selectedPhrases.length === 1 && selectedPhrases[0]?.styleOverride) {
+      return { ...captionConfig, ...selectedPhrases[0].styleOverride };
+    }
+    return captionConfig;
+  }, [captionConfig, selectedPhrases]);
 
-  // Handle config change: selection → override, no selection → global
+  // Toggle: apply to all or only selected (resets when selection changes)
+  const [applyToAll, setApplyToAll] = useState(false);
+
+  // Reset applyToAll when selection changes
+  const selectionKey = selectedPhrases.map((p) => p.id).join(",");
+  const prevSelectionKeyRef = useRef(selectionKey);
+  if (prevSelectionKeyRef.current !== selectionKey) {
+    prevSelectionKeyRef.current = selectionKey;
+    if (applyToAll) setApplyToAll(false);
+  }
+
+  // Handle config change: respects applyToAll toggle
   const handleConfigChange = useCallback((update: Partial<CaptionConfig>) => {
-    if (hasSelection) {
+    if (hasSelection && !applyToAll) {
       for (const phrase of selectedPhrases) {
         updatePhraseCaption(phrase.id, {
           styleOverride: { ...phrase.styleOverride, ...update },
@@ -130,7 +143,13 @@ export default function CaptionPanel() {
     } else {
       setCaptionConfig(update);
     }
-  }, [hasSelection, selectedPhrases, updatePhraseCaption, setCaptionConfig]);
+  }, [hasSelection, applyToAll, selectedPhrases, updatePhraseCaption, setCaptionConfig]);
+
+  // Get selected phrase and its neighbors
+  const selectedPhrase = useMemo(() => {
+    if (selectedItem?.type !== "phrase") return null;
+    return phraseCaptions.find((c) => c.id === selectedItem.id) || null;
+  }, [selectedItem, phraseCaptions]);
 
   const sorted = useMemo(
     () => [...phraseCaptions].sort((a, b) => a.startTime - b.startTime),
@@ -336,6 +355,19 @@ export default function CaptionPanel() {
           <p className="text-xs font-semibold text-[var(--accent-light)]">
             Editando {selectedPhrases.length} legenda{selectedPhrases.length > 1 ? "s" : ""} selecionada{selectedPhrases.length > 1 ? "s" : ""}
           </p>
+          {/* Apply to all toggle */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setApplyToAll(!applyToAll)}
+              className={`px-3 py-1 rounded-lg text-[10px] font-medium transition-all ${
+                applyToAll
+                  ? "bg-[var(--accent)] text-white"
+                  : "bg-[var(--surface)] border border-[var(--border)]"
+              }`}
+            >
+              {applyToAll ? "Aplicando a todas" : "Apenas selecionada"}
+            </button>
+          </div>
           <div className="flex gap-2">
             <button
               onClick={() => {
@@ -386,7 +418,7 @@ export default function CaptionPanel() {
               key={font.name}
               onClick={() => handleConfigChange({ fontFamily: font.name })}
               className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                captionConfig.fontFamily === font.name
+                effectiveConfig.fontFamily === font.name
                   ? "bg-[var(--accent)] text-white"
                   : "bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)]"
               }`}
@@ -399,13 +431,13 @@ export default function CaptionPanel() {
       </Section>
 
       {/* Font Size */}
-      <Section title={`Tamanho: ${captionConfig.fontSize}px`}>
+      <Section title={`Tamanho: ${effectiveConfig.fontSize}px`}>
         <input
           type="range"
           min={24}
           max={72}
           step={1}
-          value={captionConfig.fontSize}
+          value={effectiveConfig.fontSize}
           onChange={(e) => handleConfigChange({ fontSize: parseInt(e.target.value) })}
           className="w-full"
         />
@@ -419,7 +451,7 @@ export default function CaptionPanel() {
               key={w}
               onClick={() => handleConfigChange({ fontWeight: w })}
               className={`flex-1 py-1.5 rounded-lg text-xs transition-all ${
-                captionConfig.fontWeight === w
+                effectiveConfig.fontWeight === w
                   ? "bg-[var(--accent)] text-white"
                   : "bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)]"
               }`}
@@ -438,7 +470,7 @@ export default function CaptionPanel() {
               key={color}
               onClick={() => handleConfigChange({ color })}
               className={`w-7 h-7 rounded-full border-2 transition-all ${
-                captionConfig.color === color
+                effectiveConfig.color === color
                   ? "border-[var(--accent)] scale-110"
                   : "border-transparent hover:border-white/30"
               }`}
@@ -447,7 +479,7 @@ export default function CaptionPanel() {
           ))}
           <input
             type="text"
-            value={captionConfig.color}
+            value={effectiveConfig.color}
             onChange={(e) => handleConfigChange({ color: e.target.value })}
             className="w-20 px-2 py-1 bg-[var(--surface)] border border-[var(--border)] rounded-lg text-xs font-mono"
             placeholder="#FFFFFF"
@@ -460,38 +492,38 @@ export default function CaptionPanel() {
         <div className="space-y-2">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => handleConfigChange({ strokeWidth: captionConfig.strokeWidth > 0 ? 0 : 2 })}
+              onClick={() => handleConfigChange({ strokeWidth: effectiveConfig.strokeWidth > 0 ? 0 : 2 })}
               className={`px-3 py-1 rounded-lg text-xs transition-all ${
-                captionConfig.strokeWidth > 0
+                effectiveConfig.strokeWidth > 0
                   ? "bg-[var(--accent)] text-white"
                   : "bg-[var(--surface)] border border-[var(--border)]"
               }`}
             >
-              {captionConfig.strokeWidth > 0 ? "ON" : "OFF"}
+              {effectiveConfig.strokeWidth > 0 ? "ON" : "OFF"}
             </button>
-            {captionConfig.strokeWidth > 0 && (
+            {effectiveConfig.strokeWidth > 0 && (
               <>
                 <input
                   type="range"
                   min={0.5}
                   max={4}
                   step={0.5}
-                  value={captionConfig.strokeWidth}
+                  value={effectiveConfig.strokeWidth}
                   onChange={(e) => handleConfigChange({ strokeWidth: parseFloat(e.target.value) })}
                   className="flex-1"
                 />
-                <span className="text-xs text-[var(--text-secondary)] w-8">{captionConfig.strokeWidth}px</span>
+                <span className="text-xs text-[var(--text-secondary)] w-8">{effectiveConfig.strokeWidth}px</span>
               </>
             )}
           </div>
-          {captionConfig.strokeWidth > 0 && (
+          {effectiveConfig.strokeWidth > 0 && (
             <div className="flex gap-2">
               {["#000000", "#FFFFFF", "#FF0000", "#0000FF"].map((c) => (
                 <button
                   key={c}
                   onClick={() => handleConfigChange({ strokeColor: c })}
                   className={`w-6 h-6 rounded-full border-2 ${
-                    captionConfig.strokeColor === c ? "border-[var(--accent)]" : "border-transparent"
+                    effectiveConfig.strokeColor === c ? "border-[var(--accent)]" : "border-transparent"
                   }`}
                   style={{ backgroundColor: c }}
                 />
@@ -502,13 +534,13 @@ export default function CaptionPanel() {
       </Section>
 
       {/* Shadow */}
-      <Section title={`Sombra: ${captionConfig.shadowBlur}px`}>
+      <Section title={`Sombra: ${effectiveConfig.shadowBlur}px`}>
         <input
           type="range"
           min={0}
           max={20}
           step={1}
-          value={captionConfig.shadowBlur}
+          value={effectiveConfig.shadowBlur}
           onChange={(e) => handleConfigChange({ shadowBlur: parseInt(e.target.value) })}
           className="w-full"
         />
@@ -526,7 +558,7 @@ export default function CaptionPanel() {
               key={pos.value}
               onClick={() => handleConfigChange({ position: pos.value })}
               className={`flex-1 py-2 rounded-lg flex flex-col items-center gap-1 text-xs transition-all ${
-                captionConfig.position === pos.value
+                effectiveConfig.position === pos.value
                   ? "bg-[var(--accent)] text-white"
                   : "bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)]"
               }`}
@@ -546,7 +578,7 @@ export default function CaptionPanel() {
               key={anim.value}
               onClick={() => handleConfigChange({ animation: anim.value })}
               className={`px-3 py-1.5 rounded-lg text-xs transition-all ${
-                captionConfig.animation === anim.value
+                effectiveConfig.animation === anim.value
                   ? "bg-[var(--accent)] text-white"
                   : "bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)]"
               }`}
@@ -560,14 +592,14 @@ export default function CaptionPanel() {
       {/* Uppercase */}
       <Section title="Maiúsculas">
         <button
-          onClick={() => handleConfigChange({ uppercase: !captionConfig.uppercase })}
+          onClick={() => handleConfigChange({ uppercase: !effectiveConfig.uppercase })}
           className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${
-            captionConfig.uppercase
+            effectiveConfig.uppercase
               ? "bg-[var(--accent)] text-white"
               : "bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)]"
           }`}
         >
-          {captionConfig.uppercase ? "ABC" : "Abc"}
+          {effectiveConfig.uppercase ? "ABC" : "Abc"}
         </button>
       </Section>
 

@@ -150,7 +150,14 @@ export default function VideoPreview() {
         prevBrollUrlRef.current = currentSegment.brollVideoUrl;
       }
       if (isPlaying && brollVid.paused) {
-        brollVid.play().catch(() => {});
+        brollVid.play().catch(() => {
+          // Mobile Safari may fail silently — retry once after a short delay
+          setTimeout(() => {
+            if (brollVid.paused && isPlayingRef.current) {
+              brollVid.play().catch(() => {});
+            }
+          }, 200);
+        });
       }
     } else {
       if (!brollVid.paused) brollVid.pause();
@@ -317,13 +324,6 @@ export default function VideoPreview() {
 
             {/* ── Layer 1: Background ── */}
             <div className="absolute inset-0 bg-[#0a0a0a]" />
-            {currentMode === "presenter" && (
-              <img
-                src="/background.png"
-                alt=""
-                className="absolute inset-0 w-full h-full object-cover"
-              />
-            )}
 
             {/* ── Layer 2: Presenter Video ── */}
             <div
@@ -422,12 +422,14 @@ export default function VideoPreview() {
             >
               <img
                 ref={brollImageRef}
+                crossOrigin="anonymous"
                 className="w-full h-full object-cover"
                 style={{ display: brollIsPhoto ? "block" : "none" }}
                 alt=""
               />
               <video
                 ref={brollVideoRef}
+                crossOrigin="anonymous"
                 className="w-full h-full object-cover"
                 style={{ display: brollIsPhoto ? "none" : "block" }}
                 loop

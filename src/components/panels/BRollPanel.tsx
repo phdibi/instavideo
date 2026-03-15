@@ -1,7 +1,9 @@
 "use client";
 
+import { useMemo } from "react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { getCurrentMode } from "@/lib/modes";
+import { formatTime } from "@/lib/formatTime";
 import BRollSwapGrid from "../BRollSwapGrid";
 import type { BRollEffect, BRollLayout } from "@/types";
 import {
@@ -45,7 +47,7 @@ const LAYOUTS: { value: BRollLayout; label: string; icon: React.ReactNode }[] = 
 ];
 
 export default function BRollPanel() {
-  const { modeSegments, selectedItem, currentTime, updateModeSegment, deleteModeSegment, splitSegmentForBroll } = useProjectStore();
+  const { modeSegments, selectedItem, currentTime, updateModeSegment, deleteModeSegment, splitSegmentForBroll, setCurrentTime, setSelectedItem } = useProjectStore();
 
   const selectedSegment = modeSegments.find(
     (s) =>
@@ -64,6 +66,12 @@ export default function BRollPanel() {
   // Check if playhead is on a presenter segment (for "Add B-Roll" button)
   const currentSegment = getCurrentMode(modeSegments, currentTime);
   const playheadOnPresenter = currentSegment?.mode === "presenter";
+
+  // All b-roll segments for the list view (must be before any early return to respect hooks rules)
+  const brollSegments = useMemo(
+    () => modeSegments.filter((s) => s.mode === "broll"),
+    [modeSegments]
+  );
 
   // Presenter segment selected — show zoom controls
   if (selectedPresenterSegment) {
@@ -180,9 +188,36 @@ export default function BRollPanel() {
   if (!selectedSegment) {
     return (
       <div className="p-4 space-y-4">
-        <p className="text-sm text-zinc-500 text-center py-4">
-          Selecione um segmento B-Roll na timeline para editar.
-        </p>
+        {brollSegments.length > 0 ? (
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
+              Segmentos B-Roll
+            </label>
+            <div className="space-y-1 max-h-52 overflow-y-auto">
+              {brollSegments.map((seg) => (
+                <button
+                  key={seg.id}
+                  onClick={() => {
+                    setCurrentTime(seg.startTime);
+                    setSelectedItem({ type: "segment", id: seg.id });
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-lg text-xs bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)] transition-all"
+                >
+                  <span className="font-semibold text-orange-400">
+                    {formatTime(seg.startTime)} – {formatTime(seg.endTime)}
+                  </span>
+                  {seg.brollQuery && (
+                    <p className="text-[var(--text-secondary)] truncate mt-0.5">{seg.brollQuery}</p>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-zinc-500 text-center py-4">
+            Selecione um segmento B-Roll na timeline para editar.
+          </p>
+        )}
         {playheadOnPresenter && currentSegment && (
           <button
             onClick={() => splitSegmentForBroll(currentSegment.id, currentTime)}

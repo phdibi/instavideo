@@ -70,15 +70,6 @@ export default function ExportPanel() {
         video.load();
       });
 
-      // Pre-load background image
-      const bgImage = new Image();
-      bgImage.src = "/background.png";
-      await new Promise<void>((resolve) => {
-        bgImage.onload = () => resolve();
-        bgImage.onerror = () => resolve(); // fallback: no bg
-        setTimeout(resolve, 5000);
-      });
-
       // Pre-load b-roll videos
       const brollVideos: Record<string, HTMLVideoElement> = {};
       const brollImages: Record<string, HTMLImageElement> = {};
@@ -287,11 +278,6 @@ export default function ExportPanel() {
         }
 
         if (mode === "presenter") {
-          // Draw background image behind presenter
-          if (bgImage.complete && bgImage.naturalWidth > 0) {
-            drawMediaCover(ctx, bgImage, 0, 0, WIDTH, HEIGHT);
-          }
-
           // Presenter fills entire 9:16 frame with dynamic Ken Burns
           const presenterSegs = modeSegments.filter((s) => s.mode === "presenter");
           const presenterIndex = segment ? presenterSegs.findIndex((s) => s.id === segment.id) : 0;

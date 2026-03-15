@@ -181,19 +181,17 @@ export default function Timeline() {
     [pixelToTime, setCurrentTime]
   );
 
-  // Generic edge drag for mode segments
+  // Generic edge drag for mode segments — MOUSE ONLY
   const handleModeEdgeDrag = useCallback(
     (e: React.MouseEvent, seg: ModeSegment, edge: "start" | "end") => {
       e.stopPropagation();
       setDragEdge({ id: seg.id, track: "mode", edge });
 
-      const handleMove = (ev: MouseEvent | TouchEvent) => {
-        if ("touches" in ev) ev.preventDefault();
-        const clientX = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
+      const handleMove = (ev: MouseEvent) => {
         const scroll = scrollRef.current;
         if (!scroll) return;
         const rect = scroll.getBoundingClientRect();
-        const x = clientX - rect.left + scroll.scrollLeft;
+        const x = ev.clientX - rect.left + scroll.scrollLeft;
         const time = pixelToTime(x);
 
         if (edge === "start") {
@@ -207,35 +205,89 @@ export default function Timeline() {
         setDragEdge(null);
         document.removeEventListener("mousemove", handleMove);
         document.removeEventListener("mouseup", handleUp);
-        document.removeEventListener("touchmove", handleMove);
-        document.removeEventListener("touchend", handleUp);
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
       };
 
       document.addEventListener("mousemove", handleMove);
       document.addEventListener("mouseup", handleUp);
-      document.addEventListener("touchmove", handleMove, { passive: false });
-      document.addEventListener("touchend", handleUp);
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
     },
     [pixelToTime, updateModeSegment]
   );
 
-  // Edge drag for phrase captions
+  // Edge touch for mode segments — long-press (300ms) to resize
+  const handleModeEdgeTouch = useCallback(
+    (e: React.TouchEvent, seg: ModeSegment, edge: "start" | "end") => {
+      const touch = e.touches[0];
+      if (!touch) return;
+      e.stopPropagation();
+
+      const startX = touch.clientX;
+      const startY = touch.clientY;
+      let dragActivated = false;
+      let cancelled = false;
+
+      const longPressTimer = setTimeout(() => {
+        if (cancelled) return;
+        dragActivated = true;
+        setDragEdge({ id: seg.id, track: "mode", edge });
+        try { navigator.vibrate?.(50); } catch {}
+      }, 300);
+
+      const handleMove = (ev: TouchEvent) => {
+        const t = ev.touches[0];
+        if (!t) return;
+
+        if (!dragActivated) {
+          if (Math.abs(t.clientX - startX) > 5 || Math.abs(t.clientY - startY) > 5) {
+            cancelled = true;
+            clearTimeout(longPressTimer);
+            document.removeEventListener("touchmove", handleMove);
+            document.removeEventListener("touchend", handleEnd);
+          }
+          return;
+        }
+
+        ev.preventDefault();
+        const scroll = scrollRef.current;
+        if (!scroll) return;
+        const rect = scroll.getBoundingClientRect();
+        const x = t.clientX - rect.left + scroll.scrollLeft;
+        const time = pixelToTime(x);
+
+        if (edge === "start") {
+          updateModeSegment(seg.id, { startTime: Math.min(time, seg.endTime - 0.3) });
+        } else {
+          updateModeSegment(seg.id, { endTime: Math.max(time, seg.startTime + 0.3) });
+        }
+      };
+
+      const handleEnd = () => {
+        clearTimeout(longPressTimer);
+        if (dragActivated) setDragEdge(null);
+        document.removeEventListener("touchmove", handleMove);
+        document.removeEventListener("touchend", handleEnd);
+      };
+
+      document.addEventListener("touchmove", handleMove, { passive: false });
+      document.addEventListener("touchend", handleEnd);
+    },
+    [pixelToTime, updateModeSegment]
+  );
+
+  // Edge drag for phrase captions — MOUSE ONLY
   const handleCaptionEdgeDrag = useCallback(
     (e: React.MouseEvent, cap: PhraseCaption, edge: "start" | "end") => {
       e.stopPropagation();
       setDragEdge({ id: cap.id, track: "caption", edge });
 
-      const handleMove = (ev: MouseEvent | TouchEvent) => {
-        if ("touches" in ev) ev.preventDefault();
-        const clientX = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
+      const handleMove = (ev: MouseEvent) => {
         const scroll = scrollRef.current;
         if (!scroll) return;
         const rect = scroll.getBoundingClientRect();
-        const x = clientX - rect.left + scroll.scrollLeft;
+        const x = ev.clientX - rect.left + scroll.scrollLeft;
         const time = pixelToTime(x);
 
         if (edge === "start") {
@@ -249,18 +301,74 @@ export default function Timeline() {
         setDragEdge(null);
         document.removeEventListener("mousemove", handleMove);
         document.removeEventListener("mouseup", handleUp);
-        document.removeEventListener("touchmove", handleMove);
-        document.removeEventListener("touchend", handleUp);
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
       };
 
       document.addEventListener("mousemove", handleMove);
       document.addEventListener("mouseup", handleUp);
-      document.addEventListener("touchmove", handleMove, { passive: false });
-      document.addEventListener("touchend", handleUp);
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
+    },
+    [pixelToTime, updatePhraseCaption]
+  );
+
+  // Edge touch for phrase captions — long-press (300ms) to resize
+  const handleCaptionEdgeTouch = useCallback(
+    (e: React.TouchEvent, cap: PhraseCaption, edge: "start" | "end") => {
+      const touch = e.touches[0];
+      if (!touch) return;
+      e.stopPropagation();
+
+      const startX = touch.clientX;
+      const startY = touch.clientY;
+      let dragActivated = false;
+      let cancelled = false;
+
+      const longPressTimer = setTimeout(() => {
+        if (cancelled) return;
+        dragActivated = true;
+        setDragEdge({ id: cap.id, track: "caption", edge });
+        try { navigator.vibrate?.(50); } catch {}
+      }, 300);
+
+      const handleMove = (ev: TouchEvent) => {
+        const t = ev.touches[0];
+        if (!t) return;
+
+        if (!dragActivated) {
+          if (Math.abs(t.clientX - startX) > 5 || Math.abs(t.clientY - startY) > 5) {
+            cancelled = true;
+            clearTimeout(longPressTimer);
+            document.removeEventListener("touchmove", handleMove);
+            document.removeEventListener("touchend", handleEnd);
+          }
+          return;
+        }
+
+        ev.preventDefault();
+        const scroll = scrollRef.current;
+        if (!scroll) return;
+        const rect = scroll.getBoundingClientRect();
+        const x = t.clientX - rect.left + scroll.scrollLeft;
+        const time = pixelToTime(x);
+
+        if (edge === "start") {
+          updatePhraseCaption(cap.id, { startTime: Math.min(time, cap.endTime - 0.1) });
+        } else {
+          updatePhraseCaption(cap.id, { endTime: Math.max(time, cap.startTime + 0.1) });
+        }
+      };
+
+      const handleEnd = () => {
+        clearTimeout(longPressTimer);
+        if (dragActivated) setDragEdge(null);
+        document.removeEventListener("touchmove", handleMove);
+        document.removeEventListener("touchend", handleEnd);
+      };
+
+      document.addEventListener("touchmove", handleMove, { passive: false });
+      document.addEventListener("touchend", handleEnd);
     },
     [pixelToTime, updatePhraseCaption]
   );
@@ -272,7 +380,7 @@ export default function Timeline() {
     [selectedItems]
   );
 
-  // Drag SFX marker horizontally (with 3px threshold to distinguish click vs drag)
+  // Drag SFX marker horizontally — MOUSE ONLY
   const handleSFXMarkerDrag = useCallback(
     (e: React.MouseEvent, marker: SFXMarker) => {
       if (e.button !== 0) return;
@@ -281,10 +389,8 @@ export default function Timeline() {
       const isCmd = e.metaKey || e.ctrlKey;
       let hasMoved = false;
 
-      const handleMove = (ev: MouseEvent | TouchEvent) => {
-        if ("touches" in ev) ev.preventDefault();
-        const clientX = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
-        if (!hasMoved && Math.abs(clientX - startClientX) <= 3) return;
+      const handleMove = (ev: MouseEvent) => {
+        if (!hasMoved && Math.abs(ev.clientX - startClientX) <= 3) return;
         if (!hasMoved) {
           hasMoved = true;
           setIsDraggingSFX(true);
@@ -294,7 +400,7 @@ export default function Timeline() {
         const scroll = scrollRef.current;
         if (!scroll) return;
         const rect = scroll.getBoundingClientRect();
-        const x = clientX - rect.left + scroll.scrollLeft;
+        const x = ev.clientX - rect.left + scroll.scrollLeft;
         const time = pixelToTime(x);
         updateSFXMarker(marker.id, { time });
       };
@@ -303,13 +409,10 @@ export default function Timeline() {
         setIsDraggingSFX(false);
         document.removeEventListener("mousemove", handleMove);
         document.removeEventListener("mouseup", handleUp);
-        document.removeEventListener("touchmove", handleMove);
-        document.removeEventListener("touchend", handleUp);
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
 
         if (!hasMoved) {
-          // It was a click, not a drag
           const item = { type: "sfx" as const, id: marker.id };
           if (isCmd) {
             toggleSelectedItem(item);
@@ -321,17 +424,75 @@ export default function Timeline() {
 
       document.addEventListener("mousemove", handleMove);
       document.addEventListener("mouseup", handleUp);
-      document.addEventListener("touchmove", handleMove, { passive: false });
-      document.addEventListener("touchend", handleUp);
       document.body.style.userSelect = "none";
     },
     [pixelToTime, updateSFXMarker, setSelectedItem, toggleSelectedItem, isItemSelected]
   );
 
-  // Body drag for mode segments (horizontal reposition)
+  // Touch SFX marker — long-press (300ms) to drag, tap to select
+  const handleSFXMarkerTouch = useCallback(
+    (e: React.TouchEvent, marker: SFXMarker) => {
+      const touch = e.touches[0];
+      if (!touch) return;
+      e.stopPropagation();
+
+      const startX = touch.clientX;
+      const startY = touch.clientY;
+      let dragActivated = false;
+      let cancelled = false;
+
+      const longPressTimer = setTimeout(() => {
+        if (cancelled) return;
+        dragActivated = true;
+        setIsDraggingSFX(true);
+        try { navigator.vibrate?.(50); } catch {}
+      }, 300);
+
+      const handleMove = (ev: TouchEvent) => {
+        const t = ev.touches[0];
+        if (!t) return;
+
+        if (!dragActivated) {
+          if (Math.abs(t.clientX - startX) > 5 || Math.abs(t.clientY - startY) > 5) {
+            cancelled = true;
+            clearTimeout(longPressTimer);
+            document.removeEventListener("touchmove", handleMove);
+            document.removeEventListener("touchend", handleEnd);
+          }
+          return;
+        }
+
+        ev.preventDefault();
+        const scroll = scrollRef.current;
+        if (!scroll) return;
+        const rect = scroll.getBoundingClientRect();
+        const x = t.clientX - rect.left + scroll.scrollLeft;
+        const time = pixelToTime(x);
+        updateSFXMarker(marker.id, { time });
+      };
+
+      const handleEnd = () => {
+        clearTimeout(longPressTimer);
+        setIsDraggingSFX(false);
+        document.removeEventListener("touchmove", handleMove);
+        document.removeEventListener("touchend", handleEnd);
+
+        if (!dragActivated && !cancelled) {
+          const item = { type: "sfx" as const, id: marker.id };
+          setSelectedItem(isItemSelected("sfx", marker.id) ? null : item);
+        }
+      };
+
+      document.addEventListener("touchmove", handleMove, { passive: false });
+      document.addEventListener("touchend", handleEnd);
+    },
+    [pixelToTime, updateSFXMarker, setSelectedItem, isItemSelected]
+  );
+
+  // Body drag for mode segments (horizontal reposition) — MOUSE ONLY
   const handleSegmentBodyDrag = useCallback(
     (e: React.MouseEvent, seg: ModeSegment) => {
-      if (e.button !== 0) return; // left-click only
+      if (e.button !== 0) return;
       e.stopPropagation();
       const startClientX = e.clientX;
       const isCmd = e.metaKey || e.ctrlKey;
@@ -344,21 +505,18 @@ export default function Timeline() {
       const startX = e.clientX - rect.left + scroll.scrollLeft;
       const offsetX = startX - (timeToX(seg.startTime) + LABEL_WIDTH);
 
-      const handleMove = (ev: MouseEvent | TouchEvent) => {
-        if ("touches" in ev) ev.preventDefault();
-        const clientX = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
-        if (!hasMoved && Math.abs(clientX - startClientX) <= 3) return;
+      const handleMove = (ev: MouseEvent) => {
+        if (!hasMoved && Math.abs(ev.clientX - startClientX) <= 3) return;
         hasMoved = true;
         document.body.style.cursor = "grabbing";
 
         const s = scrollRef.current;
         if (!s) return;
         const r = s.getBoundingClientRect();
-        const x = clientX - r.left + s.scrollLeft;
+        const x = ev.clientX - r.left + s.scrollLeft;
         let newStart = pixelToTime(x - offsetX);
         let newEnd = newStart + duration;
 
-        // Clamp
         if (newStart < 0) { newStart = 0; newEnd = duration; }
         if (newEnd > videoDuration) { newEnd = videoDuration; newStart = videoDuration - duration; }
 
@@ -368,8 +526,6 @@ export default function Timeline() {
       const handleUp = () => {
         document.removeEventListener("mousemove", handleMove);
         document.removeEventListener("mouseup", handleUp);
-        document.removeEventListener("touchmove", handleMove);
-        document.removeEventListener("touchend", handleUp);
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
         if (!hasMoved) {
@@ -384,17 +540,82 @@ export default function Timeline() {
 
       document.addEventListener("mousemove", handleMove);
       document.addEventListener("mouseup", handleUp);
-      document.addEventListener("touchmove", handleMove, { passive: false });
-      document.addEventListener("touchend", handleUp);
       document.body.style.userSelect = "none";
     },
     [pixelToTime, timeToX, videoDuration, updateModeSegment, setSelectedItem, toggleSelectedItem, isItemSelected]
   );
 
-  // Body drag for phrase captions
+  // Body touch for mode segments — long-press (300ms) to drag, tap to select
+  const handleSegmentBodyTouch = useCallback(
+    (e: React.TouchEvent, seg: ModeSegment) => {
+      const touch = e.touches[0];
+      if (!touch) return;
+      e.stopPropagation();
+
+      const startX = touch.clientX;
+      const startY = touch.clientY;
+      let dragActivated = false;
+      let cancelled = false;
+
+      const scroll = scrollRef.current;
+      if (!scroll) return;
+      const rect = scroll.getBoundingClientRect();
+      const sx = startX - rect.left + scroll.scrollLeft;
+      const offsetX = sx - (timeToX(seg.startTime) + LABEL_WIDTH);
+      const duration = seg.endTime - seg.startTime;
+
+      const longPressTimer = setTimeout(() => {
+        if (cancelled) return;
+        dragActivated = true;
+        try { navigator.vibrate?.(50); } catch {}
+      }, 300);
+
+      const handleMove = (ev: TouchEvent) => {
+        const t = ev.touches[0];
+        if (!t) return;
+
+        if (!dragActivated) {
+          if (Math.abs(t.clientX - startX) > 5 || Math.abs(t.clientY - startY) > 5) {
+            cancelled = true;
+            clearTimeout(longPressTimer);
+            document.removeEventListener("touchmove", handleMove);
+            document.removeEventListener("touchend", handleEnd);
+          }
+          return;
+        }
+
+        ev.preventDefault();
+        const s = scrollRef.current;
+        if (!s) return;
+        const r = s.getBoundingClientRect();
+        const x = t.clientX - r.left + s.scrollLeft;
+        let newStart = pixelToTime(x - offsetX);
+        let newEnd = newStart + duration;
+        if (newStart < 0) { newStart = 0; newEnd = duration; }
+        if (newEnd > videoDuration) { newEnd = videoDuration; newStart = videoDuration - duration; }
+        updateModeSegment(seg.id, { startTime: newStart, endTime: newEnd });
+      };
+
+      const handleEnd = () => {
+        clearTimeout(longPressTimer);
+        document.removeEventListener("touchmove", handleMove);
+        document.removeEventListener("touchend", handleEnd);
+        if (!dragActivated && !cancelled) {
+          const item = { type: "segment" as const, id: seg.id };
+          setSelectedItem(isItemSelected("segment", seg.id) ? null : item);
+        }
+      };
+
+      document.addEventListener("touchmove", handleMove, { passive: false });
+      document.addEventListener("touchend", handleEnd);
+    },
+    [pixelToTime, timeToX, videoDuration, updateModeSegment, setSelectedItem, isItemSelected]
+  );
+
+  // Body drag for phrase captions — MOUSE ONLY
   const handleCaptionBodyDrag = useCallback(
     (e: React.MouseEvent, cap: PhraseCaption) => {
-      if (e.button !== 0) return; // left-click only
+      if (e.button !== 0) return;
       e.stopPropagation();
       const startClientX = e.clientX;
       const isCmd = e.metaKey || e.ctrlKey;
@@ -407,17 +628,15 @@ export default function Timeline() {
       const startX = e.clientX - rect.left + scroll.scrollLeft;
       const offsetX = startX - (timeToX(cap.startTime) + LABEL_WIDTH);
 
-      const handleMove = (ev: MouseEvent | TouchEvent) => {
-        if ("touches" in ev) ev.preventDefault();
-        const clientX = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
-        if (!hasMoved && Math.abs(clientX - startClientX) <= 3) return;
+      const handleMove = (ev: MouseEvent) => {
+        if (!hasMoved && Math.abs(ev.clientX - startClientX) <= 3) return;
         hasMoved = true;
         document.body.style.cursor = "grabbing";
 
         const s = scrollRef.current;
         if (!s) return;
         const r = s.getBoundingClientRect();
-        const x = clientX - r.left + s.scrollLeft;
+        const x = ev.clientX - r.left + s.scrollLeft;
         let newStart = pixelToTime(x - offsetX);
         let newEnd = newStart + duration;
 
@@ -430,8 +649,6 @@ export default function Timeline() {
       const handleUp = () => {
         document.removeEventListener("mousemove", handleMove);
         document.removeEventListener("mouseup", handleUp);
-        document.removeEventListener("touchmove", handleMove);
-        document.removeEventListener("touchend", handleUp);
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
         if (!hasMoved) {
@@ -446,11 +663,76 @@ export default function Timeline() {
 
       document.addEventListener("mousemove", handleMove);
       document.addEventListener("mouseup", handleUp);
-      document.addEventListener("touchmove", handleMove, { passive: false });
-      document.addEventListener("touchend", handleUp);
       document.body.style.userSelect = "none";
     },
     [pixelToTime, timeToX, videoDuration, updatePhraseCaption, setSelectedItem, toggleSelectedItem, isItemSelected]
+  );
+
+  // Body touch for phrase captions — long-press (300ms) to drag, tap to select
+  const handleCaptionBodyTouch = useCallback(
+    (e: React.TouchEvent, cap: PhraseCaption) => {
+      const touch = e.touches[0];
+      if (!touch) return;
+      e.stopPropagation();
+
+      const startX = touch.clientX;
+      const startY = touch.clientY;
+      let dragActivated = false;
+      let cancelled = false;
+
+      const scroll = scrollRef.current;
+      if (!scroll) return;
+      const rect = scroll.getBoundingClientRect();
+      const sx = startX - rect.left + scroll.scrollLeft;
+      const offsetX = sx - (timeToX(cap.startTime) + LABEL_WIDTH);
+      const duration = cap.endTime - cap.startTime;
+
+      const longPressTimer = setTimeout(() => {
+        if (cancelled) return;
+        dragActivated = true;
+        try { navigator.vibrate?.(50); } catch {}
+      }, 300);
+
+      const handleMove = (ev: TouchEvent) => {
+        const t = ev.touches[0];
+        if (!t) return;
+
+        if (!dragActivated) {
+          if (Math.abs(t.clientX - startX) > 5 || Math.abs(t.clientY - startY) > 5) {
+            cancelled = true;
+            clearTimeout(longPressTimer);
+            document.removeEventListener("touchmove", handleMove);
+            document.removeEventListener("touchend", handleEnd);
+          }
+          return;
+        }
+
+        ev.preventDefault();
+        const s = scrollRef.current;
+        if (!s) return;
+        const r = s.getBoundingClientRect();
+        const x = t.clientX - r.left + s.scrollLeft;
+        let newStart = pixelToTime(x - offsetX);
+        let newEnd = newStart + duration;
+        if (newStart < 0) { newStart = 0; newEnd = duration; }
+        if (newEnd > videoDuration) { newEnd = videoDuration; newStart = videoDuration - duration; }
+        updatePhraseCaption(cap.id, { startTime: newStart, endTime: newEnd });
+      };
+
+      const handleEnd = () => {
+        clearTimeout(longPressTimer);
+        document.removeEventListener("touchmove", handleMove);
+        document.removeEventListener("touchend", handleEnd);
+        if (!dragActivated && !cancelled) {
+          const item = { type: "phrase" as const, id: cap.id };
+          setSelectedItem(isItemSelected("phrase", cap.id) ? null : item);
+        }
+      };
+
+      document.addEventListener("touchmove", handleMove, { passive: false });
+      document.addEventListener("touchend", handleEnd);
+    },
+    [pixelToTime, timeToX, videoDuration, updatePhraseCaption, setSelectedItem, isItemSelected]
   );
 
   // Double-click on SFX track to add a new marker
@@ -519,9 +801,9 @@ export default function Timeline() {
                     borderLeft: `3px solid ${color}`,
                   }}
                   onMouseDown={(e) => handleSegmentBodyDrag(e, seg)}
-                  onTouchStart={(e) => { e.preventDefault(); const m = touchToMouse(e); if (m) handleSegmentBodyDrag(m, seg); }}
+                  onTouchStart={(e) => handleSegmentBodyTouch(e, seg)}
                   onContextMenu={(e) => {
-                    if (seg.mode === "typography") return; // no context menu for typography
+                    if (seg.mode === "typography") return;
                     e.preventDefault();
                     const scroll = scrollRef.current;
                     if (!scroll) return;
@@ -544,8 +826,8 @@ export default function Timeline() {
                       {seg.mode === "typography" && seg.typographyText ? `: ${seg.typographyText}` : ""}
                     </span>
                   </div>
-                  <EdgeHandle side="left" onMouseDown={(e) => handleModeEdgeDrag(e, seg, "start")} />
-                  <EdgeHandle side="right" onMouseDown={(e) => handleModeEdgeDrag(e, seg, "end")} />
+                  <EdgeHandle side="left" onMouseDown={(e) => handleModeEdgeDrag(e, seg, "start")} onTouchStart={(e) => handleModeEdgeTouch(e, seg, "start")} />
+                  <EdgeHandle side="right" onMouseDown={(e) => handleModeEdgeDrag(e, seg, "end")} onTouchStart={(e) => handleModeEdgeTouch(e, seg, "end")} />
                 </div>
               );
             })}
@@ -572,15 +854,15 @@ export default function Timeline() {
                     borderLeft: "2px solid rgba(255,255,255,0.5)",
                   }}
                   onMouseDown={(e) => handleCaptionBodyDrag(e, cap)}
-                  onTouchStart={(e) => { e.preventDefault(); const m = touchToMouse(e); if (m) handleCaptionBodyDrag(m, cap); }}
+                  onTouchStart={(e) => handleCaptionBodyTouch(e, cap)}
                 >
                   <div className="absolute inset-0 flex items-center px-1.5 overflow-hidden">
                     <span className="text-[9px] text-white/80 truncate font-medium">
                       {cap.text}
                     </span>
                   </div>
-                  <EdgeHandle side="left" onMouseDown={(e) => handleCaptionEdgeDrag(e, cap, "start")} />
-                  <EdgeHandle side="right" onMouseDown={(e) => handleCaptionEdgeDrag(e, cap, "end")} />
+                  <EdgeHandle side="left" onMouseDown={(e) => handleCaptionEdgeDrag(e, cap, "start")} onTouchStart={(e) => handleCaptionEdgeTouch(e, cap, "start")} />
+                  <EdgeHandle side="right" onMouseDown={(e) => handleCaptionEdgeDrag(e, cap, "end")} onTouchStart={(e) => handleCaptionEdgeTouch(e, cap, "end")} />
                 </div>
               );
             })}
@@ -632,7 +914,7 @@ export default function Timeline() {
                       : "2px solid rgba(139,92,246,0.5)",
                   }}
                   onMouseDown={(e) => handleCaptionBodyDrag(e, cap)}
-                  onTouchStart={(e) => { e.preventDefault(); const m = touchToMouse(e); if (m) handleCaptionBodyDrag(m, cap); }}
+                  onTouchStart={(e) => handleCaptionBodyTouch(e, cap)}
                 >
                   <div className="absolute inset-0 flex items-center px-1.5 overflow-hidden">
                     <span
@@ -645,8 +927,8 @@ export default function Timeline() {
                       {isEmphasis ? "✦ " : ""}{cap.text}
                     </span>
                   </div>
-                  <EdgeHandle side="left" onMouseDown={(e) => handleCaptionEdgeDrag(e, cap, "start")} />
-                  <EdgeHandle side="right" onMouseDown={(e) => handleCaptionEdgeDrag(e, cap, "end")} />
+                  <EdgeHandle side="left" onMouseDown={(e) => handleCaptionEdgeDrag(e, cap, "start")} onTouchStart={(e) => handleCaptionEdgeTouch(e, cap, "start")} />
+                  <EdgeHandle side="right" onMouseDown={(e) => handleCaptionEdgeDrag(e, cap, "end")} onTouchStart={(e) => handleCaptionEdgeTouch(e, cap, "end")} />
                 </div>
               );
             })}
@@ -674,7 +956,7 @@ export default function Timeline() {
                     borderLeft: "2px solid rgba(249,115,22,0.6)",
                   }}
                   onMouseDown={(e) => handleSegmentBodyDrag(e, seg)}
-                  onTouchStart={(e) => { e.preventDefault(); const m = touchToMouse(e); if (m) handleSegmentBodyDrag(m, seg); }}
+                  onTouchStart={(e) => handleSegmentBodyTouch(e, seg)}
                 >
                   <div className="absolute inset-0 flex items-center px-1.5 overflow-hidden">
                     <span className="text-[9px] text-orange-400/80 truncate font-medium">
@@ -720,7 +1002,7 @@ export default function Timeline() {
                   }}
                   title={`${SFX_LABELS[marker.soundType]} — ${marker.time.toFixed(1)}s`}
                   onMouseDown={(e) => handleSFXMarkerDrag(e, marker)}
-                  onTouchStart={(e) => { e.preventDefault(); const m = touchToMouse(e); if (m) handleSFXMarkerDrag(m, marker); }}
+                  onTouchStart={(e) => handleSFXMarkerTouch(e, marker)}
                 >
                   <div
                     className={`w-3.5 h-3.5 rotate-45 mx-auto mt-2 transition-all ${
@@ -802,16 +1084,18 @@ function TrackLabel({ label }: { label: string }) {
 function EdgeHandle({
   side,
   onMouseDown,
+  onTouchStart,
 }: {
   side: "left" | "right";
   onMouseDown: (e: React.MouseEvent) => void;
+  onTouchStart?: (e: React.TouchEvent) => void;
 }) {
   return (
     <div
       className={`absolute ${side === "left" ? "left-0" : "right-0"} top-0 bottom-0 cursor-col-resize opacity-0 group-hover:opacity-100 transition-opacity`}
       style={{ width: DRAG_HANDLE_WIDTH }}
       onMouseDown={onMouseDown}
-      onTouchStart={(e) => { e.preventDefault(); e.stopPropagation(); const m = touchToMouse(e); if (m) onMouseDown(m); }}
+      onTouchStart={onTouchStart}
     >
       <div className={`absolute ${side === "left" ? "left-0" : "right-0"} top-1/2 -translate-y-1/2 w-1 h-4 rounded-full bg-white/60`} />
     </div>

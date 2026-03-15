@@ -4,6 +4,7 @@ import { useCallback, useMemo } from "react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { AVAILABLE_FONTS } from "@/lib/fonts";
 import { generatePhraseCaptions } from "@/lib/modes";
+import { formatTime } from "@/lib/formatTime";
 import { RefreshCw } from "lucide-react";
 import type { StanzaConfig } from "@/types";
 
@@ -24,6 +25,8 @@ export default function StanzaPanel() {
     selectedItem,
     updatePhraseCaption,
     setPhraseCaptions,
+    setCurrentTime,
+    setSelectedItem,
   } = useProjectStore();
 
   const regenerateStanzas = useCallback(() => {
@@ -36,6 +39,18 @@ export default function StanzaPanel() {
     if (selectedItem?.type !== "phrase") return null;
     return phraseCaptions.find((c) => c.id === selectedItem.id) || null;
   }, [selectedItem, phraseCaptions]);
+
+  // Group stanza captions by stanzaId for the clickable list
+  const stanzaGroups = useMemo(() => {
+    const groups: Record<string, typeof phraseCaptions> = {};
+    for (const cap of phraseCaptions) {
+      if (!cap.stanzaId) continue;
+      (groups[cap.stanzaId] ||= []).push(cap);
+    }
+    return Object.entries(groups).sort(
+      ([, a], [, b]) => a[0].startTime - b[0].startTime
+    );
+  }, [phraseCaptions]);
 
   return (
     <div className="p-4 space-y-4">
@@ -63,6 +78,38 @@ export default function StanzaPanel() {
 
       {stanzaConfig.enabled && (
         <>
+          {/* Clickable stanza list */}
+          {stanzaGroups.length > 0 && (
+            <Section title="Estrofes">
+              <div className="space-y-1 max-h-40 overflow-y-auto">
+                {stanzaGroups.map(([stanzaId, caps], idx) => {
+                  const words = caps.map((c) => c.text).join(" ");
+                  const start = caps[0].startTime;
+                  const end = caps[caps.length - 1].endTime;
+                  const isActive = selectedItem?.type === "phrase" && caps.some((c) => c.id === selectedItem.id);
+                  return (
+                    <button
+                      key={stanzaId}
+                      onClick={() => {
+                        setCurrentTime(start);
+                        setSelectedItem({ type: "phrase", id: caps[0].id });
+                      }}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-all ${
+                        isActive
+                          ? "bg-purple-500/20 border border-purple-500/40"
+                          : "bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)]"
+                      }`}
+                    >
+                      <span className="font-semibold text-purple-300">Estrofe {idx + 1}</span>
+                      <span className="text-[var(--text-secondary)] ml-2">{formatTime(start)} – {formatTime(end)}</span>
+                      <p className="text-[var(--text-secondary)] truncate mt-0.5">{words}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </Section>
+          )}
+
           {/* Layout selector */}
           <Section title="Layout">
             <div className="flex flex-wrap gap-1.5">

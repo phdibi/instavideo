@@ -69,7 +69,7 @@ function getPositionClass(position: CaptionConfig["position"]) {
  * Supports stacked stanza display (multiple words with mixed typography).
  */
 export default function CaptionOverlay({ currentTime }: Props) {
-  const { phraseCaptions, captionConfig, stanzaConfig } = useProjectStore();
+  const { phraseCaptions, captionConfig, stanzaConfig, stanzaStyleOverrides } = useProjectStore();
 
   // Find ALL active captions at current time
   const activeCaptions = useMemo(() => {
@@ -89,7 +89,10 @@ export default function CaptionOverlay({ currentTime }: Props) {
             key={activeCaptions[0].stanzaId!}
             captions={activeCaptions}
             config={captionConfig}
-            stanzaConfig={stanzaConfig}
+            stanzaConfig={{
+              ...stanzaConfig,
+              ...stanzaStyleOverrides[activeCaptions[0].stanzaId!],
+            }}
           />
         ) : activeCaptions[0] ? (
           <PhraseDisplay

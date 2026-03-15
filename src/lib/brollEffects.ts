@@ -90,10 +90,10 @@ function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
-/** Abrupt easing: snap in first 5%, hold, snap out last 5% */
+/** Abrupt easing: snap in first 3%, hold, snap out last 3% */
 function easeAbrupt(t: number): number {
-  if (t < 0.05) return t / 0.05;
-  if (t > 0.95) return (1 - t) / 0.05;
+  if (t < 0.03) return t / 0.03;
+  if (t > 0.97) return (1 - t) / 0.03;
   return 1;
 }
 
@@ -110,7 +110,7 @@ export function computePresenterEffect(
 ): BRollTransform {
   const p = Math.min(1, Math.max(0, progress));
   const easedP = easing === "abrupt" ? easeAbrupt(p) : easeInOutCubic(p);
-  const baseIntensity = easing === "abrupt" ? intensity * 0.25 : intensity * 0.12;
+  const baseIntensity = easing === "abrupt" ? intensity * 0.40 : intensity * 0.12;
 
   switch (zoom) {
     case "zoom-in":

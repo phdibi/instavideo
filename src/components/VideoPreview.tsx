@@ -139,6 +139,35 @@ export default function VideoPreview() {
 
   const brollIsPhoto = currentSegment?.brollMediaType === "photo";
 
+  // Find the next upcoming b-roll segment for preloading
+  const nextBrollSegment = useMemo(() => {
+    if (currentMode === "broll") return null; // already on b-roll
+    return modeSegments.find(
+      (s) => s.mode === "broll" && s.startTime > currentTime && (s.brollVideoUrl || s.brollImageUrl)
+    ) || null;
+  }, [modeSegments, currentTime, currentMode]);
+
+  // Preload upcoming b-roll media (set src before segment becomes active)
+  useEffect(() => {
+    const brollVid = brollVideoRef.current;
+    const brollImg = brollImageRef.current;
+    if (!nextBrollSegment) return;
+
+    if (nextBrollSegment.brollMediaType === "photo" && nextBrollSegment.brollImageUrl) {
+      if (brollImg && prevBrollImageUrlRef.current !== nextBrollSegment.brollImageUrl) {
+        brollImg.src = nextBrollSegment.brollImageUrl;
+        prevBrollImageUrlRef.current = nextBrollSegment.brollImageUrl;
+      }
+    } else if (nextBrollSegment.brollVideoUrl) {
+      if (brollVid && prevBrollUrlRef.current !== nextBrollSegment.brollVideoUrl) {
+        brollVid.src = nextBrollSegment.brollVideoUrl;
+        brollVid.load();
+        prevBrollUrlRef.current = nextBrollSegment.brollVideoUrl;
+      }
+    }
+  }, [nextBrollSegment]);
+
+  // Active b-roll: set src + play/pause
   useEffect(() => {
     const brollVid = brollVideoRef.current;
     if (!brollVid) return;
@@ -160,7 +189,6 @@ export default function VideoPreview() {
         if (brollVid.readyState >= 3) {
           tryPlay();
         } else {
-          // Wait for video to be ready on mobile
           brollVid.addEventListener("canplay", tryPlay, { once: true });
           return () => brollVid.removeEventListener("canplay", tryPlay);
         }
@@ -436,11 +464,20 @@ export default function VideoPreview() {
                 ref={brollVideoRef}
                 className="w-full h-full object-cover"
                 style={{ display: brollIsPhoto ? "none" : "block" }}
+                preload="auto"
                 loop
                 muted
                 playsInline
               />
             </div>
+            {/* B-Roll loading fallback — shows query text while media loads */}
+            {currentMode === "broll" && currentSegment && !currentSegment.brollVideoUrl && !currentSegment.brollImageUrl && (
+              <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-b from-zinc-900 to-black">
+                <p className="text-white/40 text-sm font-medium text-center px-8">
+                  {currentSegment.brollQuery || "B-Roll"}
+                </p>
+              </div>
+            )}
             {/* Dark overlay on b-roll */}
             <div className={`absolute inset-0 ${
               brollLayout === "overlay" ? "bg-black/10" : "bg-black/25"

@@ -24,6 +24,8 @@ import {
   Plus,
   Trash2,
   Copy,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 const EFFECTS: { value: BRollEffect; label: string; icon: React.ReactNode }[] = [
@@ -70,7 +72,12 @@ export default function BRollPanel() {
 
   // All b-roll segments for the list view (must be before any early return to respect hooks rules)
   const brollSegments = useMemo(
-    () => modeSegments.filter((s) => s.mode === "broll"),
+    () => modeSegments.filter((s) => s.mode === "broll").sort((a, b) => a.startTime - b.startTime),
+    [modeSegments]
+  );
+
+  const presenterSegments = useMemo(
+    () => modeSegments.filter((s) => s.mode === "presenter").sort((a, b) => a.startTime - b.startTime),
     [modeSegments]
   );
 
@@ -80,11 +87,36 @@ export default function BRollPanel() {
     const currentZoomIntensity = selectedPresenterSegment.presenterZoomIntensity ?? 1.0;
     return (
       <div className="p-4 space-y-5">
-        <div>
-          <p className="text-xs text-[var(--text-secondary)]">
-            Presenter: {selectedPresenterSegment.startTime.toFixed(1)}s – {selectedPresenterSegment.endTime.toFixed(1)}s
-          </p>
-        </div>
+        {/* Presenter navigation */}
+        {(() => {
+          const idx = presenterSegments.findIndex((s) => s.id === selectedPresenterSegment.id);
+          const prev = idx > 0 ? presenterSegments[idx - 1] : null;
+          const next = idx < presenterSegments.length - 1 ? presenterSegments[idx + 1] : null;
+          return (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { if (prev) { setCurrentTime(prev.startTime); setSelectedItem({ type: "segment", id: prev.id }); } }}
+                disabled={!prev}
+                className="p-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)] disabled:opacity-30 disabled:pointer-events-none transition-all"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <span className="flex-1 text-xs text-center text-blue-300 font-medium">
+                Presenter {idx + 1} / {presenterSegments.length}
+              </span>
+              <button
+                onClick={() => { if (next) { setCurrentTime(next.startTime); setSelectedItem({ type: "segment", id: next.id }); } }}
+                disabled={!next}
+                className="p-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)] disabled:opacity-30 disabled:pointer-events-none transition-all"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          );
+        })()}
+        <p className="text-xs text-[var(--text-secondary)]">
+          {selectedPresenterSegment.startTime.toFixed(1)}s – {selectedPresenterSegment.endTime.toFixed(1)}s
+        </p>
 
         <div className="space-y-2">
           <label className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
@@ -174,28 +206,24 @@ export default function BRollPanel() {
         )}
 
         {/* Apply zoom settings to all presenter segments */}
-        {(() => {
-          const presenterSegments = modeSegments.filter((s) => s.mode === "presenter");
-          if (presenterSegments.length <= 1) return null;
-          return (
-            <button
-              onClick={() => {
-                for (const seg of presenterSegments) {
-                  if (seg.id === selectedPresenterSegment.id) continue;
-                  updateModeSegment(seg.id, {
-                    presenterZoom: selectedPresenterSegment.presenterZoom,
-                    presenterZoomIntensity: currentZoomIntensity,
-                    presenterZoomEasing: selectedPresenterSegment.presenterZoomEasing,
-                  });
-                }
-              }}
-              className="w-full py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2 bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors"
-            >
-              <Copy className="w-4 h-4" />
-              Aplicar a todos os Presenters
-            </button>
-          );
-        })()}
+        {presenterSegments.length > 1 && (
+          <button
+            onClick={() => {
+              for (const seg of presenterSegments) {
+                if (seg.id === selectedPresenterSegment.id) continue;
+                updateModeSegment(seg.id, {
+                  presenterZoom: selectedPresenterSegment.presenterZoom,
+                  presenterZoomIntensity: currentZoomIntensity,
+                  presenterZoomEasing: selectedPresenterSegment.presenterZoomEasing,
+                });
+              }
+            }}
+            className="w-full py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2 bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors"
+          >
+            <Copy className="w-4 h-4" />
+            Aplicar a todos os Presenters
+          </button>
+        )}
 
         {playheadOnPresenter && currentSegment && (
           <button
@@ -262,13 +290,40 @@ export default function BRollPanel() {
 
   return (
     <div className="space-y-5 overflow-y-auto max-h-full">
-      {/* Segment info */}
-      <div className="px-4 pt-4">
+      {/* B-Roll navigation */}
+      <div className="px-4 pt-4 space-y-2">
+        {(() => {
+          const idx = brollSegments.findIndex((s) => s.id === selectedSegment.id);
+          const prev = idx > 0 ? brollSegments[idx - 1] : null;
+          const next = idx < brollSegments.length - 1 ? brollSegments[idx + 1] : null;
+          if (brollSegments.length <= 1) return null;
+          return (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { if (prev) { setCurrentTime(prev.startTime); setSelectedItem({ type: "segment", id: prev.id }); } }}
+                disabled={!prev}
+                className="p-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)] disabled:opacity-30 disabled:pointer-events-none transition-all"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+              <span className="flex-1 text-xs text-center text-orange-300 font-medium">
+                B-Roll {idx + 1} / {brollSegments.length}
+              </span>
+              <button
+                onClick={() => { if (next) { setCurrentTime(next.startTime); setSelectedItem({ type: "segment", id: next.id }); } }}
+                disabled={!next}
+                className="p-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)] disabled:opacity-30 disabled:pointer-events-none transition-all"
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          );
+        })()}
         <p className="text-xs text-[var(--text-secondary)]">
-          Segmento: {selectedSegment.startTime.toFixed(1)}s – {selectedSegment.endTime.toFixed(1)}s
+          {selectedSegment.startTime.toFixed(1)}s – {selectedSegment.endTime.toFixed(1)}s
         </p>
         {selectedSegment.brollQuery && (
-          <p className="text-xs text-[var(--text-secondary)] mt-1">
+          <p className="text-xs text-[var(--text-secondary)]">
             Query: <span className="text-[var(--foreground)]">{selectedSegment.brollQuery}</span>
           </p>
         )}

@@ -44,9 +44,11 @@ interface ProjectStore {
   selectedMusicTrack: string | null;
   captionConfig: CaptionConfig;
   stanzaConfig: StanzaConfig;
+  stanzaStyleOverrides: Record<string, Partial<StanzaConfig>>;
   transcriptionResult: TranscriptionResult | null;
 
   setStanzaConfig: (config: Partial<StanzaConfig>) => void;
+  setStanzaOverride: (stanzaId: string, override: Partial<StanzaConfig>) => void;
   setTranscriptionResult: (result: TranscriptionResult | null) => void;
   setSFXMarkers: (markers: SFXMarker[]) => void;
   addSFXMarker: (marker: SFXMarker) => void;
@@ -187,6 +189,7 @@ const initialState = {
   selectedMusicTrack: null,
   captionConfig: { ...defaultCaptionConfig },
   stanzaConfig: { ...defaultStanzaConfig },
+  stanzaStyleOverrides: {},
   transcriptionResult: null,
 };
 
@@ -243,6 +246,13 @@ export const useProjectStore = create<ProjectStore>((set) => ({
   setStanzaConfig: (config) =>
     set((state) => ({
       stanzaConfig: { ...state.stanzaConfig, ...config },
+    })),
+  setStanzaOverride: (stanzaId, override) =>
+    set((state) => ({
+      stanzaStyleOverrides: {
+        ...state.stanzaStyleOverrides,
+        [stanzaId]: { ...state.stanzaStyleOverrides[stanzaId], ...override },
+      },
     })),
   setTranscriptionResult: (result) => set({ transcriptionResult: result }),
   setModeSegments: (segments) => set({ modeSegments: segments }),

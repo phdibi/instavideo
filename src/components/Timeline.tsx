@@ -6,14 +6,16 @@ import { useProjectStore } from "@/store/useProjectStore";
 import { getModeColor, getModeLabel } from "@/lib/modes";
 import { SFX_LABELS } from "@/lib/sfx";
 import { formatTime } from "@/lib/formatTime";
-import { ZoomIn, ZoomOut } from "lucide-react";
+import { ZoomIn, ZoomOut, ChevronsUpDown } from "lucide-react";
 import type { ModeSegment, PhraseCaption, SFXMarker } from "@/types";
 
 const DEFAULT_PPS = 60;
 const MIN_PPS = 20;
 const MAX_PPS = 200;
 const RULER_HEIGHT = 24;
-const TRACK_HEIGHT = 40;
+const DEFAULT_TRACK_HEIGHT = 40;
+const MIN_TRACK_HEIGHT = 28;
+const MAX_TRACK_HEIGHT = 80;
 const TRACK_GAP = 2;
 const LABEL_WIDTH = 72;
 const DRAG_HANDLE_WIDTH = 6;
@@ -56,6 +58,7 @@ export default function Timeline() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pixelsPerSecond, setPixelsPerSecond] = useState(DEFAULT_PPS);
   const ppsRef = useRef(DEFAULT_PPS);
+  const [trackHeight, setTrackHeight] = useState(DEFAULT_TRACK_HEIGHT);
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
   const [dragEdge, setDragEdge] = useState<{
     id: string;
@@ -794,7 +797,7 @@ export default function Timeline() {
   );
 
   const playheadX = timeToX(currentTime);
-  const totalContentHeight = RULER_HEIGHT + (TRACK_HEIGHT + TRACK_GAP) * 5 + 8;
+  const totalContentHeight = RULER_HEIGHT + (trackHeight + TRACK_GAP) * 5 + 8;
 
   const zoomIn = useCallback(() => {
     setPixelsPerSecond((prev) => Math.min(prev * 1.4, MAX_PPS));
@@ -811,7 +814,7 @@ export default function Timeline() {
         <button
           onClick={zoomOut}
           className="p-1 rounded hover:bg-[var(--surface-hover)] transition-colors"
-          title="Zoom out"
+          title="Zoom out horizontal"
         >
           <ZoomOut className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
         </button>
@@ -821,9 +824,27 @@ export default function Timeline() {
         <button
           onClick={zoomIn}
           className="p-1 rounded hover:bg-[var(--surface-hover)] transition-colors"
-          title="Zoom in"
+          title="Zoom in horizontal"
         >
           <ZoomIn className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+        </button>
+        <div className="w-px h-4 bg-[var(--border)] mx-1" />
+        <button
+          onClick={() => setTrackHeight((h) => Math.max(h - 8, MIN_TRACK_HEIGHT))}
+          className="p-1 rounded hover:bg-[var(--surface-hover)] transition-colors"
+          title="Diminuir altura"
+        >
+          <ChevronsUpDown className="w-3.5 h-3.5 text-[var(--text-secondary)] scale-y-[-1]" style={{ transform: "scaleY(0.7)" }} />
+        </button>
+        <span className="text-[9px] text-[var(--text-secondary)] min-w-[24px] text-center">
+          {trackHeight}
+        </span>
+        <button
+          onClick={() => setTrackHeight((h) => Math.min(h + 8, MAX_TRACK_HEIGHT))}
+          className="p-1 rounded hover:bg-[var(--surface-hover)] transition-colors"
+          title="Aumentar altura"
+        >
+          <ChevronsUpDown className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
         </button>
       </div>
       <div
@@ -854,7 +875,7 @@ export default function Timeline() {
           </div>
 
           {/* ═══ Track 1: Modo ═══ */}
-          <div className="relative" style={{ height: TRACK_HEIGHT, marginTop: TRACK_GAP }}>
+          <div className="relative" style={{ height: trackHeight, marginTop: TRACK_GAP }}>
             <TrackLabel label="Modo" />
             {modeSegments.map((seg) => {
               const left = timeToX(seg.startTime);
@@ -908,7 +929,7 @@ export default function Timeline() {
           </div>
 
           {/* ═══ Track 2: Legendas (regular only) ═══ */}
-          <div className="relative" style={{ height: TRACK_HEIGHT, marginTop: TRACK_GAP }}>
+          <div className="relative" style={{ height: trackHeight, marginTop: TRACK_GAP }}>
             <TrackLabel label="Legendas" />
             {regularCaptions.map((cap) => {
               const left = timeToX(cap.startTime);
@@ -943,7 +964,7 @@ export default function Timeline() {
           </div>
 
           {/* ═══ Track 3: Estrofes (stanza captions) ═══ */}
-          <div className="relative" style={{ height: TRACK_HEIGHT, marginTop: TRACK_GAP }}>
+          <div className="relative" style={{ height: trackHeight, marginTop: TRACK_GAP }}>
             <TrackLabel label="Estrofes" />
             {/* Group backgrounds */}
             {Object.entries(stanzaGroups).map(([stanzaId, caps]) => {
@@ -1009,7 +1030,7 @@ export default function Timeline() {
           </div>
 
           {/* ═══ Track 4: Efeitos (B-Roll effects) ═══ */}
-          <div className="relative" style={{ height: TRACK_HEIGHT, marginTop: TRACK_GAP }}>
+          <div className="relative" style={{ height: trackHeight, marginTop: TRACK_GAP }}>
             <TrackLabel label="Efeitos" />
             {brollSegments.map((seg) => {
               const left = timeToX(seg.startTime);
@@ -1045,7 +1066,7 @@ export default function Timeline() {
           {/* ═══ Track 5: Sons (SFX Markers) ═══ */}
           <div
             className="relative"
-            style={{ height: TRACK_HEIGHT, marginTop: TRACK_GAP }}
+            style={{ height: trackHeight, marginTop: TRACK_GAP }}
             onDoubleClick={handleSFXTrackDoubleClick}
           >
             <TrackLabel label="Sons" />
@@ -1072,7 +1093,7 @@ export default function Timeline() {
                   style={{
                     left: x + LABEL_WIDTH - 7,
                     width: 14,
-                    height: TRACK_HEIGHT - 8,
+                    height: trackHeight - 8,
                   }}
                   title={`${SFX_LABELS[marker.soundType]} — ${marker.time.toFixed(1)}s`}
                   onMouseDown={(e) => handleSFXMarkerDrag(e, marker)}

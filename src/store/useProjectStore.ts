@@ -138,7 +138,7 @@ const defaultMusicConfig: MusicConfig = {
 const defaultStanzaConfig: StanzaConfig = {
   enabled: true,
   intervalSeconds: 4,
-  wordsPerStanza: 5,
+  wordsPerStanza: 3,
   emphasisFontSize: 56,
   normalFontSize: 28,
   emphasisFontFamily: "Playfair Display",

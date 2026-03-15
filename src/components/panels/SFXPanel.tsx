@@ -2,7 +2,7 @@
 
 import { useProjectStore } from "@/store/useProjectStore";
 import { SFX_PLAY_MAP, SFX_LABELS, generateSFXMarkers } from "@/lib/sfx";
-import { Volume2, Play, Trash2, Plus, RefreshCw } from "lucide-react";
+import { Volume2, Play, Trash2, Plus, RefreshCw, Copy } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import type { SFXProfile, SFXSoundType } from "@/types";
 
@@ -106,6 +106,22 @@ export default function SFXPanel() {
               </button>
             ))}
           </div>
+
+          {/* Apply sound type to all markers */}
+          {sfxMarkers.length > 1 && (
+            <button
+              onClick={() => {
+                for (const m of sfxMarkers) {
+                  if (m.id === selectedMarker.id) continue;
+                  updateSFXMarker(m.id, { soundType: selectedMarker.soundType });
+                }
+              }}
+              className="w-full py-2 rounded-xl text-sm font-medium flex items-center justify-center gap-2 bg-yellow-500/15 text-yellow-400 hover:bg-yellow-500/25 transition-colors"
+            >
+              <Copy className="w-3.5 h-3.5" />
+              Aplicar a todos os Marcadores
+            </button>
+          )}
         </div>
       )}
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useProjectStore } from "@/store/useProjectStore";
-import { Trash2 } from "lucide-react";
+import { Trash2, Copy } from "lucide-react";
 
 const ANIMATIONS = [
   { key: "pop-in" as const, label: "Pop In", desc: "Escala 0→1" },
@@ -194,6 +194,30 @@ export default function TypographyPanel() {
           <span>Lento</span>
         </div>
       </div>
+
+      {/* Apply to all typography segments */}
+      {(() => {
+        const typoSegments = modeSegments.filter((s) => s.mode === "typography");
+        if (typoSegments.length <= 1) return null;
+        return (
+          <button
+            onClick={() => {
+              for (const seg of typoSegments) {
+                if (seg.id === selected.id) continue;
+                updateModeSegment(seg.id, {
+                  typographyBackground: bg,
+                  typographyAnimation: anim,
+                  typographyStagger: stagger,
+                });
+              }
+            }}
+            className="w-full py-2 rounded-xl text-sm font-medium text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 transition-colors flex items-center justify-center gap-2"
+          >
+            <Copy className="w-3.5 h-3.5" />
+            Aplicar a todas as Tipografias
+          </button>
+        );
+      })()}
 
       {/* Delete */}
       <button

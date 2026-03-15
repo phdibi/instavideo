@@ -23,6 +23,7 @@ import {
   Diamond,
   Plus,
   Trash2,
+  Copy,
 } from "lucide-react";
 
 const EFFECTS: { value: BRollEffect; label: string; icon: React.ReactNode }[] = [
@@ -171,6 +172,30 @@ export default function BRollPanel() {
             </div>
           </>
         )}
+
+        {/* Apply zoom settings to all presenter segments */}
+        {(() => {
+          const presenterSegments = modeSegments.filter((s) => s.mode === "presenter");
+          if (presenterSegments.length <= 1) return null;
+          return (
+            <button
+              onClick={() => {
+                for (const seg of presenterSegments) {
+                  if (seg.id === selectedPresenterSegment.id) continue;
+                  updateModeSegment(seg.id, {
+                    presenterZoom: selectedPresenterSegment.presenterZoom,
+                    presenterZoomIntensity: currentZoomIntensity,
+                    presenterZoomEasing: selectedPresenterSegment.presenterZoomEasing,
+                  });
+                }
+              }}
+              className="w-full py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2 bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors"
+            >
+              <Copy className="w-4 h-4" />
+              Aplicar a todos os Presenters
+            </button>
+          );
+        })()}
 
         {playheadOnPresenter && currentSegment && (
           <button
@@ -321,6 +346,28 @@ export default function BRollPanel() {
 
       {/* B-Roll swap grid */}
       <BRollSwapGrid segment={selectedSegment} />
+
+      {/* Apply to all b-roll segments */}
+      {brollSegments.length > 1 && (
+        <div className="px-4">
+          <button
+            onClick={() => {
+              for (const seg of brollSegments) {
+                if (seg.id === selectedSegment.id) continue;
+                updateModeSegment(seg.id, {
+                  brollLayout: currentLayout,
+                  brollEffect: currentEffect,
+                  brollEffectIntensity: currentIntensity,
+                });
+              }
+            }}
+            className="w-full py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2 bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 transition-colors"
+          >
+            <Copy className="w-4 h-4" />
+            Aplicar a todos os B-Rolls
+          </button>
+        </div>
+      )}
 
       {/* Remove B-Roll button */}
       <div className="px-4 pb-4">

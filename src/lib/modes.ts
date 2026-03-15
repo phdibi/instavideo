@@ -35,7 +35,7 @@ function isEmphasisWord(word: string): boolean {
 export function generatePhraseCaptions(transcription: TranscriptionResult, stanzaConfig?: Partial<StanzaConfig>): PhraseCaption[] {
   const stanzaEnabled = stanzaConfig?.enabled ?? true;
   const intervalSeconds = stanzaConfig?.intervalSeconds ?? 4;
-  const wordsPerStanza = stanzaConfig?.wordsPerStanza ?? 5;
+  const wordsPerStanza = stanzaConfig?.wordsPerStanza ?? 3;
   const allWords: { word: string; start: number; end: number }[] = [];
 
   for (const segment of transcription.segments) {

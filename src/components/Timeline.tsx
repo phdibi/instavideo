@@ -55,6 +55,7 @@ export default function Timeline() {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pixelsPerSecond, setPixelsPerSecond] = useState(DEFAULT_PPS);
+  const ppsRef = useRef(DEFAULT_PPS);
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
   const [dragEdge, setDragEdge] = useState<{
     id: string;
@@ -84,6 +85,53 @@ export default function Timeline() {
       document.removeEventListener("keydown", handleKey);
     };
   }, [contextMenu]);
+
+  // Sync pps ref
+  useEffect(() => { ppsRef.current = pixelsPerSecond; }, [pixelsPerSecond]);
+
+  // Pinch-to-zoom on timeline
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    let pinchStart: { dist: number; pps: number } | null = null;
+
+    const getDist = (touches: TouchList) => {
+      if (touches.length < 2) return 0;
+      return Math.hypot(
+        touches[0].clientX - touches[1].clientX,
+        touches[0].clientY - touches[1].clientY
+      );
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length >= 2) {
+        pinchStart = { dist: getDist(e.touches), pps: ppsRef.current };
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length >= 2 && pinchStart) {
+        e.preventDefault();
+        const ratio = getDist(e.touches) / pinchStart.dist;
+        setPixelsPerSecond(Math.min(MAX_PPS, Math.max(MIN_PPS, pinchStart.pps * ratio)));
+      }
+    };
+
+    const onTouchEnd = () => {
+      pinchStart = null;
+    };
+
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd, { passive: true });
+
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
+    };
+  }, []);
 
   const totalWidth = Math.max(videoDuration * pixelsPerSecond, 300);
 
@@ -780,7 +828,8 @@ export default function Timeline() {
       </div>
       <div
         ref={scrollRef}
-        className="flex-1 overflow-x-auto overflow-y-auto relative"
+        className="flex-1 overflow-x-auto overflow-y-auto relative select-none"
+        style={{ WebkitTouchCallout: "none", touchAction: "pan-x pan-y" } as React.CSSProperties}
       >
         <div style={{ width: totalWidth + LABEL_WIDTH + 40, minHeight: totalContentHeight }} className="relative">
           {/* ═══ Ruler ═══ */}

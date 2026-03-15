@@ -35,6 +35,8 @@ export async function GET(request: NextRequest) {
     const allowed =
       matchesDomain("pexels.com") ||
       matchesDomain("pexelscdn.com") ||
+      matchesDomain("vimeo.com") ||
+      matchesDomain("akamaized.net") ||
       matchesDomain("replicate.delivery") ||
       matchesDomain("replicate.com");
     if (!allowed) {

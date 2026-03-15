@@ -149,15 +149,21 @@ export default function VideoPreview() {
         brollVid.load();
         prevBrollUrlRef.current = currentSegment.brollVideoUrl;
       }
+
+      const tryPlay = () => {
+        if (brollVid.paused && isPlayingRef.current) {
+          brollVid.play().catch(() => {});
+        }
+      };
+
       if (isPlaying && brollVid.paused) {
-        brollVid.play().catch(() => {
-          // Mobile Safari may fail silently — retry once after a short delay
-          setTimeout(() => {
-            if (brollVid.paused && isPlayingRef.current) {
-              brollVid.play().catch(() => {});
-            }
-          }, 200);
-        });
+        if (brollVid.readyState >= 3) {
+          tryPlay();
+        } else {
+          // Wait for video to be ready on mobile
+          brollVid.addEventListener("canplay", tryPlay, { once: true });
+          return () => brollVid.removeEventListener("canplay", tryPlay);
+        }
       }
     } else {
       if (!brollVid.paused) brollVid.pause();
@@ -422,14 +428,12 @@ export default function VideoPreview() {
             >
               <img
                 ref={brollImageRef}
-                crossOrigin="anonymous"
                 className="w-full h-full object-cover"
                 style={{ display: brollIsPhoto ? "block" : "none" }}
                 alt=""
               />
               <video
                 ref={brollVideoRef}
-                crossOrigin="anonymous"
                 className="w-full h-full object-cover"
                 style={{ display: brollIsPhoto ? "none" : "block" }}
                 loop

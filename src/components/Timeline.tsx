@@ -6,9 +6,12 @@ import { useProjectStore } from "@/store/useProjectStore";
 import { getModeColor, getModeLabel } from "@/lib/modes";
 import { SFX_LABELS } from "@/lib/sfx";
 import { formatTime } from "@/lib/formatTime";
+import { ZoomIn, ZoomOut } from "lucide-react";
 import type { ModeSegment, PhraseCaption, SFXMarker } from "@/types";
 
-const PIXELS_PER_SECOND = 60;
+const DEFAULT_PPS = 60;
+const MIN_PPS = 20;
+const MAX_PPS = 200;
 const RULER_HEIGHT = 24;
 const TRACK_HEIGHT = 40;
 const TRACK_GAP = 2;
@@ -51,6 +54,7 @@ export default function Timeline() {
   } = useProjectStore();
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [pixelsPerSecond, setPixelsPerSecond] = useState(DEFAULT_PPS);
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
   const [dragEdge, setDragEdge] = useState<{
     id: string;
@@ -81,7 +85,7 @@ export default function Timeline() {
     };
   }, [contextMenu]);
 
-  const totalWidth = Math.max(videoDuration * PIXELS_PER_SECOND, 300);
+  const totalWidth = Math.max(videoDuration * pixelsPerSecond, 300);
 
   const timeToX = useCallback(
     (t: number) => (t / (videoDuration || 1)) * totalWidth,
@@ -93,15 +97,18 @@ export default function Timeline() {
     [videoDuration, totalWidth]
   );
 
-  // Ruler markers
+  // Ruler markers — adapt interval to zoom level
   const rulerMarks = useMemo(() => {
     const marks: { time: number; x: number; label: string }[] = [];
-    const interval = videoDuration > 60 ? 5 : videoDuration > 20 ? 2 : 1;
+    const niceIntervals = [0.5, 1, 2, 5, 10, 15, 30, 60];
+    const targetPixelGap = 80;
+    const rawInterval = targetPixelGap / pixelsPerSecond;
+    const interval = niceIntervals.find((v) => v >= rawInterval) ?? 60;
     for (let t = 0; t <= videoDuration; t += interval) {
       marks.push({ time: t, x: timeToX(t), label: formatTime(t) });
     }
     return marks;
-  }, [videoDuration, timeToX]);
+  }, [videoDuration, timeToX, pixelsPerSecond]);
 
   // Separate captions: regular vs stanza
   const regularCaptions = useMemo(
@@ -222,7 +229,6 @@ export default function Timeline() {
     (e: React.TouchEvent, seg: ModeSegment, edge: "start" | "end") => {
       const touch = e.touches[0];
       if (!touch) return;
-      e.stopPropagation();
 
       const startX = touch.clientX;
       const startY = touch.clientY;
@@ -245,7 +251,6 @@ export default function Timeline() {
             cancelled = true;
             clearTimeout(longPressTimer);
             document.removeEventListener("touchmove", handleMove);
-            document.removeEventListener("touchend", handleEnd);
           }
           return;
         }
@@ -318,7 +323,6 @@ export default function Timeline() {
     (e: React.TouchEvent, cap: PhraseCaption, edge: "start" | "end") => {
       const touch = e.touches[0];
       if (!touch) return;
-      e.stopPropagation();
 
       const startX = touch.clientX;
       const startY = touch.clientY;
@@ -341,7 +345,6 @@ export default function Timeline() {
             cancelled = true;
             clearTimeout(longPressTimer);
             document.removeEventListener("touchmove", handleMove);
-            document.removeEventListener("touchend", handleEnd);
           }
           return;
         }
@@ -434,7 +437,6 @@ export default function Timeline() {
     (e: React.TouchEvent, marker: SFXMarker) => {
       const touch = e.touches[0];
       if (!touch) return;
-      e.stopPropagation();
 
       const startX = touch.clientX;
       const startY = touch.clientY;
@@ -457,7 +459,6 @@ export default function Timeline() {
             cancelled = true;
             clearTimeout(longPressTimer);
             document.removeEventListener("touchmove", handleMove);
-            document.removeEventListener("touchend", handleEnd);
           }
           return;
         }
@@ -550,7 +551,6 @@ export default function Timeline() {
     (e: React.TouchEvent, seg: ModeSegment) => {
       const touch = e.touches[0];
       if (!touch) return;
-      e.stopPropagation();
 
       const startX = touch.clientX;
       const startY = touch.clientY;
@@ -579,7 +579,6 @@ export default function Timeline() {
             cancelled = true;
             clearTimeout(longPressTimer);
             document.removeEventListener("touchmove", handleMove);
-            document.removeEventListener("touchend", handleEnd);
           }
           return;
         }
@@ -673,7 +672,6 @@ export default function Timeline() {
     (e: React.TouchEvent, cap: PhraseCaption) => {
       const touch = e.touches[0];
       if (!touch) return;
-      e.stopPropagation();
 
       const startX = touch.clientX;
       const startY = touch.clientY;
@@ -702,7 +700,6 @@ export default function Timeline() {
             cancelled = true;
             clearTimeout(longPressTimer);
             document.removeEventListener("touchmove", handleMove);
-            document.removeEventListener("touchend", handleEnd);
           }
           return;
         }
@@ -751,8 +748,36 @@ export default function Timeline() {
   const playheadX = timeToX(currentTime);
   const totalContentHeight = RULER_HEIGHT + (TRACK_HEIGHT + TRACK_GAP) * 5 + 8;
 
+  const zoomIn = useCallback(() => {
+    setPixelsPerSecond((prev) => Math.min(prev * 1.4, MAX_PPS));
+  }, []);
+
+  const zoomOut = useCallback(() => {
+    setPixelsPerSecond((prev) => Math.max(prev / 1.4, MIN_PPS));
+  }, []);
+
   return (
     <div className="h-full flex flex-col bg-[var(--background)]">
+      {/* Zoom controls */}
+      <div className="flex items-center justify-end gap-1 px-2 py-1 border-b border-[var(--border)] bg-[var(--surface)]">
+        <button
+          onClick={zoomOut}
+          className="p-1 rounded hover:bg-[var(--surface-hover)] transition-colors"
+          title="Zoom out"
+        >
+          <ZoomOut className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+        </button>
+        <span className="text-[9px] text-[var(--text-secondary)] min-w-[32px] text-center">
+          {Math.round(pixelsPerSecond / DEFAULT_PPS * 100)}%
+        </span>
+        <button
+          onClick={zoomIn}
+          className="p-1 rounded hover:bg-[var(--surface-hover)] transition-colors"
+          title="Zoom in"
+        >
+          <ZoomIn className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+        </button>
+      </div>
       <div
         ref={scrollRef}
         className="flex-1 overflow-x-auto overflow-y-auto relative"
@@ -1092,7 +1117,7 @@ function EdgeHandle({
 }) {
   return (
     <div
-      className={`absolute ${side === "left" ? "left-0" : "right-0"} top-0 bottom-0 cursor-col-resize opacity-0 group-hover:opacity-100 transition-opacity`}
+      className={`absolute ${side === "left" ? "left-0" : "right-0"} top-0 bottom-0 cursor-col-resize opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity`}
       style={{ width: DRAG_HANDLE_WIDTH }}
       onMouseDown={onMouseDown}
       onTouchStart={onTouchStart}

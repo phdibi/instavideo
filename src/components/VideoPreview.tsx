@@ -185,8 +185,10 @@ export default function VideoPreview() {
       (currentTime - currentSegment.startTime) / segDuration,
       1
     );
-    const zoomIn = presenterIdx % 2 === 0;
-    return zoomIn ? 1 + progress * 0.06 : 1.06 - progress * 0.06;
+    const zoomType = currentSegment.presenterZoom ?? (presenterIdx % 2 === 0 ? "zoom-in" : "zoom-out");
+    if (zoomType === "none") return 1;
+    const intensity = (currentSegment.presenterZoomIntensity ?? 1.0) * 0.06;
+    return zoomType === "zoom-in" ? 1 + progress * intensity : 1 + intensity - progress * intensity;
   }, [currentMode, currentSegment, currentTime, presenterIdx]);
 
   // B-roll effect transform

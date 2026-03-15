@@ -209,7 +209,7 @@ export interface StanzaConfig {
   normalFontSize: number;     // default: 28
   emphasisFontFamily: string; // default: "Playfair Display"
   normalFontFamily: string;   // default: "Inter"
-  stanzaLayout: "centered" | "cascading"; // default: "centered"
+  stanzaLayout: "centered" | "cascading" | "inline" | "diagonal" | "scattered"; // default: "centered"
 }
 
 // ===== New Mode System (vibefounder style) =====
@@ -234,6 +234,8 @@ export interface ModeSegment {
   brollEffect?: BRollEffect;
   brollEffectIntensity?: number;
   brollLayout?: BRollLayout;
+  presenterZoom?: "none" | "zoom-in" | "zoom-out";
+  presenterZoomIntensity?: number; // 0.5-2.0, default 1.0
 }
 
 export interface PexelsVideoResult {
@@ -260,6 +262,7 @@ export interface PhraseCaption {
   text: string; // 1-2 words
   isEmphasis?: boolean;  // word gets large/bold/italic serif treatment
   stanzaId?: string;     // groups words that stack together on screen
+  styleOverride?: Partial<CaptionConfig>; // per-caption style override
 }
 
 export interface MusicTrack {

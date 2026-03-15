@@ -9,18 +9,21 @@ import {
   Music,
   Download,
   AudioLines,
+  Rows3,
 } from "lucide-react";
 import CaptionPanel from "./panels/CaptionPanel";
 import BRollPanel from "./panels/BRollPanel";
 import TypographyPanel from "./panels/TypographyPanel";
 import SFXPanel from "./panels/SFXPanel";
 import MusicPanel from "./MusicPanel";
+import StanzaPanel from "./panels/StanzaPanel";
 import ExportPanel from "./ExportPanel";
 
-export type ToolbarCategory = "captions" | "broll" | "typography" | "sfx" | "music" | "export";
+export type ToolbarCategory = "captions" | "stanzas" | "broll" | "typography" | "sfx" | "music" | "export";
 
 const CATEGORIES: { key: ToolbarCategory; label: string; icon: React.ReactNode }[] = [
   { key: "captions", label: "Legendas", icon: <Type className="w-5 h-5" /> },
+  { key: "stanzas", label: "Estrofes", icon: <Rows3 className="w-5 h-5" /> },
   { key: "broll", label: "B-Roll", icon: <ImageIcon className="w-5 h-5" /> },
   { key: "typography", label: "Tipografia", icon: <PenLine className="w-5 h-5" /> },
   { key: "sfx", label: "Sons", icon: <AudioLines className="w-5 h-5" /> },
@@ -62,6 +65,8 @@ export default function EditingToolbar({ activeCategory, onCategoryChange }: Pro
     switch (activeCategory) {
       case "captions":
         return <CaptionPanel />;
+      case "stanzas":
+        return <StanzaPanel />;
       case "broll":
         return <BRollPanel />;
       case "typography":

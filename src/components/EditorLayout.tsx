@@ -13,22 +13,27 @@ const MAX_TIMELINE_HEIGHT = 500;
 const DEFAULT_TIMELINE_HEIGHT = 200;
 
 export default function EditorLayout() {
-  const { reset, modeSegments, selectedItem } = useProjectStore();
+  const { reset, modeSegments, selectedItem, phraseCaptions } = useProjectStore();
   const [activeCategory, setActiveCategory] = useState<ToolbarCategory | null>(null);
   const [timelineHeight, setTimelineHeight] = useState(DEFAULT_TIMELINE_HEIGHT);
   const isDraggingRef = useRef(false);
   const startYRef = useRef(0);
   const startHeightRef = useRef(0);
 
-  // Auto-switch to broll when selecting a broll segment
+  // Auto-switch toolbar when selecting items
   useEffect(() => {
     if (selectedItem?.type === "segment") {
       const seg = modeSegments.find((s) => s.id === selectedItem.id);
-      if (seg?.mode === "broll") {
+      if (seg?.mode === "broll" || seg?.mode === "presenter") {
         setActiveCategory("broll");
       }
+    } else if (selectedItem?.type === "phrase") {
+      const phrase = phraseCaptions.find((c) => c.id === selectedItem.id);
+      if (phrase?.stanzaId) {
+        setActiveCategory("stanzas");
+      }
     }
-  }, [selectedItem, modeSegments]);
+  }, [selectedItem, modeSegments, phraseCaptions]);
 
   // Cleanup drag styles on unmount
   useEffect(() => {

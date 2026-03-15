@@ -3,7 +3,6 @@
 import { useMemo, useCallback } from "react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { AVAILABLE_FONTS } from "@/lib/fonts";
-import { generatePhraseCaptions } from "@/lib/modes";
 import type { CaptionConfig } from "@/types";
 import {
   AlignVerticalJustifyStart,
@@ -12,7 +11,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Trash2,
-  RefreshCw,
+  RotateCcw,
+  Copy,
 } from "lucide-react";
 
 const PRESETS: { name: string; config: Partial<CaptionConfig> }[] = [
@@ -93,30 +93,44 @@ export default function CaptionPanel() {
   const {
     captionConfig,
     setCaptionConfig,
-    stanzaConfig,
-    setStanzaConfig,
-    transcriptionResult,
     phraseCaptions,
     selectedItem,
+    selectedItems,
     setSelectedItem,
     updatePhraseCaption,
     deletePhraseCaption,
-    setPhraseCaptions,
+    applyStyleOverrideToAll,
     setCurrentTime,
   } = useProjectStore();
 
-  // Regenerate stanzas from saved transcription
-  const regenerateStanzas = useCallback(() => {
-    if (!transcriptionResult) return;
-    const phrases = generatePhraseCaptions(transcriptionResult, stanzaConfig);
-    setPhraseCaptions(phrases);
-  }, [transcriptionResult, stanzaConfig, setPhraseCaptions]);
+  // Get selected phrases (multi-select aware)
+  const selectedPhrases = useMemo(() => {
+    return selectedItems
+      .filter((i) => i.type === "phrase")
+      .map((i) => phraseCaptions.find((c) => c.id === i.id))
+      .filter(Boolean) as typeof phraseCaptions;
+  }, [selectedItems, phraseCaptions]);
+
+  const hasSelection = selectedPhrases.length > 0;
 
   // Get selected phrase and its neighbors
   const selectedPhrase = useMemo(() => {
     if (selectedItem?.type !== "phrase") return null;
     return phraseCaptions.find((c) => c.id === selectedItem.id) || null;
   }, [selectedItem, phraseCaptions]);
+
+  // Handle config change: selection → override, no selection → global
+  const handleConfigChange = useCallback((update: Partial<CaptionConfig>) => {
+    if (hasSelection) {
+      for (const phrase of selectedPhrases) {
+        updatePhraseCaption(phrase.id, {
+          styleOverride: { ...phrase.styleOverride, ...update },
+        });
+      }
+    } else {
+      setCaptionConfig(update);
+    }
+  }, [hasSelection, selectedPhrases, updatePhraseCaption, setCaptionConfig]);
 
   const sorted = useMemo(
     () => [...phraseCaptions].sort((a, b) => a.startTime - b.startTime),
@@ -316,13 +330,46 @@ export default function CaptionPanel() {
         </Section>
       )}
 
+      {/* ═══ Selection Banner ═══ */}
+      {hasSelection && (
+        <div className="bg-[var(--accent)]/10 border border-[var(--accent)]/30 rounded-xl p-3 space-y-2">
+          <p className="text-xs font-semibold text-[var(--accent-light)]">
+            Editando {selectedPhrases.length} legenda{selectedPhrases.length > 1 ? "s" : ""} selecionada{selectedPhrases.length > 1 ? "s" : ""}
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                if (selectedPhrases[0]?.styleOverride) {
+                  applyStyleOverrideToAll(selectedPhrases[0].styleOverride);
+                }
+              }}
+              className="flex-1 py-1.5 rounded-lg text-[10px] font-medium flex items-center justify-center gap-1 bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)] transition-all"
+            >
+              <Copy className="w-3 h-3" />
+              Aplicar a todos
+            </button>
+            <button
+              onClick={() => {
+                for (const phrase of selectedPhrases) {
+                  updatePhraseCaption(phrase.id, { styleOverride: undefined });
+                }
+              }}
+              className="flex-1 py-1.5 rounded-lg text-[10px] font-medium flex items-center justify-center gap-1 bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)] transition-all"
+            >
+              <RotateCcw className="w-3 h-3" />
+              Resetar estilo
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Presets */}
       <Section title="Presets">
         <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
           {PRESETS.map((preset) => (
             <button
               key={preset.name}
-              onClick={() => setCaptionConfig(preset.config)}
+              onClick={() => handleConfigChange(preset.config)}
               className="shrink-0 px-3 py-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-xs font-medium hover:bg-[var(--surface-hover)] hover:border-[var(--accent)]/50 transition-all"
             >
               {preset.name}
@@ -337,7 +384,7 @@ export default function CaptionPanel() {
           {AVAILABLE_FONTS.map((font) => (
             <button
               key={font.name}
-              onClick={() => setCaptionConfig({ fontFamily: font.name })}
+              onClick={() => handleConfigChange({ fontFamily: font.name })}
               className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                 captionConfig.fontFamily === font.name
                   ? "bg-[var(--accent)] text-white"
@@ -359,7 +406,7 @@ export default function CaptionPanel() {
           max={72}
           step={1}
           value={captionConfig.fontSize}
-          onChange={(e) => setCaptionConfig({ fontSize: parseInt(e.target.value) })}
+          onChange={(e) => handleConfigChange({ fontSize: parseInt(e.target.value) })}
           className="w-full"
         />
       </Section>
@@ -370,7 +417,7 @@ export default function CaptionPanel() {
           {WEIGHTS.map((w) => (
             <button
               key={w}
-              onClick={() => setCaptionConfig({ fontWeight: w })}
+              onClick={() => handleConfigChange({ fontWeight: w })}
               className={`flex-1 py-1.5 rounded-lg text-xs transition-all ${
                 captionConfig.fontWeight === w
                   ? "bg-[var(--accent)] text-white"
@@ -389,7 +436,7 @@ export default function CaptionPanel() {
           {COLOR_SWATCHES.map((color) => (
             <button
               key={color}
-              onClick={() => setCaptionConfig({ color })}
+              onClick={() => handleConfigChange({ color })}
               className={`w-7 h-7 rounded-full border-2 transition-all ${
                 captionConfig.color === color
                   ? "border-[var(--accent)] scale-110"
@@ -401,7 +448,7 @@ export default function CaptionPanel() {
           <input
             type="text"
             value={captionConfig.color}
-            onChange={(e) => setCaptionConfig({ color: e.target.value })}
+            onChange={(e) => handleConfigChange({ color: e.target.value })}
             className="w-20 px-2 py-1 bg-[var(--surface)] border border-[var(--border)] rounded-lg text-xs font-mono"
             placeholder="#FFFFFF"
           />
@@ -413,7 +460,7 @@ export default function CaptionPanel() {
         <div className="space-y-2">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setCaptionConfig({ strokeWidth: captionConfig.strokeWidth > 0 ? 0 : 2 })}
+              onClick={() => handleConfigChange({ strokeWidth: captionConfig.strokeWidth > 0 ? 0 : 2 })}
               className={`px-3 py-1 rounded-lg text-xs transition-all ${
                 captionConfig.strokeWidth > 0
                   ? "bg-[var(--accent)] text-white"
@@ -430,7 +477,7 @@ export default function CaptionPanel() {
                   max={4}
                   step={0.5}
                   value={captionConfig.strokeWidth}
-                  onChange={(e) => setCaptionConfig({ strokeWidth: parseFloat(e.target.value) })}
+                  onChange={(e) => handleConfigChange({ strokeWidth: parseFloat(e.target.value) })}
                   className="flex-1"
                 />
                 <span className="text-xs text-[var(--text-secondary)] w-8">{captionConfig.strokeWidth}px</span>
@@ -442,7 +489,7 @@ export default function CaptionPanel() {
               {["#000000", "#FFFFFF", "#FF0000", "#0000FF"].map((c) => (
                 <button
                   key={c}
-                  onClick={() => setCaptionConfig({ strokeColor: c })}
+                  onClick={() => handleConfigChange({ strokeColor: c })}
                   className={`w-6 h-6 rounded-full border-2 ${
                     captionConfig.strokeColor === c ? "border-[var(--accent)]" : "border-transparent"
                   }`}
@@ -462,7 +509,7 @@ export default function CaptionPanel() {
           max={20}
           step={1}
           value={captionConfig.shadowBlur}
-          onChange={(e) => setCaptionConfig({ shadowBlur: parseInt(e.target.value) })}
+          onChange={(e) => handleConfigChange({ shadowBlur: parseInt(e.target.value) })}
           className="w-full"
         />
       </Section>
@@ -477,7 +524,7 @@ export default function CaptionPanel() {
           ] as const).map((pos) => (
             <button
               key={pos.value}
-              onClick={() => setCaptionConfig({ position: pos.value })}
+              onClick={() => handleConfigChange({ position: pos.value })}
               className={`flex-1 py-2 rounded-lg flex flex-col items-center gap-1 text-xs transition-all ${
                 captionConfig.position === pos.value
                   ? "bg-[var(--accent)] text-white"
@@ -497,7 +544,7 @@ export default function CaptionPanel() {
           {ANIMATIONS.map((anim) => (
             <button
               key={anim.value}
-              onClick={() => setCaptionConfig({ animation: anim.value })}
+              onClick={() => handleConfigChange({ animation: anim.value })}
               className={`px-3 py-1.5 rounded-lg text-xs transition-all ${
                 captionConfig.animation === anim.value
                   ? "bg-[var(--accent)] text-white"
@@ -513,7 +560,7 @@ export default function CaptionPanel() {
       {/* Uppercase */}
       <Section title="Maiúsculas">
         <button
-          onClick={() => setCaptionConfig({ uppercase: !captionConfig.uppercase })}
+          onClick={() => handleConfigChange({ uppercase: !captionConfig.uppercase })}
           className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all ${
             captionConfig.uppercase
               ? "bg-[var(--accent)] text-white"
@@ -524,185 +571,6 @@ export default function CaptionPanel() {
         </button>
       </Section>
 
-      {/* ═══ Stylized Stanzas Section ═══ */}
-      <div className="border-t border-[var(--border)] pt-4 space-y-4">
-        <h4 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
-          Estrofes Estilizadas
-        </h4>
-
-        {/* Toggle ON/OFF */}
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-[var(--text-secondary)]">Ativar estrofes</span>
-          <button
-            onClick={() => {
-              const newEnabled = !stanzaConfig.enabled;
-              setStanzaConfig({ enabled: newEnabled });
-              if (transcriptionResult) {
-                const phrases = generatePhraseCaptions(transcriptionResult, { ...stanzaConfig, enabled: newEnabled });
-                setPhraseCaptions(phrases);
-              }
-            }}
-            className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
-              stanzaConfig.enabled
-                ? "bg-[var(--accent)] text-white"
-                : "bg-[var(--surface)] border border-[var(--border)]"
-            }`}
-          >
-            {stanzaConfig.enabled ? "ON" : "OFF"}
-          </button>
-        </div>
-
-        {stanzaConfig.enabled && (
-          <>
-            {/* Layout selector */}
-            <Section title="Layout">
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setStanzaConfig({ stanzaLayout: "centered" })}
-                  className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${
-                    stanzaConfig.stanzaLayout === "centered"
-                      ? "bg-[var(--accent)] text-white"
-                      : "bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)]"
-                  }`}
-                >
-                  Centrado
-                </button>
-                <button
-                  onClick={() => setStanzaConfig({ stanzaLayout: "cascading" })}
-                  className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${
-                    stanzaConfig.stanzaLayout === "cascading"
-                      ? "bg-[var(--accent)] text-white"
-                      : "bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)]"
-                  }`}
-                >
-                  Cascata
-                </button>
-              </div>
-            </Section>
-
-            {/* Interval slider */}
-            <Section title={`Frequência: ${stanzaConfig.intervalSeconds}s`}>
-              <input
-                type="range"
-                min={2}
-                max={10}
-                step={0.5}
-                value={stanzaConfig.intervalSeconds}
-                onChange={(e) => setStanzaConfig({ intervalSeconds: parseFloat(e.target.value) })}
-                className="w-full"
-              />
-            </Section>
-
-            {/* Words per stanza */}
-            <Section title={`Palavras por estrofe: ${stanzaConfig.wordsPerStanza}`}>
-              <input
-                type="range"
-                min={3}
-                max={6}
-                step={1}
-                value={stanzaConfig.wordsPerStanza}
-                onChange={(e) => setStanzaConfig({ wordsPerStanza: parseInt(e.target.value) })}
-                className="w-full"
-              />
-            </Section>
-
-            {/* Emphasis font size */}
-            <Section title={`Tamanho ênfase: ${stanzaConfig.emphasisFontSize}px`}>
-              <input
-                type="range"
-                min={32}
-                max={72}
-                step={2}
-                value={stanzaConfig.emphasisFontSize}
-                onChange={(e) => setStanzaConfig({ emphasisFontSize: parseInt(e.target.value) })}
-                className="w-full"
-              />
-            </Section>
-
-            {/* Normal font size */}
-            <Section title={`Tamanho normal: ${stanzaConfig.normalFontSize}px`}>
-              <input
-                type="range"
-                min={16}
-                max={40}
-                step={2}
-                value={stanzaConfig.normalFontSize}
-                onChange={(e) => setStanzaConfig({ normalFontSize: parseInt(e.target.value) })}
-                className="w-full"
-              />
-            </Section>
-
-            {/* Emphasis font family */}
-            <Section title="Fonte ênfase">
-              <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
-                {AVAILABLE_FONTS.map((font) => (
-                  <button
-                    key={font.name}
-                    onClick={() => setStanzaConfig({ emphasisFontFamily: font.name })}
-                    className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                      stanzaConfig.emphasisFontFamily === font.name
-                        ? "bg-[var(--accent)] text-white"
-                        : "bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)]"
-                    }`}
-                    style={{ fontFamily: font.family }}
-                  >
-                    {font.name}
-                  </button>
-                ))}
-              </div>
-            </Section>
-
-            {/* Normal font family */}
-            <Section title="Fonte normal">
-              <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
-                {AVAILABLE_FONTS.map((font) => (
-                  <button
-                    key={font.name}
-                    onClick={() => setStanzaConfig({ normalFontFamily: font.name })}
-                    className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                      stanzaConfig.normalFontFamily === font.name
-                        ? "bg-[var(--accent)] text-white"
-                        : "bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)]"
-                    }`}
-                    style={{ fontFamily: font.family }}
-                  >
-                    {font.name}
-                  </button>
-                ))}
-              </div>
-            </Section>
-
-            {/* Regenerate button */}
-            <button
-              onClick={regenerateStanzas}
-              disabled={!transcriptionResult}
-              className="w-full py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)] hover:border-[var(--accent)]/50 disabled:opacity-30 disabled:pointer-events-none transition-all"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              Regenerar estrofes
-            </button>
-
-            {/* Per-word emphasis toggle (when stanza word selected) */}
-            {selectedPhrase?.stanzaId && (
-              <Section title="Palavra selecionada">
-                <div className="flex items-center justify-between bg-[var(--surface)] border border-[var(--border)] rounded-xl p-3">
-                  <span className="text-xs font-medium truncate">{selectedPhrase.text}</span>
-                  <button
-                    onClick={() => updatePhraseCaption(selectedPhrase.id, { isEmphasis: !selectedPhrase.isEmphasis })}
-                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
-                      selectedPhrase.isEmphasis
-                        ? "bg-[var(--accent)] text-white"
-                        : "bg-[var(--surface-hover)] border border-[var(--border)]"
-                    }`}
-                  >
-                    {selectedPhrase.isEmphasis ? "Ênfase ON" : "Ênfase OFF"}
-                  </button>
-                </div>
-              </Section>
-            )}
-          </>
-        )}
-      </div>
     </div>
   );
 }

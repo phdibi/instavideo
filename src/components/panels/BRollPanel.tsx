@@ -54,9 +54,95 @@ export default function BRollPanel() {
       selectedItem.id === s.id
   );
 
+  const selectedPresenterSegment = modeSegments.find(
+    (s) =>
+      s.mode === "presenter" &&
+      selectedItem?.type === "segment" &&
+      selectedItem.id === s.id
+  );
+
   // Check if playhead is on a presenter segment (for "Add B-Roll" button)
   const currentSegment = getCurrentMode(modeSegments, currentTime);
   const playheadOnPresenter = currentSegment?.mode === "presenter";
+
+  // Presenter segment selected — show zoom controls
+  if (selectedPresenterSegment) {
+    const currentZoom = selectedPresenterSegment.presenterZoom;
+    const currentZoomIntensity = selectedPresenterSegment.presenterZoomIntensity ?? 1.0;
+    return (
+      <div className="p-4 space-y-5">
+        <div>
+          <p className="text-xs text-[var(--text-secondary)]">
+            Presenter: {selectedPresenterSegment.startTime.toFixed(1)}s – {selectedPresenterSegment.endTime.toFixed(1)}s
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
+            Zoom
+          </label>
+          <div className="flex gap-1.5">
+            {([
+              { value: "auto", label: "Auto" },
+              { value: "none", label: "Nenhum" },
+              { value: "zoom-in", label: "Zoom In" },
+              { value: "zoom-out", label: "Zoom Out" },
+            ] as const).map((opt) => {
+              const isActive = opt.value === "auto"
+                ? currentZoom === undefined
+                : currentZoom === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  onClick={() => updateModeSegment(selectedPresenterSegment.id, {
+                    presenterZoom: opt.value === "auto" ? undefined : opt.value,
+                  })}
+                  className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${
+                    isActive
+                      ? "bg-blue-500 text-white"
+                      : "bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)]"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {currentZoom !== "none" && (
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
+              Intensidade: {currentZoomIntensity.toFixed(1)}x
+            </label>
+            <input
+              type="range"
+              min={0.5}
+              max={2.0}
+              step={0.1}
+              value={currentZoomIntensity}
+              onChange={(e) =>
+                updateModeSegment(selectedPresenterSegment.id, {
+                  presenterZoomIntensity: parseFloat(e.target.value),
+                })
+              }
+              className="w-full"
+            />
+          </div>
+        )}
+
+        {playheadOnPresenter && currentSegment && (
+          <button
+            onClick={() => splitSegmentForBroll(currentSegment.id, currentTime)}
+            className="w-full py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2 bg-orange-500 text-white hover:bg-orange-600 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Adicionar B-Roll aqui
+          </button>
+        )}
+      </div>
+    );
+  }
 
   if (!selectedSegment) {
     return (

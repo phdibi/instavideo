@@ -210,18 +210,27 @@ export default function ExportPanel() {
       // Render loop — pre-compute stanza values (avoid per-frame lookups)
       const stanzaEmphFont = getCanvasFontName(stanzaConfig.emphasisFontFamily);
       const stanzaNormFont = getCanvasFontName(stanzaConfig.normalFontFamily);
-      const isCascading = stanzaConfig.stanzaLayout === "cascading";
+      const stanzaLayout = stanzaConfig.stanzaLayout;
+      const isCascading = stanzaLayout === "cascading";
       const stanzaBaseY = isCascading
         ? HEIGHT * 0.80
-        : captionConfig.position === "top"
-          ? HEIGHT * 0.15
-          : captionConfig.position === "center"
-            ? HEIGHT * 0.5
-            : HEIGHT * 0.85;
+        : stanzaLayout === "inline"
+          ? HEIGHT * 0.88
+          : stanzaLayout === "diagonal"
+            ? HEIGHT * 0.92
+            : stanzaLayout === "scattered"
+              ? HEIGHT * 0.95
+              : captionConfig.position === "top"
+                ? HEIGHT * 0.15
+                : captionConfig.position === "center"
+                  ? HEIGHT * 0.5
+                  : HEIGHT * 0.85;
       const stanzaBaseX = isCascading ? WIDTH * 0.06 : WIDTH / 2;
       const stanzaEmphSize = isCascading
         ? stanzaConfig.emphasisFontSize * 1.4
         : stanzaConfig.emphasisFontSize;
+      // Deterministic rand for scattered layout (same as CaptionOverlay)
+      const scatteredRand = (seed: number) => ((Math.sin(seed * 9371) * 43758.5453) % 1 + 1) % 1;
       const totalFrames = Math.ceil(videoDuration * FPS);
       await seekVideo(video, 0);
       video.play();
@@ -288,8 +297,9 @@ export default function ExportPanel() {
           const presenterIndex = segment ? presenterSegs.findIndex((s) => s.id === segment.id) : 0;
           const segDur = segment ? segment.endTime - segment.startTime : 1;
           const segProgress = segment ? Math.min((time - segment.startTime) / segDur, 1) : 0;
-          const zoomIn = presenterIndex % 2 === 0;
-          const scale = zoomIn ? 1 + segProgress * 0.06 : 1.06 - segProgress * 0.06;
+          const zoomType = segment?.presenterZoom ?? (presenterIndex % 2 === 0 ? "zoom-in" : "zoom-out");
+          const zoomIntensity = (segment?.presenterZoomIntensity ?? 1.0) * 0.06;
+          const scale = zoomType === "none" ? 1 : zoomType === "zoom-in" ? 1 + segProgress * zoomIntensity : 1 + zoomIntensity - segProgress * zoomIntensity;
 
           ctx.save();
           ctx.translate(WIDTH / 2, HEIGHT / 2);
@@ -588,98 +598,153 @@ export default function ExportPanel() {
         const isStanza = activeCaptions.length > 1 && activeCaptions[0]?.stanzaId;
 
         if (isStanza) {
-          // Stacked stanza rendering — multiple words with mixed typography
-          ctx.textAlign = isCascading ? "left" : "center";
-          ctx.textBaseline = "middle";
-
-          // Calculate line heights for each caption
           const normalSize = stanzaConfig.normalFontSize;
-          const cascadeIndentStep = WIDTH * 0.055;
-          const cascadeEmphNudge = -WIDTH * 0.02;
-          const cascadeMaxIndent = WIDTH * 0.4;
-          const lines = activeCaptions.map((cap, index) => {
-            const size = cap.isEmphasis ? stanzaEmphSize : normalSize;
-            const emphPad = cap.isEmphasis && isCascading ? size * 0.15 : 0;
-            const indent = isCascading
-              ? Math.min(index * cascadeIndentStep + (cap.isEmphasis ? cascadeEmphNudge : 0), cascadeMaxIndent)
-              : 0;
-            return { caption: cap, fontSize: size, lineHeight: size * 1.2 + emphPad, indent };
-          });
-          const totalHeight = lines.reduce((sum, l) => sum + l.lineHeight, 0);
-          let currentY = stanzaBaseY - totalHeight / 2;
 
-          for (const line of lines) {
-            const { caption: cap, fontSize: fSize } = line;
+          const getStanzaUppercase = (cap: typeof activeCaptions[0]) => {
+            if (cap.styleOverride?.uppercase !== undefined) return cap.styleOverride.uppercase;
+            return captionConfig.uppercase;
+          };
+
+          const drawStanzaWord = (cap: typeof activeCaptions[0], x: number, y: number, alpha: number) => {
+            const fSize = cap.isEmphasis ? stanzaEmphSize : normalSize;
             const fontName = cap.isEmphasis ? stanzaEmphFont : stanzaNormFont;
             const weight = cap.isEmphasis ? "italic 700" : "400";
             ctx.font = `${weight} ${fSize}px ${fontName}, system-ui, sans-serif`;
-
-            const displayText = captionConfig.uppercase
-              ? cap.text.toUpperCase()
-              : cap.text;
-
-            const drawY = currentY + line.lineHeight / 2;
-
-            // Shadow — emphasis gets deeper shadow for depth
-            if (isCascading && cap.isEmphasis) {
-              ctx.shadowColor = "rgba(0,0,0,0.8)";
-              ctx.shadowBlur = 14;
-            } else {
-              ctx.shadowColor = "rgba(0,0,0,0.7)";
-              ctx.shadowBlur = 8;
-            }
+            const displayText = getStanzaUppercase(cap) ? cap.text.toUpperCase() : cap.text;
+            ctx.shadowColor = "rgba(0,0,0,0.7)";
+            ctx.shadowBlur = 8;
             ctx.shadowOffsetX = 0;
             ctx.shadowOffsetY = 2;
-
-            // Main text — normal words semi-transparent in cascading mode
-            ctx.globalAlpha = isCascading && !cap.isEmphasis ? 0.55 : 1;
-            ctx.fillStyle = "#FFFFFF";
-            ctx.fillText(displayText, stanzaBaseX + line.indent, drawY);
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = cap.styleOverride?.color || "#FFFFFF";
+            ctx.fillText(displayText, x, y);
             ctx.globalAlpha = 1;
-
-            // Reset shadow
             ctx.shadowColor = "transparent";
             ctx.shadowBlur = 0;
-            ctx.shadowOffsetX = 0;
-            ctx.shadowOffsetY = 0;
+          };
 
-            currentY += line.lineHeight;
+          if (stanzaLayout === "inline") {
+            // Inline/Fluido: words side by side with word-wrap
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            const lineY = stanzaBaseY;
+            let totalWidth = 0;
+            const wordWidths: number[] = [];
+            for (const cap of activeCaptions) {
+              const fSize = cap.isEmphasis ? stanzaEmphSize : normalSize;
+              const fontName = cap.isEmphasis ? stanzaEmphFont : stanzaNormFont;
+              const weight = cap.isEmphasis ? "italic 700" : "400";
+              ctx.font = `${weight} ${fSize}px ${fontName}, system-ui, sans-serif`;
+              const displayText = getStanzaUppercase(cap) ? cap.text.toUpperCase() : cap.text;
+              const w = ctx.measureText(displayText).width;
+              wordWidths.push(w);
+              totalWidth += w;
+            }
+            const gap = 16;
+            totalWidth += gap * (activeCaptions.length - 1);
+            let curX = (WIDTH - totalWidth) / 2;
+            for (let i = 0; i < activeCaptions.length; i++) {
+              const cap = activeCaptions[i];
+              const alpha = cap.isEmphasis ? 1 : 0.7;
+              ctx.textAlign = "left";
+              drawStanzaWord(cap, curX, lineY, alpha);
+              curX += wordWidths[i] + gap;
+            }
+          } else if (stanzaLayout === "diagonal") {
+            // Diagonal: bottom-left to top-right
+            ctx.textAlign = "left";
+            ctx.textBaseline = "middle";
+            const baseX = WIDTH * 0.08;
+            const baseBottomY = HEIGHT * 0.85;
+            const stepX = WIDTH * 0.14;
+            const stepY = HEIGHT * 0.08;
+            for (let i = 0; i < activeCaptions.length; i++) {
+              const cap = activeCaptions[i];
+              const x = baseX + i * stepX;
+              const y = baseBottomY - i * stepY;
+              drawStanzaWord(cap, x, y, cap.isEmphasis ? 1 : 0.6);
+            }
+          } else if (stanzaLayout === "scattered") {
+            // Scattered: pseudo-random positions
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            for (let i = 0; i < activeCaptions.length; i++) {
+              const cap = activeCaptions[i];
+              const seed = i * 7 + (cap.text.charCodeAt(0) || 0);
+              const x = scatteredRand(seed) * WIDTH * 0.7 + WIDTH * 0.15;
+              const y = HEIGHT * 0.55 + scatteredRand(seed + 1) * HEIGHT * 0.3;
+              drawStanzaWord(cap, x, y, cap.isEmphasis ? 1 : 0.55);
+            }
+          } else {
+            // Centered / Cascading (original)
+            ctx.textAlign = isCascading ? "left" : "center";
+            ctx.textBaseline = "middle";
+
+            const cascadeIndentStep = WIDTH * 0.055;
+            const cascadeEmphNudge = -WIDTH * 0.02;
+            const cascadeMaxIndent = WIDTH * 0.4;
+            const lines = activeCaptions.map((cap, index) => {
+              const size = cap.isEmphasis ? stanzaEmphSize : normalSize;
+              const emphPad = cap.isEmphasis && isCascading ? size * 0.15 : 0;
+              const indent = isCascading
+                ? Math.min(index * cascadeIndentStep + (cap.isEmphasis ? cascadeEmphNudge : 0), cascadeMaxIndent)
+                : 0;
+              return { caption: cap, fontSize: size, lineHeight: size * 1.2 + emphPad, indent };
+            });
+            const totalHeight = lines.reduce((sum, l) => sum + l.lineHeight, 0);
+            let currentY = stanzaBaseY - totalHeight / 2;
+
+            for (const line of lines) {
+              const { caption: cap } = line;
+              const drawY = currentY + line.lineHeight / 2;
+
+              if (isCascading && cap.isEmphasis) {
+                ctx.shadowColor = "rgba(0,0,0,0.8)";
+                ctx.shadowBlur = 14;
+              }
+
+              const alpha = isCascading && !cap.isEmphasis ? 0.55 : 1;
+              drawStanzaWord(cap, stanzaBaseX + line.indent, drawY, alpha);
+              currentY += line.lineHeight;
+            }
           }
         } else if (activeCaptions.length > 0) {
           const activeCaption = activeCaptions[0];
-          const cFont = getCanvasFontName(captionConfig.fontFamily);
-          const cSize = captionConfig.fontSize;
-          ctx.font = `${captionConfig.fontWeight} ${cSize}px ${cFont}, Inter, system-ui, sans-serif`;
+          // Merge styleOverride for per-caption styling
+          const eff = activeCaption.styleOverride ? { ...captionConfig, ...activeCaption.styleOverride } : captionConfig;
+          const cFont = getCanvasFontName(eff.fontFamily);
+          const cSize = eff.fontSize;
+          ctx.font = `${eff.fontWeight} ${cSize}px ${cFont}, Inter, system-ui, sans-serif`;
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
 
           // Position
           let captionY = HEIGHT * 0.85; // bottom
-          if (captionConfig.position === "top") captionY = HEIGHT * 0.15;
-          else if (captionConfig.position === "center") captionY = HEIGHT * 0.5;
+          if (eff.position === "top") captionY = HEIGHT * 0.15;
+          else if (eff.position === "center") captionY = HEIGHT * 0.5;
 
-          const displayText = captionConfig.uppercase
+          const displayText = eff.uppercase
             ? activeCaption.text.toUpperCase()
             : activeCaption.text;
 
           // Shadow
-          if (captionConfig.shadowBlur > 0) {
-            ctx.shadowColor = captionConfig.shadowColor;
-            ctx.shadowBlur = captionConfig.shadowBlur;
+          if (eff.shadowBlur > 0) {
+            ctx.shadowColor = eff.shadowColor;
+            ctx.shadowBlur = eff.shadowBlur;
             ctx.shadowOffsetX = 0;
             ctx.shadowOffsetY = 2;
           }
 
           // Stroke
-          if (captionConfig.strokeWidth > 0) {
-            ctx.strokeStyle = captionConfig.strokeColor;
-            ctx.lineWidth = captionConfig.strokeWidth * 2;
+          if (eff.strokeWidth > 0) {
+            ctx.strokeStyle = eff.strokeColor;
+            ctx.lineWidth = eff.strokeWidth * 2;
             ctx.lineJoin = "round";
             ctx.strokeText(displayText, WIDTH / 2, captionY);
           }
 
           // Main text
-          ctx.fillStyle = captionConfig.color;
+          ctx.fillStyle = eff.color;
           ctx.fillText(displayText, WIDTH / 2, captionY);
 
           // Reset shadow

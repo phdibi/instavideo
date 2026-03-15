@@ -30,12 +30,14 @@ const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
   weight: ["400", "600", "700", "800", "900"],
+  style: ["normal", "italic"],
 });
 
 const montserrat = Montserrat({
   variable: "--font-montserrat",
   subsets: ["latin"],
   weight: ["400", "600", "700", "800", "900"],
+  style: ["normal", "italic"],
 });
 
 const bebasNeue = Bebas_Neue({
@@ -54,12 +56,14 @@ const poppins = Poppins({
   variable: "--font-poppins",
   subsets: ["latin"],
   weight: ["400", "600", "700", "800", "900"],
+  style: ["normal", "italic"],
 });
 
 const roboto = Roboto({
   variable: "--font-roboto",
   subsets: ["latin"],
   weight: ["400", "700", "900"],
+  style: ["normal", "italic"],
 });
 
 const anton = Anton({

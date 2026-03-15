@@ -117,15 +117,144 @@ const CASCADE_INDENT_STEP = 40; // px per word
 const CASCADE_EMPH_NUDGE = -12; // emphasis recedes for organic rhythm
 const CASCADE_MAX_INDENT = 220; // px cap
 
-/** Stacked stanza display — multiple words stacked vertically with mixed typography */
+// Deterministic pseudo-random for scattered layout
+const scatteredRand = (seed: number) => ((Math.sin(seed * 9371) * 43758.5453) % 1 + 1) % 1;
+
+/** Stacked stanza display — multiple words with mixed typography, multiple layouts */
 function StanzaDisplay({ captions, config, stanzaConfig }: { captions: PhraseCaption[]; config: CaptionConfig; stanzaConfig: StanzaConfig }) {
-  const isCascading = stanzaConfig.stanzaLayout === "cascading";
-  const positionClass = isCascading ? "bottom-[10%]" : getPositionClass(config.position);
+  const layout = stanzaConfig.stanzaLayout;
   const emphFamily = getFontValue(stanzaConfig.emphasisFontFamily);
   const normalFamily = getFontValue(stanzaConfig.normalFontFamily);
-  const emphFontSize = isCascading
+
+  const emphFontSize = layout === "cascading"
     ? stanzaConfig.emphasisFontSize * CASCADE_EMPH_SCALE
     : stanzaConfig.emphasisFontSize;
+
+  const wordStyle = (caption: PhraseCaption): React.CSSProperties => {
+    const overrideColor = caption.styleOverride?.color;
+    return {
+      fontSize: caption.isEmphasis
+        ? `clamp(${Math.round(emphFontSize * 0.3)}px, ${(emphFontSize / 3).toFixed(1)}cqw, ${emphFontSize}px)`
+        : `clamp(${Math.round(stanzaConfig.normalFontSize * 0.3)}px, ${(stanzaConfig.normalFontSize / 3).toFixed(1)}cqw, ${stanzaConfig.normalFontSize}px)`,
+      fontWeight: caption.isEmphasis ? 700 : 400,
+      fontStyle: caption.isEmphasis ? 'italic' : 'normal',
+      fontFamily: caption.isEmphasis ? emphFamily : normalFamily,
+      color: overrideColor || '#FFFFFF',
+      textShadow: '0 2px 8px rgba(0,0,0,0.7)',
+      lineHeight: 1.1,
+    };
+  };
+
+  // Resolve uppercase: override takes priority over global config
+  const getUppercase = (caption: PhraseCaption) => {
+    if (caption.styleOverride?.uppercase !== undefined) return caption.styleOverride.uppercase;
+    return config.uppercase;
+  };
+
+  // ── Inline/Fluido layout ──
+  if (layout === "inline") {
+    return (
+      <motion.div
+        className="absolute left-0 right-0 bottom-[12%] px-4 flex justify-center"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.2 }}
+        layout
+      >
+        <div className="flex flex-wrap justify-center gap-x-2 gap-y-1">
+          {captions.map((caption, index) => (
+            <motion.span
+              key={caption.id}
+              initial={CENTERED_INITIAL}
+              animate={CENTERED_ANIMATE}
+              transition={{ duration: 0.15, delay: index * 0.04 }}
+              style={wordStyle(caption)}
+            >
+              {getUppercase(caption) ? caption.text.toUpperCase() : caption.text}
+            </motion.span>
+          ))}
+        </div>
+      </motion.div>
+    );
+  }
+
+  // ── Diagonal layout ──
+  if (layout === "diagonal") {
+    return (
+      <motion.div
+        className="absolute left-0 right-0 bottom-[8%] px-4"
+        style={{ height: '35%' }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.2 }}
+        layout
+      >
+        <div className="relative w-full h-full">
+          {captions.map((caption, index) => (
+            <motion.span
+              key={caption.id}
+              className="absolute"
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: caption.isEmphasis ? 1 : 0.6, x: 0 }}
+              transition={{ duration: 0.2, delay: index * 0.06 }}
+              style={{
+                ...wordStyle(caption),
+                left: `${index * 14}%`,
+                bottom: `${index * 10}%`,
+              }}
+            >
+              {getUppercase(caption) ? caption.text.toUpperCase() : caption.text}
+            </motion.span>
+          ))}
+        </div>
+      </motion.div>
+    );
+  }
+
+  // ── Scattered layout ──
+  if (layout === "scattered") {
+    return (
+      <motion.div
+        className="absolute left-0 right-0 bottom-[5%] px-4"
+        style={{ height: '40%' }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.2 }}
+        layout
+      >
+        <div className="relative w-full h-full">
+          {captions.map((caption, index) => {
+            const seed = index * 7 + (caption.text.charCodeAt(0) || 0);
+            const x = scatteredRand(seed) * 70 + 5; // 5-75%
+            const y = scatteredRand(seed + 1) * 60 + 10; // 10-70%
+            return (
+              <motion.span
+                key={caption.id}
+                className="absolute"
+                initial={{ opacity: 0, scale: 0.7 }}
+                animate={{ opacity: caption.isEmphasis ? 1 : 0.55, scale: 1 }}
+                transition={{ duration: 0.2, delay: index * 0.05 }}
+                style={{
+                  ...wordStyle(caption),
+                  left: `${x}%`,
+                  bottom: `${y}%`,
+                }}
+              >
+                {getUppercase(caption) ? caption.text.toUpperCase() : caption.text}
+              </motion.span>
+            );
+          })}
+        </div>
+      </motion.div>
+    );
+  }
+
+  // ── Centered / Cascading (original layouts) ──
+  const isCascading = layout === "cascading";
+  const positionClass = isCascading ? "bottom-[10%]" : getPositionClass(config.position);
 
   return (
     <motion.div
@@ -155,23 +284,17 @@ function StanzaDisplay({ captions, config, stanzaConfig }: { captions: PhraseCap
                 : CENTERED_TRANSITION
               }
               style={{
+                ...wordStyle(caption),
                 marginLeft: isCascading ? `${indent}px` : undefined,
                 marginTop: isCascading && caption.isEmphasis ? '2px' : undefined,
                 marginBottom: isCascading && caption.isEmphasis ? '2px' : undefined,
-                fontSize: caption.isEmphasis
-                  ? `clamp(28px, 7cqw, ${emphFontSize}px)`
-                  : `clamp(16px, 4cqw, ${stanzaConfig.normalFontSize}px)`,
-                fontWeight: caption.isEmphasis ? 700 : 400,
-                fontStyle: caption.isEmphasis ? 'italic' : 'normal',
-                fontFamily: caption.isEmphasis ? emphFamily : normalFamily,
-                color: '#FFFFFF',
                 textShadow: isCascading && caption.isEmphasis
                   ? '0 2px 12px rgba(0,0,0,0.8), 0 0 40px rgba(0,0,0,0.3)'
                   : '0 2px 8px rgba(0,0,0,0.7)',
                 lineHeight: caption.isEmphasis && isCascading ? 1.15 : 1.1,
               }}
             >
-              {config.uppercase ? caption.text.toUpperCase() : caption.text}
+              {getUppercase(caption) ? caption.text.toUpperCase() : caption.text}
             </motion.span>
           );
         })}
@@ -181,12 +304,13 @@ function StanzaDisplay({ captions, config, stanzaConfig }: { captions: PhraseCap
 }
 
 function PhraseDisplay({ caption, config }: { caption: PhraseCaption; config: CaptionConfig }) {
-  const anim = getAnimationVariants(config.animation);
-  const positionClass = getPositionClass(config.position);
-  const displayText = config.uppercase ? caption.text.toUpperCase() : caption.text;
+  const eff = caption.styleOverride ? { ...config, ...caption.styleOverride } : config;
+  const anim = getAnimationVariants(eff.animation);
+  const positionClass = getPositionClass(eff.position);
+  const displayText = eff.uppercase ? caption.text.toUpperCase() : caption.text;
 
-  const strokeStyle: React.CSSProperties = config.strokeWidth > 0
-    ? { WebkitTextStroke: `${config.strokeWidth}px ${config.strokeColor}` }
+  const strokeStyle: React.CSSProperties = eff.strokeWidth > 0
+    ? { WebkitTextStroke: `${eff.strokeWidth}px ${eff.strokeColor}` }
     : {};
 
   return (
@@ -200,14 +324,14 @@ function PhraseDisplay({ caption, config }: { caption: PhraseCaption; config: Ca
     >
       <span
         style={{
-          fontFamily: getFontValue(config.fontFamily),
-          fontSize: `clamp(14px, 4.5cqw, ${config.fontSize}px)`,
-          fontWeight: config.fontWeight,
-          color: config.color,
-          textShadow: `0 2px ${config.shadowBlur}px ${config.shadowColor}`,
+          fontFamily: getFontValue(eff.fontFamily),
+          fontSize: `clamp(${Math.round(eff.fontSize * 0.3)}px, ${(eff.fontSize / 3).toFixed(1)}cqw, ${eff.fontSize}px)`,
+          fontWeight: eff.fontWeight,
+          color: eff.color,
+          textShadow: `0 2px ${eff.shadowBlur}px ${eff.shadowColor}`,
           lineHeight: 1.2,
           textAlign: "center",
-          letterSpacing: `${config.letterSpacing}em`,
+          letterSpacing: `${eff.letterSpacing}em`,
           wordBreak: "break-word",
           maxWidth: "100%",
           ...strokeStyle,

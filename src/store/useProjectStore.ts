@@ -86,6 +86,8 @@ interface ProjectStore {
   setSFXConfig: (config: Partial<SFXConfig>) => void;
   deleteModeSegment: (id: string) => void;
   splitSegmentForBroll: (id: string, atTime: number) => void;
+  /** Apply a style override to ALL phraseCaptions */
+  applyStyleOverrideToAll: (override: Partial<CaptionConfig>) => void;
   /** Batch offset multiple items by a time delta — for Shift multi-select bulk editing */
   batchOffsetItems: (items: { type: "caption" | "effect" | "broll" | "segment"; id: string }[], deltaTime: number) => void;
   reset: () => void;
@@ -412,6 +414,14 @@ export const useProjectStore = create<ProjectStore>((set) => ({
 
       return { modeSegments: segments, selectedItem: null, sfxMarkers: cleanedMarkers };
     }),
+
+  applyStyleOverrideToAll: (override) =>
+    set((state) => ({
+      phraseCaptions: state.phraseCaptions.map((c) => ({
+        ...c,
+        styleOverride: { ...c.styleOverride, ...override },
+      })),
+    })),
 
   splitSegmentForBroll: (id, atTime) =>
     set((state) => {

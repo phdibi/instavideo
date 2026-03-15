@@ -527,7 +527,7 @@ export function generateSFXMarkers(
       else if (layout === "diagonal") soundType = "swoosh";
       else if (layout === "cinematic") soundType = "reverse-hit";
       else if (layout === "pip") soundType = "pop";
-      else soundType = "whoosh";
+      else soundType = "reverse-hit";
     }
     // Entering typography
     else if (curr.mode === "typography") {

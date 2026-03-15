@@ -17,6 +17,16 @@ const TRACK_HEIGHT = 40;
 const TRACK_GAP = 2;
 const LABEL_WIDTH = 72;
 const DRAG_HANDLE_WIDTH = 14;
+const EDGE_ZONE_MIN_PX = 16;
+
+/** Detect if a click is near the left/right edge of an element */
+function detectEdge(clientX: number, rect: DOMRect): "start" | "end" | null {
+  const relX = clientX - rect.left;
+  const zone = Math.min(Math.max(EDGE_ZONE_MIN_PX, rect.width * 0.22), rect.width / 2 - 2);
+  if (relX <= zone) return "start";
+  if (relX >= rect.width - zone) return "end";
+  return null;
+}
 
 /** Convert a touch event to look like a mouse event for our drag handlers */
 function touchToMouse(e: React.TouchEvent): React.MouseEvent | null {
@@ -866,7 +876,7 @@ export default function Timeline() {
               return (
                 <div
                   key={seg.id}
-                  className={`absolute top-1 bottom-1 rounded-lg cursor-grab group transition-shadow ${
+                  className={`absolute top-1 bottom-1 rounded-lg group transition-shadow ${
                     isSelected ? "ring-2 ring-white/60 shadow-lg" : "hover:shadow-md"
                   }`}
                   style={{
@@ -874,9 +884,34 @@ export default function Timeline() {
                     width: Math.max(width, 20),
                     backgroundColor: `${color}33`,
                     borderLeft: `3px solid ${color}`,
+                    cursor: "grab",
                   }}
-                  onMouseDown={(e) => handleSegmentBodyDrag(e, seg)}
-                  onTouchStart={(e) => handleSegmentBodyTouch(e, seg)}
+                  onMouseMove={(e) => {
+                    if (document.body.style.cursor) return; // skip during active drag
+                    const edge = detectEdge(e.clientX, e.currentTarget.getBoundingClientRect());
+                    e.currentTarget.style.cursor = edge ? "col-resize" : "grab";
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!document.body.style.cursor) e.currentTarget.style.cursor = "grab";
+                  }}
+                  onMouseDown={(e) => {
+                    const edge = detectEdge(e.clientX, e.currentTarget.getBoundingClientRect());
+                    if (edge) {
+                      handleModeEdgeDrag(e, seg, edge);
+                    } else {
+                      handleSegmentBodyDrag(e, seg);
+                    }
+                  }}
+                  onTouchStart={(e) => {
+                    const touch = e.touches[0];
+                    if (!touch) return;
+                    const edge = detectEdge(touch.clientX, e.currentTarget.getBoundingClientRect());
+                    if (edge) {
+                      handleModeEdgeTouch(e, seg, edge);
+                    } else {
+                      handleSegmentBodyTouch(e, seg);
+                    }
+                  }}
                   onContextMenu={(e) => {
                     if (seg.mode === "typography") return;
                     e.preventDefault();
@@ -894,15 +929,20 @@ export default function Timeline() {
                     });
                   }}
                 >
-                  <div className="absolute inset-0 flex items-center px-2 overflow-hidden">
+                  <div className="absolute inset-0 flex items-center px-2 overflow-hidden pointer-events-none">
                     <span className="text-[10px] font-semibold truncate" style={{ color }}>
                       {getModeLabel(seg.mode)}
                       {seg.mode === "broll" && seg.brollQuery ? `: ${seg.brollQuery}` : ""}
                       {seg.mode === "typography" && seg.typographyText ? `: ${seg.typographyText}` : ""}
                     </span>
                   </div>
-                  <EdgeHandle side="left" onMouseDown={(e) => handleModeEdgeDrag(e, seg, "start")} onTouchStart={(e) => handleModeEdgeTouch(e, seg, "start")} />
-                  <EdgeHandle side="right" onMouseDown={(e) => handleModeEdgeDrag(e, seg, "end")} onTouchStart={(e) => handleModeEdgeTouch(e, seg, "end")} />
+                  {/* Visual edge indicators (no event handlers) */}
+                  <div className="absolute left-0 top-0 bottom-0 flex items-center pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity" style={{ width: DRAG_HANDLE_WIDTH }}>
+                    <div className="ml-0.5 w-1 h-5 rounded-full bg-white/70" />
+                  </div>
+                  <div className="absolute right-0 top-0 bottom-0 flex items-center justify-end pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity" style={{ width: DRAG_HANDLE_WIDTH }}>
+                    <div className="mr-0.5 w-1 h-5 rounded-full bg-white/70" />
+                  </div>
                 </div>
               );
             })}

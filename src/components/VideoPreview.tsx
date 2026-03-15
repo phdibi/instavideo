@@ -17,6 +17,7 @@ const REF_HEIGHT = 1280;
 export default function VideoPreview() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const brollVideoRef = useRef<HTMLVideoElement>(null);
+  const brollPreloadRef = useRef<HTMLVideoElement>(null);
   const brollImageRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const outerContainerRef = useRef<HTMLDivElement>(null);
@@ -157,36 +158,49 @@ export default function VideoPreview() {
   const prevBrollUrlRef = useRef<string | null>(null);
   const prevBrollImageUrlRef = useRef<string | null>(null);
   const prevBrollSegmentIdRef = useRef<string | null>(null);
+  const preloadedUrlRef = useRef<string | null>(null);
 
   const brollIsPhoto = currentSegment?.brollMediaType === "photo";
 
   // Find the next upcoming b-roll segment for preloading
+  // Also looks ahead during b-roll mode (for consecutive b-rolls)
   const nextBrollSegment = useMemo(() => {
-    if (currentMode === "broll") return null; // already on b-roll
+    const searchFrom = (currentMode === "broll" && currentSegment)
+      ? currentSegment.endTime
+      : currentTime;
     return modeSegments.find(
-      (s) => s.mode === "broll" && s.startTime > currentTime && (s.brollVideoUrl || s.brollImageUrl)
+      (s) => s.mode === "broll" && s.startTime >= searchFrom && s.id !== currentSegment?.id && (s.brollVideoUrl || s.brollImageUrl)
     ) || null;
-  }, [modeSegments, currentTime, currentMode]);
+  }, [modeSegments, currentTime, currentMode, currentSegment]);
 
   // Preload upcoming b-roll media (set src before segment becomes active)
+  // During b-roll mode: uses hidden preload element to warm cache without interrupting playback
   useEffect(() => {
-    const brollVid = brollVideoRef.current;
-    const brollImg = brollImageRef.current;
     if (!nextBrollSegment) return;
 
     if (nextBrollSegment.brollMediaType === "photo" && nextBrollSegment.brollImageUrl) {
-      if (brollImg && prevBrollImageUrlRef.current !== nextBrollSegment.brollImageUrl) {
-        brollImg.src = nextBrollSegment.brollImageUrl;
-        prevBrollImageUrlRef.current = nextBrollSegment.brollImageUrl;
+      if (currentMode !== "broll") {
+        // During presenter: preload directly into display element (original behavior)
+        const brollImg = brollImageRef.current;
+        if (brollImg && brollImg.src !== nextBrollSegment.brollImageUrl) {
+          brollImg.src = nextBrollSegment.brollImageUrl;
+        }
+      } else {
+        // During b-roll: cache-warm without touching active display element
+        const preImg = new Image();
+        preImg.src = nextBrollSegment.brollImageUrl;
       }
     } else if (nextBrollSegment.brollVideoUrl) {
-      if (brollVid && prevBrollUrlRef.current !== nextBrollSegment.brollVideoUrl) {
-        brollVid.src = nextBrollSegment.brollVideoUrl;
-        brollVid.load();
-        prevBrollUrlRef.current = nextBrollSegment.brollVideoUrl;
+      // During b-roll: preload into hidden element; during presenter: preload into main element
+      const target = currentMode === "broll" ? brollPreloadRef.current : brollVideoRef.current;
+      const trackRef = currentMode === "broll" ? preloadedUrlRef : prevBrollUrlRef;
+      if (target && trackRef.current !== nextBrollSegment.brollVideoUrl) {
+        target.src = nextBrollSegment.brollVideoUrl;
+        target.load();
+        trackRef.current = nextBrollSegment.brollVideoUrl;
       }
     }
-  }, [nextBrollSegment]);
+  }, [nextBrollSegment, currentMode]);
 
   // Active b-roll: set src + play/pause
   useEffect(() => {
@@ -494,6 +508,14 @@ export default function VideoPreview() {
                 style={{ display: brollIsPhoto ? "none" : "block" }}
                 preload="auto"
                 loop
+                muted
+                playsInline
+              />
+              {/* Hidden preload element for warming browser cache (consecutive b-rolls) */}
+              <video
+                ref={brollPreloadRef}
+                className="hidden"
+                preload="auto"
                 muted
                 playsInline
               />

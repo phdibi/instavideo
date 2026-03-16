@@ -69,7 +69,7 @@ function getPositionClass(position: CaptionConfig["position"]) {
  * Reads captionConfig from store for full customization.
  * Supports stacked stanza display (multiple words with mixed typography).
  */
-export default function CaptionOverlay({ currentTime }: Props) {
+function CaptionOverlay({ currentTime }: Props) {
   const { phraseCaptions, captionConfig, stanzaConfig, stanzaStyleOverrides } = useProjectStore(
     useShallow((s) => ({
       phraseCaptions: s.phraseCaptions,
@@ -115,6 +115,8 @@ export default function CaptionOverlay({ currentTime }: Props) {
     </div>
   );
 }
+
+export default memo(CaptionOverlay);
 
 // Animation variants — hoisted to avoid per-render allocations
 const CASCADING_INITIAL = { opacity: 0, x: -20 };

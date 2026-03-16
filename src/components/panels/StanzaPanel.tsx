@@ -6,8 +6,9 @@ import { useShallow } from "zustand/react/shallow";
 import { AVAILABLE_FONTS } from "@/lib/fonts";
 import { generatePhraseCaptions } from "@/lib/modes";
 import { formatTime } from "@/lib/formatTime";
-import { RefreshCw, ChevronLeft, ChevronRight, Copy } from "lucide-react";
-import type { StanzaConfig } from "@/types";
+import { RefreshCw, ChevronLeft, ChevronRight, Copy, Trash2, Plus } from "lucide-react";
+import { v4 as uuidv4 } from "uuid";
+import type { StanzaConfig, PhraseCaption } from "@/types";
 
 const LAYOUTS: { value: StanzaConfig["stanzaLayout"]; label: string }[] = [
   { value: "centered", label: "Centrado" },
@@ -27,6 +28,8 @@ export default function StanzaPanel() {
     phraseCaptions,
     selectedItem,
     updatePhraseCaption,
+    addPhraseCaption,
+    deletePhraseCaption,
     setPhraseCaptions,
     setCurrentTime,
     setSelectedItem,
@@ -40,6 +43,8 @@ export default function StanzaPanel() {
       phraseCaptions: s.phraseCaptions,
       selectedItem: s.selectedItem,
       updatePhraseCaption: s.updatePhraseCaption,
+      addPhraseCaption: s.addPhraseCaption,
+      deletePhraseCaption: s.deletePhraseCaption,
       setPhraseCaptions: s.setPhraseCaptions,
       setCurrentTime: s.setCurrentTime,
       setSelectedItem: s.setSelectedItem,
@@ -47,6 +52,7 @@ export default function StanzaPanel() {
   );
 
   const [applyToAll, setApplyToAll] = useState(false);
+  const [editingWordId, setEditingWordId] = useState<string | null>(null);
 
   const regenerateStanzas = useCallback(() => {
     if (!transcriptionResult) return;
@@ -93,6 +99,40 @@ export default function StanzaPanel() {
     if (!selectedStanzaId || applyToAll) return stanzaConfig;
     return { ...stanzaConfig, ...stanzaStyleOverrides[selectedStanzaId] };
   }, [stanzaConfig, stanzaStyleOverrides, selectedStanzaId, applyToAll]);
+
+  // Words in the selected stanza
+  const stanzaWords = useMemo(() => {
+    if (!selectedStanzaId) return [];
+    return phraseCaptions.filter((c) => c.stanzaId === selectedStanzaId);
+  }, [phraseCaptions, selectedStanzaId]);
+
+  const handleRemoveWord = useCallback((wordId: string) => {
+    const remaining = stanzaWords.filter((w) => w.id !== wordId);
+    if (remaining.length <= 1 && remaining.length > 0) {
+      // Last word loses its stanzaId → becomes a normal caption
+      updatePhraseCaption(remaining[0].id, { stanzaId: undefined });
+    }
+    deletePhraseCaption(wordId);
+    if (selectedItem?.id === wordId) {
+      setSelectedItem(remaining.length > 0 ? { type: "phrase", id: remaining[0].id } : null);
+    }
+  }, [stanzaWords, deletePhraseCaption, updatePhraseCaption, selectedItem, setSelectedItem]);
+
+  const handleAddWord = useCallback(() => {
+    if (!selectedStanzaId || stanzaWords.length === 0) return;
+    const lastWord = stanzaWords[stanzaWords.length - 1];
+    const newCaption: PhraseCaption = {
+      id: uuidv4(),
+      stanzaId: selectedStanzaId,
+      text: "nova",
+      startTime: lastWord.startTime,
+      endTime: lastWord.endTime,
+      isEmphasis: false,
+    };
+    addPhraseCaption(newCaption);
+    setSelectedItem({ type: "phrase", id: newCaption.id });
+    setEditingWordId(newCaption.id);
+  }, [selectedStanzaId, stanzaWords, addPhraseCaption, setSelectedItem]);
 
   // Handle config change: per-stanza or global depending on checkbox
   const handleConfigChange = useCallback((update: Partial<StanzaConfig>) => {
@@ -336,29 +376,77 @@ export default function StanzaPanel() {
             Regenerar estrofes
           </button>
 
-          {/* Per-word text edit + emphasis toggle */}
-          {selectedPhrase?.stanzaId && (
-            <Section title="Palavra selecionada">
-              <div className="space-y-2">
-                <input
-                  type="text"
-                  value={selectedPhrase.text}
-                  onChange={(e) => updatePhraseCaption(selectedPhrase.id, { text: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg text-xs font-medium bg-[var(--surface)] border border-[var(--border)] focus:border-[var(--accent)] focus:outline-none transition-colors"
-                />
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-[var(--text-secondary)]">Ênfase</span>
-                  <button
-                    onClick={() => updatePhraseCaption(selectedPhrase.id, { isEmphasis: !selectedPhrase.isEmphasis })}
-                    className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
-                      selectedPhrase.isEmphasis
-                        ? "bg-[var(--accent)] text-white"
-                        : "bg-[var(--surface-hover)] border border-[var(--border)]"
-                    }`}
-                  >
-                    {selectedPhrase.isEmphasis ? "Ênfase ON" : "Ênfase OFF"}
-                  </button>
-                </div>
+          {/* Editable word list for selected stanza */}
+          {selectedStanzaId && stanzaWords.length > 0 && (
+            <Section title="Palavras da estrofe">
+              <div className="space-y-1">
+                {stanzaWords.map((word) => {
+                  const isSelected = selectedItem?.id === word.id;
+                  const isEditing = editingWordId === word.id;
+                  return (
+                    <div
+                      key={word.id}
+                      className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg transition-all ${
+                        isSelected
+                          ? "bg-purple-500/20 border border-purple-500/40"
+                          : "bg-[var(--surface)] border border-[var(--border)]"
+                      }`}
+                      onClick={() => setSelectedItem({ type: "phrase", id: word.id })}
+                    >
+                      {isEditing ? (
+                        <input
+                          type="text"
+                          value={word.text}
+                          autoFocus
+                          onChange={(e) => updatePhraseCaption(word.id, { text: e.target.value })}
+                          onBlur={() => setEditingWordId(null)}
+                          onKeyDown={(e) => { if (e.key === "Enter") setEditingWordId(null); }}
+                          className="flex-1 min-w-0 px-1.5 py-0.5 rounded text-xs font-medium bg-[var(--surface)] border border-[var(--accent)] focus:outline-none"
+                        />
+                      ) : (
+                        <span
+                          className={`flex-1 min-w-0 truncate text-xs cursor-text ${
+                            word.isEmphasis ? "font-bold text-purple-300" : ""
+                          }`}
+                          onDoubleClick={() => setEditingWordId(word.id)}
+                        >
+                          {word.text}
+                        </span>
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updatePhraseCaption(word.id, { isEmphasis: !word.isEmphasis });
+                        }}
+                        title="Ênfase"
+                        className={`shrink-0 w-6 h-6 flex items-center justify-center rounded text-[10px] font-bold transition-all ${
+                          word.isEmphasis
+                            ? "bg-[var(--accent)] text-white"
+                            : "bg-[var(--surface-hover)] border border-[var(--border)] text-[var(--text-secondary)]"
+                        }`}
+                      >
+                        E
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveWord(word.id);
+                        }}
+                        title="Remover palavra"
+                        className="shrink-0 w-6 h-6 flex items-center justify-center rounded text-[var(--text-secondary)] hover:text-red-400 hover:bg-red-500/10 transition-all"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  );
+                })}
+                <button
+                  onClick={handleAddWord}
+                  className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs text-[var(--text-secondary)] bg-[var(--surface)] border border-dashed border-[var(--border)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-all"
+                >
+                  <Plus className="w-3 h-3" />
+                  Adicionar palavra
+                </button>
               </div>
             </Section>
           )}

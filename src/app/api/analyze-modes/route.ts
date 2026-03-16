@@ -1,5 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { z } from "zod";
+
+const SegmentSchema = z.array(
+  z.object({
+    mode: z.enum(["presenter", "broll", "typography"]),
+    startTime: z.number(),
+    endTime: z.number(),
+    brollQuery: z.string().optional(),
+    typographyText: z.string().optional(),
+    typographyBackground: z.string().optional(),
+    transcriptText: z.string().optional(),
+  })
+);
 
 function getAnthropic() {
   return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -7,6 +20,13 @@ function getAnthropic() {
 
 export async function POST(request: NextRequest) {
   try {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return NextResponse.json(
+        { error: "Service not configured" },
+        { status: 500 }
+      );
+    }
+
     const { transcription, duration } = await request.json();
 
     if (!transcription) {
@@ -83,40 +103,34 @@ Respond with a JSON array only, no other text. Each element must have:
       jsonText = jsonMatch[1].trim();
     }
 
-    const segments = JSON.parse(jsonText);
+    const parsed = JSON.parse(jsonText);
 
-    // Validate and add IDs
-    const validatedSegments = segments.map(
-      (
-        seg: {
-          mode: string;
-          startTime: number;
-          endTime: number;
-          brollQuery?: string;
-          typographyText?: string;
-          typographyBackground?: string;
-          transcriptText?: string;
-        },
-        i: number
-      ) => ({
-        id: `mode-${i}`,
-        mode: seg.mode,
-        startTime: seg.startTime,
-        endTime: seg.endTime,
-        brollQuery: seg.brollQuery || undefined,
-        typographyText: seg.typographyText || undefined,
-        typographyBackground: seg.typographyBackground || undefined,
-        transcriptText: seg.transcriptText || undefined,
-      })
-    );
+    const result = SegmentSchema.safeParse(parsed);
+    if (!result.success) {
+      console.error("Invalid segments schema from Claude:", result.error.issues);
+      return NextResponse.json(
+        { error: "Mode analysis returned invalid data" },
+        { status: 500 }
+      );
+    }
+
+    // Add IDs
+    const validatedSegments = result.data.map((seg, i) => ({
+      id: `mode-${i}`,
+      mode: seg.mode,
+      startTime: seg.startTime,
+      endTime: seg.endTime,
+      brollQuery: seg.brollQuery || undefined,
+      typographyText: seg.typographyText || undefined,
+      typographyBackground: seg.typographyBackground || undefined,
+      transcriptText: seg.transcriptText || undefined,
+    }));
 
     return NextResponse.json({ segments: validatedSegments });
   } catch (error: unknown) {
     console.error("Mode analysis error:", error);
-    let message = "Mode analysis failed";
-    if (error instanceof Error) message = error.message;
     return NextResponse.json(
-      { error: message },
+      { error: "Mode analysis failed" },
       { status: 500 }
     );
   }

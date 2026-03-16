@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import { v4 as uuidv4 } from "uuid";
 import type {
   Caption,
@@ -58,6 +59,7 @@ interface ProjectStore {
   setModeSegments: (segments: ModeSegment[]) => void;
   updateModeSegment: (id: string, updates: Partial<ModeSegment>) => void;
   setPhraseCaptions: (captions: PhraseCaption[]) => void;
+  addPhraseCaption: (caption: PhraseCaption) => void;
   updatePhraseCaption: (id: string, updates: Partial<PhraseCaption>) => void;
   deletePhraseCaption: (id: string) => void;
   setMusicConfig: (config: Partial<MusicConfig>) => void;
@@ -193,7 +195,9 @@ const initialState = {
   transcriptionResult: null,
 };
 
-export const useProjectStore = create<ProjectStore>((set) => ({
+export const useProjectStore = create<ProjectStore>()(
+  persist(
+    (set) => ({
   ...initialState,
 
   setVideoFile: (file) => set({ videoFile: file }),
@@ -219,22 +223,30 @@ export const useProjectStore = create<ProjectStore>((set) => ({
     })),
   setEffects: (effects) => set({ effects }),
   updateEffect: (id, updates) =>
-    set((state) => ({
-      effects: state.effects.map((e) =>
+    set((state) => {
+      const updated = state.effects.map((e) =>
         e.id === id ? { ...e, ...updates } : e
-      ),
-    })),
+      );
+      if ('startTime' in updates || 'endTime' in updates) {
+        updated.sort((a, b) => a.startTime - b.startTime);
+      }
+      return { effects: updated };
+    }),
   deleteEffect: (id) =>
     set((state) => ({
       effects: state.effects.filter((e) => e.id !== id),
     })),
   setBRollImages: (images) => set({ bRollImages: images }),
   updateBRollImage: (id, updates) =>
-    set((state) => ({
-      bRollImages: state.bRollImages.map((b) =>
+    set((state) => {
+      const updated = state.bRollImages.map((b) =>
         b.id === id ? { ...b, ...updates } : b
-      ),
-    })),
+      );
+      if ('startTime' in updates || 'endTime' in updates) {
+        updated.sort((a, b) => a.startTime - b.startTime);
+      }
+      return { bRollImages: updated };
+    }),
   deleteBRollImage: (id) =>
     set((state) => ({
       bRollImages: state.bRollImages.filter((b) => b.id !== id),
@@ -268,6 +280,11 @@ export const useProjectStore = create<ProjectStore>((set) => ({
       return { modeSegments: updated };
     }),
   setPhraseCaptions: (captions) => set({ phraseCaptions: captions }),
+  addPhraseCaption: (caption) =>
+    set((state) => ({
+      phraseCaptions: [...state.phraseCaptions, caption]
+        .sort((a, b) => a.startTime - b.startTime),
+    })),
   updatePhraseCaption: (id, updates) =>
     set((state) => ({
       phraseCaptions: state.phraseCaptions
@@ -541,4 +558,19 @@ export const useProjectStore = create<ProjectStore>((set) => ({
       };
     }),
   reset: () => set(initialState),
-}));
+    }),
+    {
+      name: "instavideo-project",
+      partialize: (state) => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { videoFile, status, statusMessage, currentTime, isPlaying, selectedItem, selectedItems, ...rest } = state;
+        return rest;
+      },
+      onRehydrateStorage: () => (state) => {
+        if (state?.videoUrl) {
+          state.status = "ready";
+        }
+      },
+    }
+  )
+);

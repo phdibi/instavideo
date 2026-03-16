@@ -8,6 +8,13 @@ function getOpenAI() {
 
 export async function POST(request: NextRequest) {
   try {
+    if (!process.env.OPENAI_API_KEY) {
+      return NextResponse.json(
+        { error: "Service not configured" },
+        { status: 500 }
+      );
+    }
+
     const formData = await request.formData();
     const audioFile = formData.get("audio") as File;
 
@@ -71,19 +78,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result);
   } catch (error: unknown) {
     console.error("Whisper transcription error:", error);
-
-    // Extract useful error message from OpenAI SDK
-    let message = "Transcription failed";
-    if (error instanceof Error) {
-      message = error.message;
-    }
-    if (error && typeof error === "object" && "status" in error) {
-      const apiError = error as { status: number; message?: string };
-      message = apiError.message || `OpenAI API error (HTTP ${apiError.status})`;
-    }
-
     return NextResponse.json(
-      { error: message },
+      { error: "Transcription failed" },
       { status: 500 }
     );
   }

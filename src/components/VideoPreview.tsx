@@ -271,9 +271,9 @@ export default function VideoPreview() {
         preloadedUrlRef.current = null;
       }
       // Reset to start of b-roll clip only when entering a new segment
-      // Start at 0.05s to skip past blank/loading first frames that some videos have
+      // Start at 0.12s to skip past blank/loading first frames that some videos have
       if (prevBrollSegmentIdRef.current !== currentSegment.id) {
-        brollVid.currentTime = 0.05;
+        brollVid.currentTime = 0.12;
         prevBrollSegmentIdRef.current = currentSegment.id;
       }
 
@@ -566,12 +566,14 @@ export default function VideoPreview() {
                 ref={brollImageRef}
                 className="w-full h-full object-cover"
                 style={{ display: brollIsPhoto ? "block" : "none" }}
+                crossOrigin="anonymous"
                 alt=""
               />
               <video
                 ref={brollVideoRef}
                 className="w-full h-full object-cover"
                 style={{ display: brollIsPhoto ? "none" : "block" }}
+                crossOrigin="anonymous"
                 preload="auto"
                 loop
                 muted
@@ -581,6 +583,7 @@ export default function VideoPreview() {
               <video
                 ref={brollPreloadRef}
                 className="absolute w-0 h-0 overflow-hidden opacity-0 pointer-events-none"
+                crossOrigin="anonymous"
                 preload="auto"
                 muted
                 playsInline

@@ -188,7 +188,7 @@ export default function ProcessingScreen() {
               // Short segments: prefer photo for more visible effect on static image
               updatedSegments[idx] = {
                 ...updatedSegments[idx],
-                brollImageUrl: `/api/proxy-video?url=${encodeURIComponent(photos[0].url)}`,
+                brollImageUrl: photos[0].url,
                 brollMediaType: "photo",
                 pexelsAlternatives: videos,
                 pexelsPhotoAlternatives: photos,
@@ -196,7 +196,7 @@ export default function ProcessingScreen() {
             } else if (videos.length > 0) {
               updatedSegments[idx] = {
                 ...updatedSegments[idx],
-                brollVideoUrl: `/api/proxy-video?url=${encodeURIComponent(videos[0].url)}`,
+                brollVideoUrl: videos[0].url,
                 brollMediaType: "video",
                 pexelsAlternatives: videos,
                 pexelsPhotoAlternatives: photos || [],

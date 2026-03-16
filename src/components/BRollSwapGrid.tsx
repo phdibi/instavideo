@@ -75,7 +75,7 @@ export default function BRollSwapGrid({ segment }: Props) {
 
   const selectVideo = (video: PexelsVideoResult) => {
     updateModeSegment(segment.id, {
-      brollVideoUrl: `/api/proxy-video?url=${encodeURIComponent(video.url)}`,
+      brollVideoUrl: video.url,
       brollMediaType: "video",
       brollImageUrl: undefined,
     });
@@ -83,7 +83,7 @@ export default function BRollSwapGrid({ segment }: Props) {
 
   const selectPhoto = (photo: PexelsPhotoResult) => {
     updateModeSegment(segment.id, {
-      brollImageUrl: `/api/proxy-video?url=${encodeURIComponent(photo.url)}`,
+      brollImageUrl: photo.url,
       brollMediaType: "photo",
       brollVideoUrl: undefined,
     });
@@ -91,7 +91,7 @@ export default function BRollSwapGrid({ segment }: Props) {
 
   const selectGeneratedImage = (url: string) => {
     updateModeSegment(segment.id, {
-      brollImageUrl: `/api/proxy-video?url=${encodeURIComponent(url)}`,
+      brollImageUrl: url,
       brollMediaType: "photo",
       brollVideoUrl: undefined,
     });
@@ -99,15 +99,15 @@ export default function BRollSwapGrid({ segment }: Props) {
 
   const isVideoActive = (video: PexelsVideoResult) =>
     segment.brollMediaType !== "photo" &&
-    segment.brollVideoUrl?.includes(encodeURIComponent(video.url));
+    segment.brollVideoUrl === video.url;
 
   const isPhotoActive = (photo: PexelsPhotoResult) =>
     segment.brollMediaType === "photo" &&
-    segment.brollImageUrl?.includes(encodeURIComponent(photo.url));
+    segment.brollImageUrl === photo.url;
 
   const isGeneratedActive = (url: string) =>
     segment.brollMediaType === "photo" &&
-    segment.brollImageUrl?.includes(encodeURIComponent(url));
+    segment.brollImageUrl === url;
 
   return (
     <div className="p-4 space-y-4">
@@ -181,7 +181,7 @@ export default function BRollSwapGrid({ segment }: Props) {
                 onClick={() => selectGeneratedImage(url)}
               >
                 <img
-                  src={`/api/proxy-video?url=${encodeURIComponent(url)}`}
+                  src={url}
                   alt=""
                   className="w-full aspect-square object-cover"
                 />
@@ -212,7 +212,7 @@ export default function BRollSwapGrid({ segment }: Props) {
             onClick={() => selectVideo(video)}
           >
             <img
-              src={`/api/proxy-video?url=${encodeURIComponent(video.thumbnail)}`}
+              src={video.thumbnail}
               alt=""
               className="w-full aspect-square object-cover"
             />
@@ -242,7 +242,7 @@ export default function BRollSwapGrid({ segment }: Props) {
             onClick={() => selectPhoto(photo)}
           >
             <img
-              src={`/api/proxy-video?url=${encodeURIComponent(photo.thumbnail)}`}
+              src={photo.thumbnail}
               alt=""
               className="w-full aspect-square object-cover"
             />

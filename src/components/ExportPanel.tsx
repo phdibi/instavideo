@@ -102,7 +102,7 @@ export default function ExportPanel() {
               bv.src = seg.brollVideoUrl!;
               bv.muted = true;
               bv.playsInline = true;
-              bv.crossOrigin = "anonymous";
+              if (!seg.brollVideoUrl!.startsWith("blob:")) bv.crossOrigin = "anonymous";
               const timer = setTimeout(resolve, 10000);
               bv.onloadeddata = () => {
                 clearTimeout(timer);
@@ -117,7 +117,7 @@ export default function ExportPanel() {
           (seg) =>
             new Promise<void>((resolve) => {
               const img = new Image();
-              img.crossOrigin = "anonymous";
+              if (!seg.brollImageUrl!.startsWith("blob:")) img.crossOrigin = "anonymous";
               const timer = setTimeout(resolve, 10000);
               img.onload = () => {
                 clearTimeout(timer);

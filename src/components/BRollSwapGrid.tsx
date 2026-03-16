@@ -1,9 +1,16 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { Search, RefreshCw, Sparkles, Loader2 } from "lucide-react";
+import { useState, useCallback, useRef } from "react";
+import { Search, RefreshCw, Sparkles, Loader2, Upload } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
 import type { ModeSegment, PexelsVideoResult, PexelsPhotoResult } from "@/types";
+
+interface LocalMedia {
+  url: string;
+  type: "photo" | "video";
+  thumbnail: string;
+  name: string;
+}
 
 interface Props {
   segment: ModeSegment;
@@ -22,6 +29,8 @@ export default function BRollSwapGrid({ segment }: Props) {
   const [photos, setPhotos] = useState<PexelsPhotoResult[]>(
     segment.pexelsPhotoAlternatives || []
   );
+  const [localMedia, setLocalMedia] = useState<LocalMedia[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const searchMore = useCallback(async () => {
     if (!customQuery.trim()) return;
@@ -72,6 +81,101 @@ export default function BRollSwapGrid({ segment }: Props) {
       setGenerating(false);
     }
   }, [customQuery]);
+
+  const handleFileSelect = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      // Reset input so the same file can be re-selected
+      e.target.value = "";
+
+      // Validate type
+      const isVideo = file.type.startsWith("video/");
+      const isImage = file.type.startsWith("image/");
+      if (!isVideo && !isImage) return;
+
+      // Validate size (100 MB)
+      if (file.size > 100 * 1024 * 1024) {
+        alert("Arquivo muito grande (máx 100 MB)");
+        return;
+      }
+
+      const blobUrl = URL.createObjectURL(file);
+
+      // Generate thumbnail
+      let thumbnail = blobUrl;
+      if (isVideo) {
+        try {
+          thumbnail = await new Promise<string>((resolve) => {
+            const vid = document.createElement("video");
+            vid.muted = true;
+            vid.playsInline = true;
+            vid.src = blobUrl;
+            vid.onloadeddata = () => {
+              vid.currentTime = 0.1;
+            };
+            vid.onseeked = () => {
+              const c = document.createElement("canvas");
+              c.width = vid.videoWidth;
+              c.height = vid.videoHeight;
+              c.getContext("2d")!.drawImage(vid, 0, 0);
+              resolve(c.toDataURL("image/jpeg", 0.7));
+            };
+            vid.onerror = () => resolve(blobUrl);
+            // Fallback timeout
+            setTimeout(() => resolve(blobUrl), 5000);
+          });
+        } catch {
+          thumbnail = blobUrl;
+        }
+      }
+
+      const entry: LocalMedia = {
+        url: blobUrl,
+        type: isVideo ? "video" : "photo",
+        thumbnail,
+        name: file.name,
+      };
+      setLocalMedia((prev) => [entry, ...prev]);
+
+      // Auto-select the uploaded media
+      if (isVideo) {
+        updateModeSegment(segment.id, {
+          brollVideoUrl: blobUrl,
+          brollMediaType: "video",
+          brollImageUrl: undefined,
+        });
+      } else {
+        updateModeSegment(segment.id, {
+          brollImageUrl: blobUrl,
+          brollMediaType: "photo",
+          brollVideoUrl: undefined,
+        });
+      }
+    },
+    [segment.id, updateModeSegment]
+  );
+
+  const selectLocalMedia = (media: LocalMedia) => {
+    if (media.type === "video") {
+      updateModeSegment(segment.id, {
+        brollVideoUrl: media.url,
+        brollMediaType: "video",
+        brollImageUrl: undefined,
+      });
+    } else {
+      updateModeSegment(segment.id, {
+        brollImageUrl: media.url,
+        brollMediaType: "photo",
+        brollVideoUrl: undefined,
+      });
+    }
+  };
+
+  const isLocalActive = (media: LocalMedia) =>
+    media.type === "video"
+      ? segment.brollMediaType !== "photo" && segment.brollVideoUrl === media.url
+      : segment.brollMediaType === "photo" && segment.brollImageUrl === media.url;
 
   const selectVideo = (video: PexelsVideoResult) => {
     updateModeSegment(segment.id, {
@@ -155,6 +259,63 @@ export default function BRollSwapGrid({ segment }: Props) {
         )}
         {generating ? "Gerando imagem..." : "Gerar com IA"}
       </button>
+
+      {/* Upload from gallery */}
+      <button
+        onClick={() => fileInputRef.current?.click()}
+        className="w-full py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2 bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors"
+      >
+        <Upload className="w-4 h-4" />
+        Enviar da galeria
+      </button>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,video/*"
+        className="hidden"
+        onChange={handleFileSelect}
+      />
+
+      {/* Local uploads */}
+      {localMedia.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs text-amber-400 font-medium uppercase tracking-wider">
+            Seus arquivos
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            {localMedia.map((media) => (
+              <div
+                key={media.url}
+                className={`relative rounded-xl overflow-hidden cursor-pointer group transition-all ${
+                  isLocalActive(media)
+                    ? "ring-2 ring-amber-500 ring-offset-2 ring-offset-[#0a0a0a]"
+                    : "hover:ring-1 hover:ring-white/30"
+                }`}
+                onClick={() => selectLocalMedia(media)}
+              >
+                <img
+                  src={media.thumbnail}
+                  alt={media.name}
+                  className="w-full aspect-square object-cover"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                  <span className="text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity font-medium">
+                    Usar este
+                  </span>
+                </div>
+                <div className="absolute top-1 left-1 bg-amber-500/80 rounded px-1.5 py-0.5">
+                  <span className="text-[10px] text-white font-medium">Local</span>
+                </div>
+                {media.type === "video" && (
+                  <div className="absolute top-1 right-1 bg-blue-500/80 rounded px-1.5 py-0.5">
+                    <span className="text-[10px] text-white font-medium">Video</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Error message */}
       {generateError && (
@@ -258,7 +419,7 @@ export default function BRollSwapGrid({ segment }: Props) {
         ))}
       </div>
 
-      {alternatives.length === 0 && photos.length === 0 && generatedImages.length === 0 && !loading && (
+      {alternatives.length === 0 && photos.length === 0 && generatedImages.length === 0 && localMedia.length === 0 && !loading && (
         <p className="text-center text-sm text-zinc-500 py-4">
           Busque vídeos e fotos para ver alternativas
         </p>

@@ -656,7 +656,7 @@ export default function Timeline() {
     return null;
   }, [selectedItem, modeSegments, phraseCaptions, sfxMarkers]);
 
-  const TRIM_STEP = 0.5;
+  const TRIM_STEP = 0.1;
   const MIN_DURATION = 0.3;
 
   const handleTrimStart = useCallback(
@@ -709,7 +709,7 @@ export default function Timeline() {
                 <button
                   onClick={() => handleTrimStart(-TRIM_STEP)}
                   className="p-0.5 rounded hover:bg-[var(--surface-hover)] transition-colors"
-                  title="Início −0.5s"
+                  title="Início −0.1s"
                 >
                   <ChevronLeft className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
                 </button>
@@ -719,7 +719,7 @@ export default function Timeline() {
                 <button
                   onClick={() => handleTrimStart(TRIM_STEP)}
                   className="p-0.5 rounded hover:bg-[var(--surface-hover)] transition-colors"
-                  title="Início +0.5s"
+                  title="Início +0.1s"
                 >
                   <ChevronRight className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
                 </button>
@@ -729,7 +729,7 @@ export default function Timeline() {
                 <button
                   onClick={() => handleTrimEnd(-TRIM_STEP)}
                   className="p-0.5 rounded hover:bg-[var(--surface-hover)] transition-colors"
-                  title="Fim −0.5s"
+                  title="Fim −0.1s"
                 >
                   <ChevronLeft className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
                 </button>
@@ -739,7 +739,7 @@ export default function Timeline() {
                 <button
                   onClick={() => handleTrimEnd(TRIM_STEP)}
                   className="p-0.5 rounded hover:bg-[var(--surface-hover)] transition-colors"
-                  title="Fim +0.5s"
+                  title="Fim +0.1s"
                 >
                   <ChevronRight className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
                 </button>
@@ -751,7 +751,7 @@ export default function Timeline() {
               <button
                 onClick={() => handleTrimStart(-TRIM_STEP)}
                 className="p-0.5 rounded hover:bg-[var(--surface-hover)] transition-colors"
-                title="Tempo −0.5s"
+                title="Tempo −0.1s"
               >
                 <ChevronLeft className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
               </button>
@@ -761,7 +761,7 @@ export default function Timeline() {
               <button
                 onClick={() => handleTrimStart(TRIM_STEP)}
                 className="p-0.5 rounded hover:bg-[var(--surface-hover)] transition-colors"
-                title="Tempo +0.5s"
+                title="Tempo +0.1s"
               >
                 <ChevronRight className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
               </button>

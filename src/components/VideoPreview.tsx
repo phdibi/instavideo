@@ -256,11 +256,17 @@ export default function VideoPreview() {
 
     if (currentMode === "broll" && currentSegment?.brollVideoUrl && !brollIsPhoto) {
       if (prevBrollUrlRef.current !== currentSegment.brollVideoUrl) {
-        // Check if this URL was preloaded in the hidden preload element
         const wasPreloaded = preloadedUrlRef.current === currentSegment.brollVideoUrl;
-        brollVid.src = currentSegment.brollVideoUrl;
-        // Only force load() if NOT preloaded — browser cache handles preloaded URLs
-        if (!wasPreloaded) brollVid.load();
+        const preloadEl = brollPreloadRef.current;
+        // If preloaded element is ready, swap its src into main element for instant start
+        if (wasPreloaded && preloadEl && preloadEl.readyState >= 2) {
+          // Reuse the preload element's buffered source object
+          brollVid.src = preloadEl.src;
+          // Immediately usable from browser media cache (same origin, same decoded resource)
+        } else {
+          brollVid.src = currentSegment.brollVideoUrl;
+          if (!wasPreloaded) brollVid.load();
+        }
         prevBrollUrlRef.current = currentSegment.brollVideoUrl;
         preloadedUrlRef.current = null;
       }
@@ -277,10 +283,11 @@ export default function VideoPreview() {
       };
 
       if (isPlaying && brollVid.paused) {
-        // readyState >= 2 is enough to start (HAVE_CURRENT_DATA), no need to wait for >= 3
-        if (brollVid.readyState >= 2) {
-          tryPlay();
-        } else {
+        // Try playing immediately — browser will buffer and start when ready
+        // This avoids the delay of waiting for readyState >= 2 before calling play()
+        tryPlay();
+        // Fallback: if play() was rejected because not enough data, retry on canplay
+        if (brollVid.paused && brollVid.readyState < 2) {
           brollVid.addEventListener("canplay", tryPlay, { once: true });
           return () => brollVid.removeEventListener("canplay", tryPlay);
         }
@@ -461,7 +468,7 @@ export default function VideoPreview() {
 
             {/* ── Layer 2: Presenter Video ── */}
             <div
-              className={`absolute overflow-hidden transition-opacity duration-200 ease-in-out ${
+              className={`absolute overflow-hidden transition-opacity duration-75 ease-in-out ${
                 currentMode === "presenter"
                   ? "inset-0 opacity-100"
                   : currentMode === "broll" && brollLayout === "split"
@@ -515,7 +522,7 @@ export default function VideoPreview() {
 
           {/* ── Layer 2b: B-Roll Video ── */}
           <div
-            className={`absolute transition-opacity duration-150 ease-out overflow-hidden ${
+            className={`absolute transition-opacity duration-[50ms] ease-out overflow-hidden ${
               currentMode === "broll"
                 ? "opacity-100"
                 : "opacity-0 pointer-events-none"
@@ -569,10 +576,10 @@ export default function VideoPreview() {
                 muted
                 playsInline
               />
-              {/* Hidden preload element for warming browser cache (consecutive b-rolls) */}
+              {/* Preload element for warming browser cache (consecutive b-rolls) — kept in render tree for better buffering */}
               <video
                 ref={brollPreloadRef}
-                className="hidden"
+                className="absolute w-0 h-0 overflow-hidden opacity-0 pointer-events-none"
                 preload="auto"
                 muted
                 playsInline

@@ -23,17 +23,17 @@ export default function EditorLayout() {
   const startYRef = useRef(0);
   const startHeightRef = useRef(0);
 
-  // Auto-switch toolbar when selecting items
+  // Auto-switch toolbar when selecting items (only on selection change, not segment updates)
   useEffect(() => {
     if (selectedItem?.type === "segment") {
-      const seg = modeSegments.find((s) => s.id === selectedItem.id);
+      const seg = useProjectStore.getState().modeSegments.find((s) => s.id === selectedItem.id);
       if (seg?.mode === "broll" || seg?.mode === "presenter") {
         setActiveCategory("broll");
       }
     }
     // Note: phrase selection no longer auto-switches to stanzas tab
     // so users can edit per-phrase styles in the captions panel
-  }, [selectedItem, modeSegments]);
+  }, [selectedItem]);
 
   // Cleanup drag styles on unmount
   useEffect(() => {

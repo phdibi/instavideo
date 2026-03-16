@@ -271,8 +271,9 @@ export default function VideoPreview() {
         preloadedUrlRef.current = null;
       }
       // Reset to start of b-roll clip only when entering a new segment
+      // Start at 0.05s to skip past blank/loading first frames that some videos have
       if (prevBrollSegmentIdRef.current !== currentSegment.id) {
-        brollVid.currentTime = 0;
+        brollVid.currentTime = 0.05;
         prevBrollSegmentIdRef.current = currentSegment.id;
       }
 

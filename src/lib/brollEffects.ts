@@ -23,60 +23,60 @@ export function computeBRollEffect(
   switch (effect) {
     case "zoom-in":
       return {
-        scale: 1 + p * 0.35 * i,
+        scale: 1 + p * 0.5 * i,
         translateX: 0,
         translateY: 0,
       };
 
     case "zoom-out":
       return {
-        scale: 1 + (1 - p) * 0.35 * i,
+        scale: 1 + (1 - p) * 0.5 * i,
         translateX: 0,
         translateY: 0,
       };
 
     case "pan-left":
       return {
-        scale: 1 + 0.2 * i,
-        translateX: (0.5 - p) * 8 * i,
+        scale: 1 + 0.3 * i,
+        translateX: (0.5 - p) * 12 * i,
         translateY: 0,
       };
 
     case "pan-right":
       return {
-        scale: 1 + 0.2 * i,
-        translateX: (-0.5 + p) * 8 * i,
+        scale: 1 + 0.3 * i,
+        translateX: (-0.5 + p) * 12 * i,
         translateY: 0,
       };
 
     case "pan-up":
       return {
-        scale: 1 + 0.2 * i,
+        scale: 1 + 0.3 * i,
         translateX: 0,
-        translateY: (0.5 - p) * 8 * i,
+        translateY: (0.5 - p) * 12 * i,
       };
 
     case "pan-down":
       return {
-        scale: 1 + 0.2 * i,
+        scale: 1 + 0.3 * i,
         translateX: 0,
-        translateY: (-0.5 + p) * 8 * i,
+        translateY: (-0.5 + p) * 12 * i,
       };
 
     case "ken-burns":
       // Combination of zoom-in + slow pan
       return {
-        scale: 1 + p * 0.25 * i,
-        translateX: (0.5 - p) * 5 * i,
-        translateY: (0.3 - p * 0.6) * 3 * i,
+        scale: 1 + p * 0.4 * i,
+        translateX: (0.5 - p) * 8 * i,
+        translateY: (0.3 - p * 0.6) * 5 * i,
       };
 
     case "parallax":
       // Sinusoidal movement
       return {
-        scale: 1 + 0.12 * i,
-        translateX: Math.sin(p * Math.PI * 2) * 4 * i,
-        translateY: Math.cos(p * Math.PI) * 2.5 * i,
+        scale: 1 + 0.2 * i,
+        translateX: Math.sin(p * Math.PI * 2) * 6 * i,
+        translateY: Math.cos(p * Math.PI) * 4 * i,
       };
 
     case "static":

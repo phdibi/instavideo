@@ -229,7 +229,7 @@ export default function ProcessingScreen() {
             updatedSegments[i] = {
               ...updatedSegments[i],
               brollEffect: brollEffectsRotation[brollIdx % brollEffectsRotation.length],
-              brollEffectIntensity: 0.8,
+              brollEffectIntensity: 1.2,
               brollLayout: isFirstInSequence ? "cinematic" : "fullscreen",
             };
           } else {
@@ -237,7 +237,7 @@ export default function ProcessingScreen() {
             updatedSegments[i] = {
               ...updatedSegments[i],
               brollEffect: brollEffectsRotation[brollIdx % brollEffectsRotation.length],
-              brollEffectIntensity: 1.0,
+              brollEffectIntensity: 1.3,
               brollLayout: standaloneLayoutRotation[standaloneIdx % standaloneLayoutRotation.length],
             };
             standaloneIdx++;

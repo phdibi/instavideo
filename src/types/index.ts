@@ -237,6 +237,8 @@ export interface ModeSegment {
   presenterZoom?: "none" | "zoom-in" | "zoom-out" | "parallax";
   presenterZoomIntensity?: number; // 0.5-2.0, default 1.0
   presenterZoomEasing?: "smooth" | "abrupt";
+  presenterZoomStart?: number; // 0-1, when zoom starts (% of segment)
+  presenterZoomEnd?: number;   // 0-1, when zoom ends (% of segment)
 }
 
 export interface PexelsVideoResult {

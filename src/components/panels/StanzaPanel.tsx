@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useProjectStore } from "@/store/useProjectStore";
+import { useShallow } from "zustand/react/shallow";
 import { AVAILABLE_FONTS } from "@/lib/fonts";
 import { generatePhraseCaptions } from "@/lib/modes";
 import { formatTime } from "@/lib/formatTime";
@@ -29,7 +30,21 @@ export default function StanzaPanel() {
     setPhraseCaptions,
     setCurrentTime,
     setSelectedItem,
-  } = useProjectStore();
+  } = useProjectStore(
+    useShallow((s) => ({
+      stanzaConfig: s.stanzaConfig,
+      stanzaStyleOverrides: s.stanzaStyleOverrides,
+      setStanzaConfig: s.setStanzaConfig,
+      setStanzaOverride: s.setStanzaOverride,
+      transcriptionResult: s.transcriptionResult,
+      phraseCaptions: s.phraseCaptions,
+      selectedItem: s.selectedItem,
+      updatePhraseCaption: s.updatePhraseCaption,
+      setPhraseCaptions: s.setPhraseCaptions,
+      setCurrentTime: s.setCurrentTime,
+      setSelectedItem: s.setSelectedItem,
+    }))
+  );
 
   const [applyToAll, setApplyToAll] = useState(false);
 

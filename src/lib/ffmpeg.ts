@@ -95,34 +95,4 @@ export class FFmpegService {
         }
     }
 
-    /**
-     * @deprecated Use extractAndCleanAudio instead.
-     * Kept for backward compatibility but no longer used in the main pipeline.
-     */
-    public static async reduceNoise(audioFile: File | Blob): Promise<Blob> {
-        const ffmpeg = await this.getInstance();
-        const inputName = "input.wav";
-        const outputName = "output.wav";
-
-        try {
-            await ffmpeg.writeFile(inputName, await fetchFile(audioFile));
-
-            await ffmpeg.exec([
-                "-i", inputName,
-                "-af", "highpass=f=200,afftdn=nr=12:nf=-25:tn=1",
-                "-c:a", "pcm_s16le",
-                outputName
-            ]);
-
-            const data = await ffmpeg.readFile(outputName);
-            return new Blob([data as any], { type: "audio/wav" });
-        } finally {
-            try {
-                await ffmpeg.deleteFile(inputName);
-                await ffmpeg.deleteFile(outputName);
-            } catch (e) {
-                console.warn("FFmpeg cleanup warning:", e);
-            }
-        }
-    }
 }

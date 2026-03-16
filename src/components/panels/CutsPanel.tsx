@@ -1,6 +1,7 @@
 "use client";
 
 import { useProjectStore } from "@/store/useProjectStore";
+import { useShallow } from "zustand/react/shallow";
 import type { VideoMode } from "@/types";
 import { Trash2, Play } from "lucide-react";
 
@@ -20,7 +21,16 @@ export default function CutsPanel() {
     setCurrentTime,
     updateModeSegment,
     setModeSegments,
-  } = useProjectStore();
+  } = useProjectStore(
+    useShallow((s) => ({
+      modeSegments: s.modeSegments,
+      selectedItem: s.selectedItem,
+      setSelectedItem: s.setSelectedItem,
+      setCurrentTime: s.setCurrentTime,
+      updateModeSegment: s.updateModeSegment,
+      setModeSegments: s.setModeSegments,
+    }))
+  );
 
   const sorted = [...modeSegments].sort((a, b) => a.startTime - b.startTime);
 

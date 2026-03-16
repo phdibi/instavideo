@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useCallback, useMemo, useState, useEffect } from "react";
+import { useRef, useCallback, useMemo, useState, useEffect, memo } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { useProjectStore } from "@/store/useProjectStore";
+import { useShallow } from "zustand/react/shallow";
 import { getModeColor, getModeLabel } from "@/lib/modes";
 import { SFX_LABELS } from "@/lib/sfx";
 import { formatTime } from "@/lib/formatTime";
@@ -61,7 +62,24 @@ export default function Timeline() {
     updateSFXMarker,
     deleteModeSegment,
     splitSegmentForBroll,
-  } = useProjectStore();
+  } = useProjectStore(useShallow((s) => ({
+    videoDuration: s.videoDuration,
+    currentTime: s.currentTime,
+    modeSegments: s.modeSegments,
+    phraseCaptions: s.phraseCaptions,
+    sfxMarkers: s.sfxMarkers,
+    selectedItems: s.selectedItems,
+    setCurrentTime: s.setCurrentTime,
+    setIsPlaying: s.setIsPlaying,
+    setSelectedItem: s.setSelectedItem,
+    toggleSelectedItem: s.toggleSelectedItem,
+    updateModeSegment: s.updateModeSegment,
+    updatePhraseCaption: s.updatePhraseCaption,
+    addSFXMarker: s.addSFXMarker,
+    updateSFXMarker: s.updateSFXMarker,
+    deleteModeSegment: s.deleteModeSegment,
+    splitSegmentForBroll: s.splitSegmentForBroll,
+  })));
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pixelsPerSecond, setPixelsPerSecond] = useState(DEFAULT_PPS);
@@ -218,16 +236,30 @@ export default function Timeline() {
       e.stopPropagation();
       setIsDraggingPlayhead(true);
 
+      let rafId = 0;
+      let pendingTime = -1;
+
+      const flushTime = () => {
+        rafId = 0;
+        if (pendingTime >= 0) {
+          setCurrentTime(pendingTime);
+          pendingTime = -1;
+        }
+      };
+
       const handleMove = (ev: MouseEvent | TouchEvent) => {
         const clientX = "touches" in ev ? ev.touches[0].clientX : ev.clientX;
         const scroll = scrollRef.current;
         if (!scroll) return;
         const rect = scroll.getBoundingClientRect();
         const x = clientX - rect.left + scroll.scrollLeft;
-        setCurrentTime(pixelToTime(x));
+        pendingTime = pixelToTime(x);
+        if (!rafId) rafId = requestAnimationFrame(flushTime);
       };
 
       const handleUp = () => {
+        if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+        if (pendingTime >= 0) { setCurrentTime(pendingTime); pendingTime = -1; }
         setIsDraggingPlayhead(false);
         document.removeEventListener("mousemove", handleMove);
         document.removeEventListener("mouseup", handleUp);
@@ -1185,7 +1217,7 @@ export default function Timeline() {
 }
 
 /** Track label on the left side */
-function TrackLabel({ label }: { label: string }) {
+const TrackLabel = memo(function TrackLabel({ label }: { label: string }) {
   return (
     <div className="absolute left-0 top-0 bottom-0 bg-[var(--surface)] border-r border-[var(--border)] flex items-center justify-center z-10" style={{ width: LABEL_WIDTH }}>
       <span className="text-[9px] text-[var(--text-secondary)] uppercase tracking-wider">
@@ -1193,10 +1225,10 @@ function TrackLabel({ label }: { label: string }) {
       </span>
     </div>
   );
-}
+});
 
 /** Edge drag handle for resizing segments/captions */
-function EdgeHandle({
+const EdgeHandle = memo(function EdgeHandle({
   side,
   onMouseDown,
   onTouchStart,
@@ -1215,4 +1247,4 @@ function EdgeHandle({
       <div className={`absolute ${side === "left" ? "left-0" : "right-0"} top-1/2 -translate-y-1/2 w-1.5 h-6 rounded-full bg-white/80`} />
     </div>
   );
-}
+});

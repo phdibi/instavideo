@@ -1,13 +1,26 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { Upload, Film, Sparkles, Zap, Type, Wand2, MonitorPlay } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
+import { useShallow } from "zustand/react/shallow";
+import { FFmpegService } from "@/lib/ffmpeg";
 import { motion } from "framer-motion";
 
 export default function UploadScreen() {
+  // Pre-load FFmpeg WASM while user browses upload screen
+  useEffect(() => {
+    FFmpegService.getInstance().catch(() => {});
+  }, []);
   const { setVideoFile, setVideoUrl, setVideoDuration, setStatus } =
-    useProjectStore();
+    useProjectStore(
+      useShallow((s) => ({
+        setVideoFile: s.setVideoFile,
+        setVideoUrl: s.setVideoUrl,
+        setVideoDuration: s.setVideoDuration,
+        setStatus: s.setStatus,
+      }))
+    );
   const [dragOver, setDragOver] = useState(false);
 
   const handleFile = useCallback(

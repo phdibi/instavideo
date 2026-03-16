@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { Download, Loader2, Film } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
+import { useShallow } from "zustand/react/shallow";
 import { getCurrentMode } from "@/lib/modes";
 import { getTrackById } from "@/lib/musicLibrary";
 import { computeBRollEffect, computePresenterEffect } from "@/lib/brollEffects";
@@ -22,7 +23,21 @@ export default function ExportPanel() {
     sfxConfig,
     sfxMarkers,
     setStatus,
-  } = useProjectStore();
+  } = useProjectStore(
+    useShallow((s) => ({
+      videoUrl: s.videoUrl,
+      videoDuration: s.videoDuration,
+      modeSegments: s.modeSegments,
+      phraseCaptions: s.phraseCaptions,
+      musicConfig: s.musicConfig,
+      selectedMusicTrack: s.selectedMusicTrack,
+      captionConfig: s.captionConfig,
+      stanzaConfig: s.stanzaConfig,
+      sfxConfig: s.sfxConfig,
+      sfxMarkers: s.sfxMarkers,
+      setStatus: s.setStatus,
+    }))
+  );
 
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -282,7 +297,13 @@ export default function ExportPanel() {
           const presenterSegs = modeSegments.filter((s) => s.mode === "presenter");
           const presenterIndex = segment ? presenterSegs.findIndex((s) => s.id === segment.id) : 0;
           const segDur = segment ? segment.endTime - segment.startTime : 1;
-          const segProgress = segment ? Math.min((time - segment.startTime) / segDur, 1) : 0;
+          const rawProgress = segment ? Math.min((time - segment.startTime) / segDur, 1) : 0;
+          // Remap progress using zoomStart/zoomEnd window (must match VideoPreview)
+          const zoomStart = segment?.presenterZoomStart ?? 0;
+          const zoomEnd = segment?.presenterZoomEnd ?? 1;
+          const segProgress = zoomStart >= zoomEnd
+            ? 0
+            : Math.min(Math.max((rawProgress - zoomStart) / (zoomEnd - zoomStart), 0), 1);
           const zoomType = segment?.presenterZoom ?? (presenterIndex % 2 === 0 ? "zoom-in" : "zoom-out");
           const pTransform = computePresenterEffect(
             zoomType,

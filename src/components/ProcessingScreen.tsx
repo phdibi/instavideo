@@ -3,8 +3,11 @@
 import { useEffect, useRef, useCallback } from "react";
 import { Loader2, CheckCircle } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
+import { useShallow } from "zustand/react/shallow";
 import { FFmpegService } from "@/lib/ffmpeg";
 import { generatePhraseCaptions } from "@/lib/modes";
+import { generateSFXMarkers } from "@/lib/sfx";
+import { v4 as uuidv4 } from "uuid";
 import type { TranscriptionResult, ModeSegment, PexelsVideoResult, PexelsPhotoResult } from "@/types";
 
 const steps = [
@@ -26,7 +29,19 @@ export default function ProcessingScreen() {
     setModeSegments,
     setPhraseCaptions,
     setTranscriptionResult,
-  } = useProjectStore();
+    setSFXMarkers,
+  } = useProjectStore(
+    useShallow((s) => ({
+      videoFile: s.videoFile,
+      status: s.status,
+      statusMessage: s.statusMessage,
+      setStatus: s.setStatus,
+      setModeSegments: s.setModeSegments,
+      setPhraseCaptions: s.setPhraseCaptions,
+      setTranscriptionResult: s.setTranscriptionResult,
+      setSFXMarkers: s.setSFXMarkers,
+    }))
+  );
 
   const hasStarted = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -233,6 +248,10 @@ export default function ProcessingScreen() {
 
       setModeSegments(updatedSegments);
 
+      // Auto-generate SFX markers for transitions
+      const sfxMarkers = generateSFXMarkers(updatedSegments, uuidv4);
+      setSFXMarkers(sfxMarkers);
+
       // Step 5: Generate phrase captions
       setStatus("building-video", "Montando seu vídeo...");
       const currentStanzaConfig = useProjectStore.getState().stanzaConfig;
@@ -249,7 +268,7 @@ export default function ProcessingScreen() {
         error instanceof Error ? error.message : "Erro desconhecido no processamento"
       );
     }
-  }, [videoFile, setStatus, setModeSegments, setPhraseCaptions, setTranscriptionResult]);
+  }, [videoFile, setStatus, setModeSegments, setPhraseCaptions, setTranscriptionResult, setSFXMarkers]);
 
   useEffect(() => {
     if (hasStarted.current) return;

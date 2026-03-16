@@ -1,6 +1,7 @@
 "use client";
 
 import { useProjectStore } from "@/store/useProjectStore";
+import { useShallow } from "zustand/react/shallow";
 import { SFX_PLAY_MAP, SFX_LABELS, generateSFXMarkers } from "@/lib/sfx";
 import { Volume2, Play, Trash2, Plus, RefreshCw, Copy, ChevronLeft, ChevronRight } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
@@ -42,7 +43,22 @@ export default function SFXPanel() {
     setSFXMarkers,
     setSelectedItem,
     setCurrentTime,
-  } = useProjectStore();
+  } = useProjectStore(
+    useShallow((s) => ({
+      sfxConfig: s.sfxConfig,
+      setSFXConfig: s.setSFXConfig,
+      sfxMarkers: s.sfxMarkers,
+      modeSegments: s.modeSegments,
+      currentTime: s.currentTime,
+      selectedItem: s.selectedItem,
+      updateSFXMarker: s.updateSFXMarker,
+      deleteSFXMarker: s.deleteSFXMarker,
+      addSFXMarker: s.addSFXMarker,
+      setSFXMarkers: s.setSFXMarkers,
+      setSelectedItem: s.setSelectedItem,
+      setCurrentTime: s.setCurrentTime,
+    }))
+  );
 
   const selectedMarker = selectedItem?.type === "sfx"
     ? sfxMarkers.find((m) => m.id === selectedItem.id)

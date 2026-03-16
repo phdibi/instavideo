@@ -2,6 +2,7 @@
 
 import { useMemo, useCallback, useState, useRef } from "react";
 import { useProjectStore } from "@/store/useProjectStore";
+import { useShallow } from "zustand/react/shallow";
 import { AVAILABLE_FONTS } from "@/lib/fonts";
 import type { CaptionConfig } from "@/types";
 import {
@@ -101,7 +102,20 @@ export default function CaptionPanel() {
     deletePhraseCaption,
     applyStyleOverrideToAll,
     setCurrentTime,
-  } = useProjectStore();
+  } = useProjectStore(
+    useShallow((s) => ({
+      captionConfig: s.captionConfig,
+      setCaptionConfig: s.setCaptionConfig,
+      phraseCaptions: s.phraseCaptions,
+      selectedItem: s.selectedItem,
+      selectedItems: s.selectedItems,
+      setSelectedItem: s.setSelectedItem,
+      updatePhraseCaption: s.updatePhraseCaption,
+      deletePhraseCaption: s.deletePhraseCaption,
+      applyStyleOverrideToAll: s.applyStyleOverrideToAll,
+      setCurrentTime: s.setCurrentTime,
+    }))
+  );
 
   // Get selected phrases (multi-select aware)
   const selectedPhrases = useMemo(() => {

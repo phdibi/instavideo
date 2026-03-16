@@ -7,13 +7,16 @@ import MusicController from "./MusicController";
 import EditingToolbar, { type ToolbarCategory } from "./EditingToolbar";
 import Timeline from "./Timeline";
 import { useProjectStore } from "@/store/useProjectStore";
+import { useShallow } from "zustand/react/shallow";
 
 const MIN_TIMELINE_HEIGHT = 100;
 const MAX_TIMELINE_HEIGHT = 500;
 const DEFAULT_TIMELINE_HEIGHT = 200;
 
 export default function EditorLayout() {
-  const { reset, modeSegments, selectedItem } = useProjectStore();
+  const { reset, modeSegments, selectedItem } = useProjectStore(
+    useShallow((s) => ({ reset: s.reset, modeSegments: s.modeSegments, selectedItem: s.selectedItem }))
+  );
   const [activeCategory, setActiveCategory] = useState<ToolbarCategory | null>(null);
   const [timelineHeight, setTimelineHeight] = useState(DEFAULT_TIMELINE_HEIGHT);
   const isDraggingRef = useRef(false);

@@ -257,11 +257,16 @@ export const useProjectStore = create<ProjectStore>((set) => ({
   setTranscriptionResult: (result) => set({ transcriptionResult: result }),
   setModeSegments: (segments) => set({ modeSegments: segments }),
   updateModeSegment: (id, updates) =>
-    set((state) => ({
-      modeSegments: state.modeSegments.map((s) =>
+    set((state) => {
+      const updated = state.modeSegments.map((s) =>
         s.id === id ? { ...s, ...updates } : s
-      ),
-    })),
+      );
+      // Re-sort if timing changed to keep binary search in getCurrentMode correct
+      if ('startTime' in updates || 'endTime' in updates) {
+        updated.sort((a, b) => a.startTime - b.startTime);
+      }
+      return { modeSegments: updated };
+    }),
   setPhraseCaptions: (captions) => set({ phraseCaptions: captions }),
   updatePhraseCaption: (id, updates) =>
     set((state) => ({

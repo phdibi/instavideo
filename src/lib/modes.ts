@@ -1,9 +1,17 @@
 import type { ModeSegment, VideoMode, PhraseCaption, TranscriptionResult, StanzaConfig } from "@/types";
 import { v4 as uuid } from "uuid";
 
-/** Get the current mode segment for a given time */
+/** Get the current mode segment for a given time (binary search, O(log n)) */
 export function getCurrentMode(segments: ModeSegment[], time: number): ModeSegment | null {
-  return segments.find((s) => time >= s.startTime && time < s.endTime) || null;
+  let lo = 0, hi = segments.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1;
+    const seg = segments[mid];
+    if (time < seg.startTime) hi = mid - 1;
+    else if (time >= seg.endTime) lo = mid + 1;
+    else return seg;
+  }
+  return null;
 }
 
 /** Get the mode type at a given time, defaulting to "presenter" */

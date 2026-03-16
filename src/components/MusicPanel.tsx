@@ -2,12 +2,20 @@
 
 import { Music, Play, Pause, Volume2 } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
+import { useShallow } from "zustand/react/shallow";
 import { musicTracks } from "@/lib/musicLibrary";
 import { useRef, useState } from "react";
 
 export default function MusicPanel() {
   const { selectedMusicTrack, musicConfig, setSelectedMusicTrack, setMusicConfig } =
-    useProjectStore();
+    useProjectStore(
+      useShallow((s) => ({
+        selectedMusicTrack: s.selectedMusicTrack,
+        musicConfig: s.musicConfig,
+        setSelectedMusicTrack: s.setSelectedMusicTrack,
+        setMusicConfig: s.setMusicConfig,
+      }))
+    );
 
   const [previewTrack, setPreviewTrack] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);

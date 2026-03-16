@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useProjectStore } from "@/store/useProjectStore";
+import { useShallow } from "zustand/react/shallow";
 import { getTrackById } from "@/lib/musicLibrary";
 import { getModeAt } from "@/lib/modes";
 
@@ -13,7 +14,16 @@ import { getModeAt } from "@/lib/modes";
  */
 export default function MusicController() {
   const { musicConfig, selectedMusicTrack, isPlaying, currentTime, modeSegments, videoDuration } =
-    useProjectStore();
+    useProjectStore(
+      useShallow((s) => ({
+        musicConfig: s.musicConfig,
+        selectedMusicTrack: s.selectedMusicTrack,
+        isPlaying: s.isPlaying,
+        currentTime: s.currentTime,
+        modeSegments: s.modeSegments,
+        videoDuration: s.videoDuration,
+      }))
+    );
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);

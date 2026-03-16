@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, memo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useProjectStore } from "@/store/useProjectStore";
+import { useShallow } from "zustand/react/shallow";
 import { getFontValue } from "@/lib/fonts";
 import type { PhraseCaption, CaptionConfig, StanzaConfig } from "@/types";
 
@@ -69,7 +70,14 @@ function getPositionClass(position: CaptionConfig["position"]) {
  * Supports stacked stanza display (multiple words with mixed typography).
  */
 export default function CaptionOverlay({ currentTime }: Props) {
-  const { phraseCaptions, captionConfig, stanzaConfig, stanzaStyleOverrides } = useProjectStore();
+  const { phraseCaptions, captionConfig, stanzaConfig, stanzaStyleOverrides } = useProjectStore(
+    useShallow((s) => ({
+      phraseCaptions: s.phraseCaptions,
+      captionConfig: s.captionConfig,
+      stanzaConfig: s.stanzaConfig,
+      stanzaStyleOverrides: s.stanzaStyleOverrides,
+    }))
+  );
 
   // Find ALL active captions at current time
   const activeCaptions = useMemo(() => {
@@ -78,26 +86,28 @@ export default function CaptionOverlay({ currentTime }: Props) {
     );
   }, [phraseCaptions, currentTime]);
 
-  // Check if active captions form a stanza (multiple captions with same stanzaId)
-  const isStanza = activeCaptions.length > 1 && activeCaptions[0]?.stanzaId;
+  // Separate stanza captions from regular captions to avoid duplication
+  const stanzaCaptions = useMemo(() => activeCaptions.filter(c => c.stanzaId), [activeCaptions]);
+  const regularCaptions = useMemo(() => activeCaptions.filter(c => !c.stanzaId), [activeCaptions]);
+  const isStanza = stanzaCaptions.length > 1;
 
   return (
     <div className="absolute inset-0 pointer-events-none">
       <AnimatePresence mode="popLayout">
         {isStanza ? (
           <StanzaDisplay
-            key={activeCaptions[0].stanzaId!}
-            captions={activeCaptions}
+            key={stanzaCaptions[0].stanzaId!}
+            captions={stanzaCaptions}
             config={captionConfig}
             stanzaConfig={{
               ...stanzaConfig,
-              ...stanzaStyleOverrides[activeCaptions[0].stanzaId!],
+              ...stanzaStyleOverrides[stanzaCaptions[0].stanzaId!],
             }}
           />
-        ) : activeCaptions[0] ? (
+        ) : regularCaptions[0] ? (
           <PhraseDisplay
-            key={activeCaptions[0].id}
-            caption={activeCaptions[0]}
+            key={regularCaptions[0].id}
+            caption={regularCaptions[0]}
             config={captionConfig}
           />
         ) : null}
@@ -124,7 +134,7 @@ const CASCADE_MAX_INDENT = 220; // px cap
 const scatteredRand = (seed: number) => ((Math.sin(seed * 9371) * 43758.5453) % 1 + 1) % 1;
 
 /** Stacked stanza display — multiple words with mixed typography, multiple layouts */
-function StanzaDisplay({ captions, config, stanzaConfig }: { captions: PhraseCaption[]; config: CaptionConfig; stanzaConfig: StanzaConfig }) {
+const StanzaDisplay = memo(function StanzaDisplay({ captions, config, stanzaConfig }: { captions: PhraseCaption[]; config: CaptionConfig; stanzaConfig: StanzaConfig }) {
   const layout = stanzaConfig.stanzaLayout;
   const emphFamily = getFontValue(stanzaConfig.emphasisFontFamily);
   const normalFamily = getFontValue(stanzaConfig.normalFontFamily);
@@ -304,9 +314,9 @@ function StanzaDisplay({ captions, config, stanzaConfig }: { captions: PhraseCap
       </div>
     </motion.div>
   );
-}
+});
 
-function PhraseDisplay({ caption, config }: { caption: PhraseCaption; config: CaptionConfig }) {
+const PhraseDisplay = memo(function PhraseDisplay({ caption, config }: { caption: PhraseCaption; config: CaptionConfig }) {
   const eff = caption.styleOverride ? { ...config, ...caption.styleOverride } : config;
   const anim = getAnimationVariants(eff.animation);
   const positionClass = getPositionClass(eff.position);
@@ -344,4 +354,4 @@ function PhraseDisplay({ caption, config }: { caption: PhraseCaption; config: Ca
       </span>
     </motion.div>
   );
-}
+});

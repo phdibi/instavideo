@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useProjectStore } from "@/store/useProjectStore";
+import { useShallow } from "zustand/react/shallow";
 
 type TeleprompterPhase = "setup" | "countdown" | "recording" | "preview";
 
@@ -34,7 +35,16 @@ export default function TeleprompterScreen() {
     setVideoUrl,
     setVideoDuration,
     setStatus,
-  } = useProjectStore();
+  } = useProjectStore(
+    useShallow((s) => ({
+      teleprompterSettings: s.teleprompterSettings,
+      setTeleprompterSettings: s.setTeleprompterSettings,
+      setVideoFile: s.setVideoFile,
+      setVideoUrl: s.setVideoUrl,
+      setVideoDuration: s.setVideoDuration,
+      setStatus: s.setStatus,
+    }))
+  );
 
   const [phase, setPhase] = useState<TeleprompterPhase>("setup");
   const [countdownValue, setCountdownValue] = useState(3);

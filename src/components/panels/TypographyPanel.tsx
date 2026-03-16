@@ -1,6 +1,7 @@
 "use client";
 
 import { useProjectStore } from "@/store/useProjectStore";
+import { useShallow } from "zustand/react/shallow";
 import { Trash2, Copy, ChevronLeft, ChevronRight } from "lucide-react";
 
 const ANIMATIONS = [
@@ -19,7 +20,17 @@ export default function TypographyPanel() {
     updateModeSegment,
     deleteModeSegment,
     setCurrentTime,
-  } = useProjectStore();
+  } = useProjectStore(
+    useShallow((s) => ({
+      modeSegments: s.modeSegments,
+      selectedItem: s.selectedItem,
+      currentTime: s.currentTime,
+      setSelectedItem: s.setSelectedItem,
+      updateModeSegment: s.updateModeSegment,
+      deleteModeSegment: s.deleteModeSegment,
+      setCurrentTime: s.setCurrentTime,
+    }))
+  );
 
   const selected =
     selectedItem?.type === "segment"

@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { useProjectStore } from "@/store/useProjectStore";
+import { useShallow } from "zustand/react/shallow";
 import { getCurrentMode } from "@/lib/modes";
 import { formatTime } from "@/lib/formatTime";
 import BRollSwapGrid from "../BRollSwapGrid";
@@ -50,7 +51,19 @@ const LAYOUTS: { value: BRollLayout; label: string; icon: React.ReactNode }[] = 
 ];
 
 export default function BRollPanel() {
-  const { modeSegments, selectedItem, currentTime, updateModeSegment, deleteModeSegment, splitSegmentForBroll, setCurrentTime, setSelectedItem } = useProjectStore();
+  const { modeSegments, selectedItem, currentTime, videoDuration, updateModeSegment, deleteModeSegment, splitSegmentForBroll, setCurrentTime, setSelectedItem } = useProjectStore(
+    useShallow((s) => ({
+      modeSegments: s.modeSegments,
+      selectedItem: s.selectedItem,
+      currentTime: s.currentTime,
+      videoDuration: s.videoDuration,
+      updateModeSegment: s.updateModeSegment,
+      deleteModeSegment: s.deleteModeSegment,
+      splitSegmentForBroll: s.splitSegmentForBroll,
+      setCurrentTime: s.setCurrentTime,
+      setSelectedItem: s.setSelectedItem,
+    }))
+  );
 
   const selectedSegment = modeSegments.find(
     (s) =>
@@ -114,9 +127,51 @@ export default function BRollPanel() {
             </div>
           );
         })()}
-        <p className="text-xs text-[var(--text-secondary)]">
-          {selectedPresenterSegment.startTime.toFixed(1)}s – {selectedPresenterSegment.endTime.toFixed(1)}s
-        </p>
+        {/* Trim controls */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-[var(--text-secondary)]">Início</span>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => {
+                  const newStart = Math.max(0, selectedPresenterSegment.startTime - 0.5);
+                  if (selectedPresenterSegment.endTime - newStart >= 0.3)
+                    updateModeSegment(selectedPresenterSegment.id, { startTime: newStart });
+                }}
+                className="w-7 h-7 rounded-md bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center hover:bg-[var(--surface-hover)] text-xs"
+              >◀</button>
+              <span className="text-xs font-mono w-12 text-center">{selectedPresenterSegment.startTime.toFixed(1)}s</span>
+              <button
+                onClick={() => {
+                  const newStart = Math.min(selectedPresenterSegment.endTime - 0.3, selectedPresenterSegment.startTime + 0.5);
+                  updateModeSegment(selectedPresenterSegment.id, { startTime: newStart });
+                }}
+                className="w-7 h-7 rounded-md bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center hover:bg-[var(--surface-hover)] text-xs"
+              >▶</button>
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-[var(--text-secondary)]">Fim</span>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => {
+                  const newEnd = Math.max(selectedPresenterSegment.startTime + 0.3, selectedPresenterSegment.endTime - 0.5);
+                  updateModeSegment(selectedPresenterSegment.id, { endTime: newEnd });
+                }}
+                className="w-7 h-7 rounded-md bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center hover:bg-[var(--surface-hover)] text-xs"
+              >◀</button>
+              <span className="text-xs font-mono w-12 text-center">{selectedPresenterSegment.endTime.toFixed(1)}s</span>
+              <button
+                onClick={() => {
+                  const newEnd = Math.min(videoDuration || 9999, selectedPresenterSegment.endTime + 0.5);
+                  if (newEnd - selectedPresenterSegment.startTime >= 0.3)
+                    updateModeSegment(selectedPresenterSegment.id, { endTime: newEnd });
+                }}
+                className="w-7 h-7 rounded-md bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center hover:bg-[var(--surface-hover)] text-xs"
+              >▶</button>
+            </div>
+          </div>
+        </div>
 
         <div className="space-y-2">
           <label className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
@@ -202,6 +257,44 @@ export default function BRollPanel() {
                 className="w-full"
               />
             </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
+                Zoom Início: {Math.round((selectedPresenterSegment.presenterZoomStart ?? 0) * 100)}%
+              </label>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={selectedPresenterSegment.presenterZoomStart ?? 0}
+                onChange={(e) =>
+                  updateModeSegment(selectedPresenterSegment.id, {
+                    presenterZoomStart: parseFloat(e.target.value),
+                  })
+                }
+                className="w-full"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
+                Zoom Fim: {Math.round((selectedPresenterSegment.presenterZoomEnd ?? 1) * 100)}%
+              </label>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={selectedPresenterSegment.presenterZoomEnd ?? 1}
+                onChange={(e) =>
+                  updateModeSegment(selectedPresenterSegment.id, {
+                    presenterZoomEnd: parseFloat(e.target.value),
+                  })
+                }
+                className="w-full"
+              />
+            </div>
           </>
         )}
 
@@ -215,6 +308,8 @@ export default function BRollPanel() {
                   presenterZoom: selectedPresenterSegment.presenterZoom,
                   presenterZoomIntensity: currentZoomIntensity,
                   presenterZoomEasing: selectedPresenterSegment.presenterZoomEasing,
+                  presenterZoomStart: selectedPresenterSegment.presenterZoomStart,
+                  presenterZoomEnd: selectedPresenterSegment.presenterZoomEnd,
                 });
               }
             }}
@@ -319,9 +414,51 @@ export default function BRollPanel() {
             </div>
           );
         })()}
-        <p className="text-xs text-[var(--text-secondary)]">
-          {selectedSegment.startTime.toFixed(1)}s – {selectedSegment.endTime.toFixed(1)}s
-        </p>
+        {/* Trim controls */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-[var(--text-secondary)]">Início</span>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => {
+                  const newStart = Math.max(0, selectedSegment.startTime - 0.5);
+                  if (selectedSegment.endTime - newStart >= 0.3)
+                    updateModeSegment(selectedSegment.id, { startTime: newStart });
+                }}
+                className="w-7 h-7 rounded-md bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center hover:bg-[var(--surface-hover)] text-xs"
+              >◀</button>
+              <span className="text-xs font-mono w-12 text-center">{selectedSegment.startTime.toFixed(1)}s</span>
+              <button
+                onClick={() => {
+                  const newStart = Math.min(selectedSegment.endTime - 0.3, selectedSegment.startTime + 0.5);
+                  updateModeSegment(selectedSegment.id, { startTime: newStart });
+                }}
+                className="w-7 h-7 rounded-md bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center hover:bg-[var(--surface-hover)] text-xs"
+              >▶</button>
+            </div>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-[var(--text-secondary)]">Fim</span>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => {
+                  const newEnd = Math.max(selectedSegment.startTime + 0.3, selectedSegment.endTime - 0.5);
+                  updateModeSegment(selectedSegment.id, { endTime: newEnd });
+                }}
+                className="w-7 h-7 rounded-md bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center hover:bg-[var(--surface-hover)] text-xs"
+              >◀</button>
+              <span className="text-xs font-mono w-12 text-center">{selectedSegment.endTime.toFixed(1)}s</span>
+              <button
+                onClick={() => {
+                  const newEnd = Math.min(videoDuration || 9999, selectedSegment.endTime + 0.5);
+                  if (newEnd - selectedSegment.startTime >= 0.3)
+                    updateModeSegment(selectedSegment.id, { endTime: newEnd });
+                }}
+                className="w-7 h-7 rounded-md bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center hover:bg-[var(--surface-hover)] text-xs"
+              >▶</button>
+            </div>
+          </div>
+        </div>
         {selectedSegment.brollQuery && (
           <p className="text-xs text-[var(--text-secondary)]">
             Query: <span className="text-[var(--foreground)]">{selectedSegment.brollQuery}</span>

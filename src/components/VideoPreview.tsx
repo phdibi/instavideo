@@ -3,6 +3,7 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from "react";
 import { Play, Pause, RotateCcw, Volume2, VolumeX } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
+import { useShallow } from "zustand/react/shallow";
 import { formatTime } from "@/lib/formatTime";
 import { getCurrentMode } from "@/lib/modes";
 import { computeBRollEffect, computePresenterEffect, effectToCSS } from "@/lib/brollEffects";
@@ -37,7 +38,18 @@ export default function VideoPreview() {
     setCurrentTime,
     setIsPlaying,
     setVideoDuration,
-  } = useProjectStore();
+  } = useProjectStore(useShallow((s) => ({
+    videoUrl: s.videoUrl,
+    videoDuration: s.videoDuration,
+    currentTime: s.currentTime,
+    isPlaying: s.isPlaying,
+    modeSegments: s.modeSegments,
+    sfxConfig: s.sfxConfig,
+    sfxMarkers: s.sfxMarkers,
+    setCurrentTime: s.setCurrentTime,
+    setIsPlaying: s.setIsPlaying,
+    setVideoDuration: s.setVideoDuration,
+  })));
 
   // ResizeObserver to compute scale for fixed-resolution preview
   useEffect(() => {
@@ -65,14 +77,30 @@ export default function VideoPreview() {
   // ── SFX Marker Playback ────────────────────────────────────────────
   const firedMarkersRef = useRef<Set<string>>(new Set());
 
+  // Clear fired markers when sfxMarkers array changes (segment deleted, markers regenerated)
+  const sfxMarkersLenRef = useRef(sfxMarkers.length);
+  useEffect(() => {
+    if (sfxMarkers.length !== sfxMarkersLenRef.current) {
+      firedMarkersRef.current.clear();
+      sfxMarkersLenRef.current = sfxMarkers.length;
+    }
+  }, [sfxMarkers]);
+
   useEffect(() => {
     if (!isPlayingRef.current || sfxConfig.profile === "none") return;
-    for (const marker of sfxMarkers) {
-      if (
-        marker.time >= currentTime - 0.05 &&
-        marker.time <= currentTime + 0.05 &&
-        !firedMarkersRef.current.has(marker.id)
-      ) {
+    // Binary search for first marker >= currentTime - 0.05
+    const lo = currentTime - 0.05;
+    const hi = currentTime + 0.05;
+    let left = 0, right = sfxMarkers.length - 1;
+    while (left <= right) {
+      const mid = (left + right) >>> 1;
+      if (sfxMarkers[mid].time < lo) left = mid + 1;
+      else right = mid - 1;
+    }
+    // Scan only markers in the time window
+    for (let i = left; i < sfxMarkers.length && sfxMarkers[i].time <= hi; i++) {
+      const marker = sfxMarkers[i];
+      if (!firedMarkersRef.current.has(marker.id)) {
         firedMarkersRef.current.add(marker.id);
         SFX_PLAY_MAP[marker.soundType](sfxConfig.masterVolume);
       }
@@ -263,10 +291,16 @@ export default function VideoPreview() {
     if (currentMode !== "presenter" || !currentSegment) return { scale: 1, translateX: 0, translateY: 0 };
     const segDuration = currentSegment.endTime - currentSegment.startTime;
     if (segDuration <= 0) return { scale: 1, translateX: 0, translateY: 0 };
-    const progress = Math.min(
+    const rawProgress = Math.min(
       (currentTime - currentSegment.startTime) / segDuration,
       1
     );
+    // Remap progress using zoomStart/zoomEnd window
+    const zoomStart = currentSegment.presenterZoomStart ?? 0;
+    const zoomEnd = currentSegment.presenterZoomEnd ?? 1;
+    const progress = zoomStart >= zoomEnd
+      ? 0
+      : Math.min(Math.max((rawProgress - zoomStart) / (zoomEnd - zoomStart), 0), 1);
     const zoomType = currentSegment.presenterZoom ?? "zoom-in";
     return computePresenterEffect(
       zoomType,

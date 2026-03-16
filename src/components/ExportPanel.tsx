@@ -607,20 +607,23 @@ export default function ExportPanel() {
         }
 
         // Captions on top (all modes) — using captionConfig
+        // Separate stanza from regular captions (must match CaptionOverlay logic)
         const activeCaptions = phraseCaptions.filter(
           (c) => time >= c.startTime && time < c.endTime
         );
-        const isStanza = activeCaptions.length > 1 && activeCaptions[0]?.stanzaId;
+        const stanzaActiveCaptions = activeCaptions.filter(c => c.stanzaId);
+        const regularActiveCaptions = activeCaptions.filter(c => !c.stanzaId);
+        const isStanza = stanzaActiveCaptions.length > 1;
 
         if (isStanza) {
           const normalSize = stanzaConfig.normalFontSize;
 
-          const getStanzaUppercase = (cap: typeof activeCaptions[0]) => {
+          const getStanzaUppercase = (cap: typeof stanzaActiveCaptions[0]) => {
             if (cap.styleOverride?.uppercase !== undefined) return cap.styleOverride.uppercase;
             return captionConfig.uppercase;
           };
 
-          const drawStanzaWord = (cap: typeof activeCaptions[0], x: number, y: number, alpha: number) => {
+          const drawStanzaWord = (cap: typeof stanzaActiveCaptions[0], x: number, y: number, alpha: number) => {
             const fSize = cap.isEmphasis ? stanzaEmphSize : normalSize;
             const fontName = cap.isEmphasis ? stanzaEmphFont : stanzaNormFont;
             const weight = cap.isEmphasis ? "italic 700" : "400";
@@ -645,7 +648,7 @@ export default function ExportPanel() {
             const lineY = stanzaBaseY;
             let totalWidth = 0;
             const wordWidths: number[] = [];
-            for (const cap of activeCaptions) {
+            for (const cap of stanzaActiveCaptions) {
               const fSize = cap.isEmphasis ? stanzaEmphSize : normalSize;
               const fontName = cap.isEmphasis ? stanzaEmphFont : stanzaNormFont;
               const weight = cap.isEmphasis ? "italic 700" : "400";
@@ -656,10 +659,10 @@ export default function ExportPanel() {
               totalWidth += w;
             }
             const gap = 16;
-            totalWidth += gap * (activeCaptions.length - 1);
+            totalWidth += gap * (stanzaActiveCaptions.length - 1);
             let curX = (WIDTH - totalWidth) / 2;
-            for (let i = 0; i < activeCaptions.length; i++) {
-              const cap = activeCaptions[i];
+            for (let i = 0; i < stanzaActiveCaptions.length; i++) {
+              const cap = stanzaActiveCaptions[i];
               const alpha = cap.isEmphasis ? 1 : 0.7;
               ctx.textAlign = "left";
               drawStanzaWord(cap, curX, lineY, alpha);
@@ -673,8 +676,8 @@ export default function ExportPanel() {
             const baseBottomY = HEIGHT * 0.85;
             const stepX = WIDTH * 0.14;
             const stepY = HEIGHT * 0.08;
-            for (let i = 0; i < activeCaptions.length; i++) {
-              const cap = activeCaptions[i];
+            for (let i = 0; i < stanzaActiveCaptions.length; i++) {
+              const cap = stanzaActiveCaptions[i];
               const x = baseX + i * stepX;
               const y = baseBottomY - i * stepY;
               drawStanzaWord(cap, x, y, cap.isEmphasis ? 1 : 0.6);
@@ -683,8 +686,8 @@ export default function ExportPanel() {
             // Scattered: pseudo-random positions
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            for (let i = 0; i < activeCaptions.length; i++) {
-              const cap = activeCaptions[i];
+            for (let i = 0; i < stanzaActiveCaptions.length; i++) {
+              const cap = stanzaActiveCaptions[i];
               const seed = i * 7 + (cap.text.charCodeAt(0) || 0);
               const x = scatteredRand(seed) * WIDTH * 0.7 + WIDTH * 0.15;
               const y = HEIGHT * 0.55 + scatteredRand(seed + 1) * HEIGHT * 0.3;
@@ -698,7 +701,7 @@ export default function ExportPanel() {
             const cascadeIndentStep = WIDTH * 0.055;
             const cascadeEmphNudge = -WIDTH * 0.02;
             const cascadeMaxIndent = WIDTH * 0.4;
-            const lines = activeCaptions.map((cap, index) => {
+            const lines = stanzaActiveCaptions.map((cap, index) => {
               const size = cap.isEmphasis ? stanzaEmphSize : normalSize;
               const emphPad = cap.isEmphasis && isCascading ? size * 0.15 : 0;
               const indent = isCascading
@@ -723,8 +726,8 @@ export default function ExportPanel() {
               currentY += line.lineHeight;
             }
           }
-        } else if (activeCaptions.length > 0) {
-          const activeCaption = activeCaptions[0];
+        } else if (regularActiveCaptions.length > 0) {
+          const activeCaption = regularActiveCaptions[0];
           // Merge styleOverride for per-caption styling
           const eff = activeCaption.styleOverride ? { ...captionConfig, ...activeCaption.styleOverride } : captionConfig;
           const cFont = getCanvasFontName(eff.fontFamily);

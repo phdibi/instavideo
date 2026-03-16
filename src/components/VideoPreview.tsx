@@ -201,6 +201,25 @@ export default function VideoPreview() {
     ) || null;
   }, [modeSegments, currentTime, currentMode, currentSegment]);
 
+  // Eagerly preload the b-roll AFTER next (2 segments ahead) using browser cache
+  const secondNextBroll = useMemo(() => {
+    if (!nextBrollSegment) return null;
+    return modeSegments.find(
+      (s) => s.mode === "broll" && s.startTime >= nextBrollSegment.endTime && s.id !== nextBrollSegment.id && (s.brollVideoUrl || s.brollImageUrl)
+    ) || null;
+  }, [modeSegments, nextBrollSegment]);
+
+  useEffect(() => {
+    if (!secondNextBroll?.brollVideoUrl) return;
+    // Warm browser cache via hidden preload element link
+    const link = document.createElement("link");
+    link.rel = "prefetch";
+    link.href = secondNextBroll.brollVideoUrl;
+    link.as = "video";
+    document.head.appendChild(link);
+    return () => { document.head.removeChild(link); };
+  }, [secondNextBroll?.brollVideoUrl]);
+
   // Preload upcoming b-roll media (set src before segment becomes active)
   // During b-roll mode: uses hidden preload element to warm cache without interrupting playback
   useEffect(() => {
@@ -237,9 +256,13 @@ export default function VideoPreview() {
 
     if (currentMode === "broll" && currentSegment?.brollVideoUrl && !brollIsPhoto) {
       if (prevBrollUrlRef.current !== currentSegment.brollVideoUrl) {
+        // Check if this URL was preloaded in the hidden preload element
+        const wasPreloaded = preloadedUrlRef.current === currentSegment.brollVideoUrl;
         brollVid.src = currentSegment.brollVideoUrl;
-        brollVid.load();
+        // Only force load() if NOT preloaded — browser cache handles preloaded URLs
+        if (!wasPreloaded) brollVid.load();
         prevBrollUrlRef.current = currentSegment.brollVideoUrl;
+        preloadedUrlRef.current = null;
       }
       // Reset to start of b-roll clip only when entering a new segment
       if (prevBrollSegmentIdRef.current !== currentSegment.id) {
@@ -254,7 +277,8 @@ export default function VideoPreview() {
       };
 
       if (isPlaying && brollVid.paused) {
-        if (brollVid.readyState >= 3) {
+        // readyState >= 2 is enough to start (HAVE_CURRENT_DATA), no need to wait for >= 3
+        if (brollVid.readyState >= 2) {
           tryPlay();
         } else {
           brollVid.addEventListener("canplay", tryPlay, { once: true });

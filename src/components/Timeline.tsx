@@ -7,7 +7,7 @@ import { useShallow } from "zustand/react/shallow";
 import { getModeColor, getModeLabel } from "@/lib/modes";
 import { SFX_LABELS } from "@/lib/sfx";
 import { formatTime } from "@/lib/formatTime";
-import { ZoomIn, ZoomOut } from "lucide-react";
+import { ZoomIn, ZoomOut, ChevronLeft, ChevronRight } from "lucide-react";
 import type { ModeSegment, PhraseCaption, SFXMarker } from "@/types";
 
 const DEFAULT_PPS = 60;
@@ -17,17 +17,6 @@ const RULER_HEIGHT = 24;
 const TRACK_HEIGHT = 40;
 const TRACK_GAP = 2;
 const LABEL_WIDTH = 72;
-const DRAG_HANDLE_WIDTH = 14;
-const EDGE_ZONE_MIN_PX = 16;
-
-/** Detect if a click is near the left/right edge of an element */
-function detectEdge(clientX: number, rect: DOMRect): "start" | "end" | null {
-  const relX = clientX - rect.left;
-  const zone = Math.min(Math.max(EDGE_ZONE_MIN_PX, rect.width * 0.22), rect.width / 2 - 2);
-  if (relX <= zone) return "start";
-  if (relX >= rect.width - zone) return "end";
-  return null;
-}
 
 /** Convert a touch event to look like a mouse event for our drag handlers */
 function touchToMouse(e: React.TouchEvent): React.MouseEvent | null {
@@ -51,6 +40,7 @@ export default function Timeline() {
     modeSegments,
     phraseCaptions,
     sfxMarkers,
+    selectedItem,
     selectedItems,
     setCurrentTime,
     setIsPlaying,
@@ -68,6 +58,7 @@ export default function Timeline() {
     modeSegments: s.modeSegments,
     phraseCaptions: s.phraseCaptions,
     sfxMarkers: s.sfxMarkers,
+    selectedItem: s.selectedItem,
     selectedItems: s.selectedItems,
     setCurrentTime: s.setCurrentTime,
     setIsPlaying: s.setIsPlaying,
@@ -86,11 +77,6 @@ export default function Timeline() {
   const ppsRef = useRef(DEFAULT_PPS);
 
   const [isDraggingPlayhead, setIsDraggingPlayhead] = useState(false);
-  const [dragEdge, setDragEdge] = useState<{
-    id: string;
-    track: "mode" | "caption";
-    edge: "start" | "end";
-  } | null>(null);
   const [isDraggingSFX, setIsDraggingSFX] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -279,193 +265,6 @@ export default function Timeline() {
     [pixelToTime, setCurrentTime]
   );
 
-  // Generic edge drag for mode segments — MOUSE ONLY
-  const handleModeEdgeDrag = useCallback(
-    (e: React.MouseEvent, seg: ModeSegment, edge: "start" | "end") => {
-      e.stopPropagation();
-      setDragEdge({ id: seg.id, track: "mode", edge });
-
-      const handleMove = (ev: MouseEvent) => {
-        const scroll = scrollRef.current;
-        if (!scroll) return;
-        const rect = scroll.getBoundingClientRect();
-        const x = ev.clientX - rect.left + scroll.scrollLeft;
-        const time = pixelToTime(x);
-
-        if (edge === "start") {
-          updateModeSegment(seg.id, { startTime: Math.min(time, seg.endTime - 0.3) });
-        } else {
-          updateModeSegment(seg.id, { endTime: Math.max(time, seg.startTime + 0.3) });
-        }
-      };
-
-      const handleUp = () => {
-        setDragEdge(null);
-        document.removeEventListener("mousemove", handleMove);
-        document.removeEventListener("mouseup", handleUp);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
-      };
-
-      document.addEventListener("mousemove", handleMove);
-      document.addEventListener("mouseup", handleUp);
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-    },
-    [pixelToTime, updateModeSegment]
-  );
-
-  // Edge touch for mode segments — long-press (300ms) to resize
-  const handleModeEdgeTouch = useCallback(
-    (e: React.TouchEvent, seg: ModeSegment, edge: "start" | "end") => {
-      const touch = e.touches[0];
-      if (!touch) return;
-
-      const startX = touch.clientX;
-      const startY = touch.clientY;
-      let dragActivated = false;
-      let cancelled = false;
-
-      const longPressTimer = setTimeout(() => {
-        if (cancelled) return;
-        dragActivated = true;
-        setDragEdge({ id: seg.id, track: "mode", edge });
-        try { navigator.vibrate?.(50); } catch {}
-      }, 300);
-
-      const handleMove = (ev: TouchEvent) => {
-        const t = ev.touches[0];
-        if (!t) return;
-
-        if (!dragActivated) {
-          if (Math.abs(t.clientX - startX) > 5 || Math.abs(t.clientY - startY) > 5) {
-            cancelled = true;
-            clearTimeout(longPressTimer);
-            document.removeEventListener("touchmove", handleMove);
-          }
-          return;
-        }
-
-        ev.preventDefault();
-        const scroll = scrollRef.current;
-        if (!scroll) return;
-        const rect = scroll.getBoundingClientRect();
-        const x = t.clientX - rect.left + scroll.scrollLeft;
-        const time = pixelToTime(x);
-
-        if (edge === "start") {
-          updateModeSegment(seg.id, { startTime: Math.min(time, seg.endTime - 0.3) });
-        } else {
-          updateModeSegment(seg.id, { endTime: Math.max(time, seg.startTime + 0.3) });
-        }
-      };
-
-      const handleEnd = () => {
-        clearTimeout(longPressTimer);
-        if (dragActivated) setDragEdge(null);
-        document.removeEventListener("touchmove", handleMove);
-        document.removeEventListener("touchend", handleEnd);
-      };
-
-      document.addEventListener("touchmove", handleMove, { passive: false });
-      document.addEventListener("touchend", handleEnd);
-    },
-    [pixelToTime, updateModeSegment]
-  );
-
-  // Edge drag for phrase captions — MOUSE ONLY
-  const handleCaptionEdgeDrag = useCallback(
-    (e: React.MouseEvent, cap: PhraseCaption, edge: "start" | "end") => {
-      e.stopPropagation();
-      setDragEdge({ id: cap.id, track: "caption", edge });
-
-      const handleMove = (ev: MouseEvent) => {
-        const scroll = scrollRef.current;
-        if (!scroll) return;
-        const rect = scroll.getBoundingClientRect();
-        const x = ev.clientX - rect.left + scroll.scrollLeft;
-        const time = pixelToTime(x);
-
-        if (edge === "start") {
-          updatePhraseCaption(cap.id, { startTime: Math.min(time, cap.endTime - 0.1) });
-        } else {
-          updatePhraseCaption(cap.id, { endTime: Math.max(time, cap.startTime + 0.1) });
-        }
-      };
-
-      const handleUp = () => {
-        setDragEdge(null);
-        document.removeEventListener("mousemove", handleMove);
-        document.removeEventListener("mouseup", handleUp);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
-      };
-
-      document.addEventListener("mousemove", handleMove);
-      document.addEventListener("mouseup", handleUp);
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-    },
-    [pixelToTime, updatePhraseCaption]
-  );
-
-  // Edge touch for phrase captions — long-press (300ms) to resize
-  const handleCaptionEdgeTouch = useCallback(
-    (e: React.TouchEvent, cap: PhraseCaption, edge: "start" | "end") => {
-      const touch = e.touches[0];
-      if (!touch) return;
-
-      const startX = touch.clientX;
-      const startY = touch.clientY;
-      let dragActivated = false;
-      let cancelled = false;
-
-      const longPressTimer = setTimeout(() => {
-        if (cancelled) return;
-        dragActivated = true;
-        setDragEdge({ id: cap.id, track: "caption", edge });
-        try { navigator.vibrate?.(50); } catch {}
-      }, 300);
-
-      const handleMove = (ev: TouchEvent) => {
-        const t = ev.touches[0];
-        if (!t) return;
-
-        if (!dragActivated) {
-          if (Math.abs(t.clientX - startX) > 5 || Math.abs(t.clientY - startY) > 5) {
-            cancelled = true;
-            clearTimeout(longPressTimer);
-            document.removeEventListener("touchmove", handleMove);
-          }
-          return;
-        }
-
-        ev.preventDefault();
-        const scroll = scrollRef.current;
-        if (!scroll) return;
-        const rect = scroll.getBoundingClientRect();
-        const x = t.clientX - rect.left + scroll.scrollLeft;
-        const time = pixelToTime(x);
-
-        if (edge === "start") {
-          updatePhraseCaption(cap.id, { startTime: Math.min(time, cap.endTime - 0.1) });
-        } else {
-          updatePhraseCaption(cap.id, { endTime: Math.max(time, cap.startTime + 0.1) });
-        }
-      };
-
-      const handleEnd = () => {
-        clearTimeout(longPressTimer);
-        if (dragActivated) setDragEdge(null);
-        document.removeEventListener("touchmove", handleMove);
-        document.removeEventListener("touchend", handleEnd);
-      };
-
-      document.addEventListener("touchmove", handleMove, { passive: false });
-      document.addEventListener("touchend", handleEnd);
-    },
-    [pixelToTime, updatePhraseCaption]
-  );
 
   // Helper: check if item is in multi-selection
   const isItemSelected = useCallback(
@@ -836,6 +635,57 @@ export default function Timeline() {
     [pixelToTime, addSFXMarker]
   );
 
+  // Resolve selected item for trim controls
+  const trimTarget = useMemo(() => {
+    if (!selectedItem) return null;
+    if (selectedItem.type === "segment") {
+      const seg = modeSegments.find((s) => s.id === selectedItem.id);
+      if (!seg) return null;
+      return { type: "segment" as const, id: seg.id, startTime: seg.startTime, endTime: seg.endTime };
+    }
+    if (selectedItem.type === "phrase") {
+      const cap = phraseCaptions.find((c) => c.id === selectedItem.id);
+      if (!cap) return null;
+      return { type: "phrase" as const, id: cap.id, startTime: cap.startTime, endTime: cap.endTime };
+    }
+    if (selectedItem.type === "sfx") {
+      const marker = sfxMarkers.find((m) => m.id === selectedItem.id);
+      if (!marker) return null;
+      return { type: "sfx" as const, id: marker.id, time: marker.time };
+    }
+    return null;
+  }, [selectedItem, modeSegments, phraseCaptions, sfxMarkers]);
+
+  const TRIM_STEP = 0.5;
+  const MIN_DURATION = 0.3;
+
+  const handleTrimStart = useCallback(
+    (delta: number) => {
+      if (!trimTarget) return;
+      if (trimTarget.type === "sfx") {
+        const newTime = Math.max(0, Math.min(trimTarget.time! + delta, videoDuration));
+        updateSFXMarker(trimTarget.id, { time: newTime });
+        return;
+      }
+      const newStart = Math.max(0, trimTarget.startTime! + delta);
+      if (trimTarget.endTime! - newStart < MIN_DURATION) return;
+      if (trimTarget.type === "segment") updateModeSegment(trimTarget.id, { startTime: newStart });
+      else updatePhraseCaption(trimTarget.id, { startTime: newStart });
+    },
+    [trimTarget, videoDuration, updateModeSegment, updatePhraseCaption, updateSFXMarker]
+  );
+
+  const handleTrimEnd = useCallback(
+    (delta: number) => {
+      if (!trimTarget || trimTarget.type === "sfx") return;
+      const newEnd = Math.min(videoDuration, trimTarget.endTime! + delta);
+      if (newEnd - trimTarget.startTime! < MIN_DURATION) return;
+      if (trimTarget.type === "segment") updateModeSegment(trimTarget.id, { endTime: newEnd });
+      else updatePhraseCaption(trimTarget.id, { endTime: newEnd });
+    },
+    [trimTarget, videoDuration, updateModeSegment, updatePhraseCaption]
+  );
+
   const playheadX = timeToX(currentTime);
   const totalContentHeight = RULER_HEIGHT + (TRACK_HEIGHT + TRACK_GAP) * 5 + 8;
 
@@ -849,8 +699,77 @@ export default function Timeline() {
 
   return (
     <div className="h-full flex flex-col bg-[var(--background)]">
-      {/* Zoom controls */}
-      <div className="flex items-center justify-end gap-1 px-2 py-1 border-b border-[var(--border)] bg-[var(--surface)]">
+      {/* Toolbar: trim controls (left) + zoom controls (right) */}
+      <div className="flex items-center justify-between gap-1 px-2 py-1 border-b border-[var(--border)] bg-[var(--surface)]">
+        {/* Trim controls — visible when a segment/caption/sfx is selected */}
+        <div className="flex items-center gap-2">
+          {trimTarget && trimTarget.type !== "sfx" && (
+            <>
+              <div className="flex items-center gap-0.5">
+                <button
+                  onClick={() => handleTrimStart(-TRIM_STEP)}
+                  className="p-0.5 rounded hover:bg-[var(--surface-hover)] transition-colors"
+                  title="Início −0.5s"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+                </button>
+                <span className="text-[9px] text-[var(--text-secondary)] min-w-[36px] text-center font-mono">
+                  {formatTime(trimTarget.startTime!)}
+                </span>
+                <button
+                  onClick={() => handleTrimStart(TRIM_STEP)}
+                  className="p-0.5 rounded hover:bg-[var(--surface-hover)] transition-colors"
+                  title="Início +0.5s"
+                >
+                  <ChevronRight className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+                </button>
+              </div>
+              <div className="w-px h-4 bg-[var(--border)]" />
+              <div className="flex items-center gap-0.5">
+                <button
+                  onClick={() => handleTrimEnd(-TRIM_STEP)}
+                  className="p-0.5 rounded hover:bg-[var(--surface-hover)] transition-colors"
+                  title="Fim −0.5s"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+                </button>
+                <span className="text-[9px] text-[var(--text-secondary)] min-w-[36px] text-center font-mono">
+                  {formatTime(trimTarget.endTime!)}
+                </span>
+                <button
+                  onClick={() => handleTrimEnd(TRIM_STEP)}
+                  className="p-0.5 rounded hover:bg-[var(--surface-hover)] transition-colors"
+                  title="Fim +0.5s"
+                >
+                  <ChevronRight className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+                </button>
+              </div>
+            </>
+          )}
+          {trimTarget && trimTarget.type === "sfx" && (
+            <div className="flex items-center gap-0.5">
+              <button
+                onClick={() => handleTrimStart(-TRIM_STEP)}
+                className="p-0.5 rounded hover:bg-[var(--surface-hover)] transition-colors"
+                title="Tempo −0.5s"
+              >
+                <ChevronLeft className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+              </button>
+              <span className="text-[9px] text-[var(--text-secondary)] min-w-[36px] text-center font-mono">
+                {formatTime((trimTarget as any).time)}
+              </span>
+              <button
+                onClick={() => handleTrimStart(TRIM_STEP)}
+                className="p-0.5 rounded hover:bg-[var(--surface-hover)] transition-colors"
+                title="Tempo +0.5s"
+              >
+                <ChevronRight className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
+              </button>
+            </div>
+          )}
+        </div>
+        {/* Zoom controls */}
+        <div className="flex items-center gap-1">
         <button
           onClick={zoomOut}
           className="p-1 rounded hover:bg-[var(--surface-hover)] transition-colors"
@@ -868,6 +787,7 @@ export default function Timeline() {
         >
           <ZoomIn className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
         </button>
+        </div>
       </div>
       <div
         ref={scrollRef}
@@ -918,32 +838,8 @@ export default function Timeline() {
                     borderLeft: `3px solid ${color}`,
                     cursor: "grab",
                   }}
-                  onMouseMove={(e) => {
-                    if (document.body.style.cursor) return; // skip during active drag
-                    const edge = detectEdge(e.clientX, e.currentTarget.getBoundingClientRect());
-                    e.currentTarget.style.cursor = edge ? "col-resize" : "grab";
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!document.body.style.cursor) e.currentTarget.style.cursor = "grab";
-                  }}
-                  onMouseDown={(e) => {
-                    const edge = detectEdge(e.clientX, e.currentTarget.getBoundingClientRect());
-                    if (edge) {
-                      handleModeEdgeDrag(e, seg, edge);
-                    } else {
-                      handleSegmentBodyDrag(e, seg);
-                    }
-                  }}
-                  onTouchStart={(e) => {
-                    const touch = e.touches[0];
-                    if (!touch) return;
-                    const edge = detectEdge(touch.clientX, e.currentTarget.getBoundingClientRect());
-                    if (edge) {
-                      handleModeEdgeTouch(e, seg, edge);
-                    } else {
-                      handleSegmentBodyTouch(e, seg);
-                    }
-                  }}
+                  onMouseDown={(e) => handleSegmentBodyDrag(e, seg)}
+                  onTouchStart={(e) => handleSegmentBodyTouch(e, seg)}
                   onContextMenu={(e) => {
                     if (seg.mode === "typography") return;
                     e.preventDefault();
@@ -967,13 +863,6 @@ export default function Timeline() {
                       {seg.mode === "broll" && seg.brollQuery ? `: ${seg.brollQuery}` : ""}
                       {seg.mode === "typography" && seg.typographyText ? `: ${seg.typographyText}` : ""}
                     </span>
-                  </div>
-                  {/* Visual edge indicators (no event handlers) */}
-                  <div className="absolute left-0 top-0 bottom-0 flex items-center pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity" style={{ width: DRAG_HANDLE_WIDTH }}>
-                    <div className="ml-0.5 w-1 h-5 rounded-full bg-white/70" />
-                  </div>
-                  <div className="absolute right-0 top-0 bottom-0 flex items-center justify-end pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity" style={{ width: DRAG_HANDLE_WIDTH }}>
-                    <div className="mr-0.5 w-1 h-5 rounded-full bg-white/70" />
                   </div>
                 </div>
               );
@@ -1008,8 +897,6 @@ export default function Timeline() {
                       {cap.text}
                     </span>
                   </div>
-                  <EdgeHandle side="left" onMouseDown={(e) => handleCaptionEdgeDrag(e, cap, "start")} onTouchStart={(e) => handleCaptionEdgeTouch(e, cap, "start")} />
-                  <EdgeHandle side="right" onMouseDown={(e) => handleCaptionEdgeDrag(e, cap, "end")} onTouchStart={(e) => handleCaptionEdgeTouch(e, cap, "end")} />
                 </div>
               );
             })}
@@ -1074,8 +961,6 @@ export default function Timeline() {
                       {isEmphasis ? "✦ " : ""}{cap.text}
                     </span>
                   </div>
-                  <EdgeHandle side="left" onMouseDown={(e) => handleCaptionEdgeDrag(e, cap, "start")} onTouchStart={(e) => handleCaptionEdgeTouch(e, cap, "start")} />
-                  <EdgeHandle side="right" onMouseDown={(e) => handleCaptionEdgeDrag(e, cap, "end")} onTouchStart={(e) => handleCaptionEdgeTouch(e, cap, "end")} />
                 </div>
               );
             })}
@@ -1227,24 +1112,3 @@ const TrackLabel = memo(function TrackLabel({ label }: { label: string }) {
   );
 });
 
-/** Edge drag handle for resizing segments/captions */
-const EdgeHandle = memo(function EdgeHandle({
-  side,
-  onMouseDown,
-  onTouchStart,
-}: {
-  side: "left" | "right";
-  onMouseDown: (e: React.MouseEvent) => void;
-  onTouchStart?: (e: React.TouchEvent) => void;
-}) {
-  return (
-    <div
-      className={`absolute ${side === "left" ? "left-0" : "right-0"} top-0 bottom-0 cursor-col-resize opacity-100 md:opacity-40 md:hover:opacity-100 md:group-hover:opacity-100 transition-opacity`}
-      style={{ width: DRAG_HANDLE_WIDTH }}
-      onMouseDown={onMouseDown}
-      onTouchStart={onTouchStart}
-    >
-      <div className={`absolute ${side === "left" ? "left-0" : "right-0"} top-1/2 -translate-y-1/2 w-1.5 h-6 rounded-full bg-white/80`} />
-    </div>
-  );
-});

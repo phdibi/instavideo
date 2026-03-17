@@ -79,17 +79,18 @@ function CaptionOverlay({ currentTime }: Props) {
     }))
   );
 
-  // Find ALL active captions at current time
-  const activeCaptions = useMemo(() => {
-    return phraseCaptions.filter(
-      (c) => currentTime >= c.startTime && currentTime < c.endTime
-    );
+  // Single-pass: find active captions and partition into stanza vs regular
+  const { stanzaCaptions, regularCaptions, isStanza } = useMemo(() => {
+    const stanza: PhraseCaption[] = [];
+    const regular: PhraseCaption[] = [];
+    for (const c of phraseCaptions) {
+      if (currentTime >= c.startTime && currentTime < c.endTime) {
+        if (c.stanzaId) stanza.push(c);
+        else regular.push(c);
+      }
+    }
+    return { stanzaCaptions: stanza, regularCaptions: regular, isStanza: stanza.length > 1 };
   }, [phraseCaptions, currentTime]);
-
-  // Separate stanza captions from regular captions to avoid duplication
-  const stanzaCaptions = useMemo(() => activeCaptions.filter(c => c.stanzaId), [activeCaptions]);
-  const regularCaptions = useMemo(() => activeCaptions.filter(c => !c.stanzaId), [activeCaptions]);
-  const isStanza = stanzaCaptions.length > 1;
 
   return (
     <div className="absolute inset-0 pointer-events-none">

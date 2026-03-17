@@ -1,8 +1,10 @@
 "use client";
 
+import { useMemo, useCallback } from "react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { useShallow } from "zustand/react/shallow";
-import { Trash2, Copy, ChevronLeft, ChevronRight } from "lucide-react";
+import { Trash2, Copy } from "lucide-react";
+import SegmentNavigator from "../SegmentNavigator";
 
 const ANIMATIONS = [
   { key: "pop-in" as const, label: "Pop In", desc: "Escala 0→1" },
@@ -113,34 +115,13 @@ export default function TypographyPanel() {
       </h3>
 
       {/* Typography navigation */}
-      {(() => {
-        const typoSegments = modeSegments.filter((s) => s.mode === "typography").sort((a, b) => a.startTime - b.startTime);
-        const idx = typoSegments.findIndex((s) => s.id === selected.id);
-        const prev = idx > 0 ? typoSegments[idx - 1] : null;
-        const next = idx < typoSegments.length - 1 ? typoSegments[idx + 1] : null;
-        if (typoSegments.length <= 1) return null;
-        return (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => { if (prev) { setCurrentTime(prev.startTime); setSelectedItem({ type: "segment", id: prev.id }); } }}
-              disabled={!prev}
-              className="p-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)] disabled:opacity-30 disabled:pointer-events-none transition-all"
-            >
-              <ChevronLeft className="w-3.5 h-3.5" />
-            </button>
-            <span className="flex-1 text-xs text-center text-purple-300 font-medium">
-              Tipografia {idx + 1} / {typoSegments.length}
-            </span>
-            <button
-              onClick={() => { if (next) { setCurrentTime(next.startTime); setSelectedItem({ type: "segment", id: next.id }); } }}
-              disabled={!next}
-              className="p-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)] disabled:opacity-30 disabled:pointer-events-none transition-all"
-            >
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        );
-      })()}
+      <SegmentNavigator
+        items={modeSegments.filter((s) => s.mode === "typography").sort((a, b) => a.startTime - b.startTime).map((s) => ({ id: s.id, time: s.startTime }))}
+        currentId={selected.id}
+        label="Tipografia"
+        colorClass="text-purple-300"
+        onSelect={(id, time) => { setCurrentTime(time); setSelectedItem({ type: "segment", id }); }}
+      />
 
       <p className="text-xs text-zinc-500">
         {selected.startTime.toFixed(1)}s – {selected.endTime.toFixed(1)}s

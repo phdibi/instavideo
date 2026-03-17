@@ -3,7 +3,8 @@
 import { useProjectStore } from "@/store/useProjectStore";
 import { useShallow } from "zustand/react/shallow";
 import { SFX_PLAY_MAP, SFX_LABELS, generateSFXMarkers } from "@/lib/sfx";
-import { Volume2, Play, Trash2, Plus, RefreshCw, Copy, ChevronLeft, ChevronRight } from "lucide-react";
+import { Volume2, Play, Trash2, Plus, RefreshCw, Copy } from "lucide-react";
+import SegmentNavigator from "../SegmentNavigator";
 import { v4 as uuidv4 } from "uuid";
 import type { SFXProfile, SFXSoundType } from "@/types";
 
@@ -103,34 +104,13 @@ export default function SFXPanel() {
           </div>
 
           {/* SFX navigation */}
-          {(() => {
-            const sorted = [...sfxMarkers].sort((a, b) => a.time - b.time);
-            const idx = sorted.findIndex((m) => m.id === selectedMarker.id);
-            const prev = idx > 0 ? sorted[idx - 1] : null;
-            const next = idx < sorted.length - 1 ? sorted[idx + 1] : null;
-            if (sorted.length <= 1) return null;
-            return (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => { if (prev) { setCurrentTime(prev.time); setSelectedItem({ type: "sfx", id: prev.id }); } }}
-                  disabled={!prev}
-                  className="p-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)] disabled:opacity-30 disabled:pointer-events-none transition-all"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" />
-                </button>
-                <span className="flex-1 text-xs text-center text-yellow-300 font-medium">
-                  Marcador {idx + 1} / {sorted.length}
-                </span>
-                <button
-                  onClick={() => { if (next) { setCurrentTime(next.time); setSelectedItem({ type: "sfx", id: next.id }); } }}
-                  disabled={!next}
-                  className="p-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)] disabled:opacity-30 disabled:pointer-events-none transition-all"
-                >
-                  <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            );
-          })()}
+          <SegmentNavigator
+            items={[...sfxMarkers].sort((a, b) => a.time - b.time).map((m) => ({ id: m.id, time: m.time }))}
+            currentId={selectedMarker.id}
+            label="Marcador"
+            colorClass="text-yellow-300"
+            onSelect={(id, time) => { setCurrentTime(time); setSelectedItem({ type: "sfx", id }); }}
+          />
 
           <p className="text-[10px] text-[var(--text-secondary)]">
             Tempo: {selectedMarker.time.toFixed(2)}s — Som: {SFX_LABELS[selectedMarker.soundType]}

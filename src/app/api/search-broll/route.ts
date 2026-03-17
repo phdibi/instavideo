@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkRateLimit } from "@/lib/rateLimit";
 import type { PexelsVideoResult, PexelsPhotoResult } from "@/types";
 
 interface PexelsFile {
@@ -40,8 +41,13 @@ interface PexelsPhoto {
 
 export async function GET(request: NextRequest) {
   try {
+    const rl = checkRateLimit("search-broll", { limit: 30, windowSeconds: 60 });
+    if (!rl.allowed) {
+      return NextResponse.json({ error: "Muitas buscas. Aguarde um momento." }, { status: 429 });
+    }
+
     const { searchParams } = new URL(request.url);
-    const query = searchParams.get("query");
+    const query = searchParams.get("query")?.slice(0, 200);
 
     if (!query) {
       return NextResponse.json({ error: "Missing query" }, { status: 400 });
@@ -99,6 +105,8 @@ export async function GET(request: NextRequest) {
         width: photo.width,
         height: photo.height,
       }));
+    } else {
+      console.warn(`Pexels Photos API error: ${photosResponse.status} (videos still returned)`);
     }
 
     return NextResponse.json({ videos, photos });

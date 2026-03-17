@@ -24,6 +24,7 @@ export class FFmpegService {
                 return ffmpeg;
             } catch (error) {
                 this.loadingPromise = null;
+                this.instance = null;
                 throw error;
             }
         })();
@@ -73,7 +74,7 @@ export class FFmpegService {
             ]);
 
             const data = await ffmpeg.readFile(outputName);
-            const wavBlob = new Blob([data as any], { type: "audio/wav" });
+            const wavBlob = new Blob([data as BlobPart], { type: "audio/wav" });
 
             // Calculate and log the WAV duration from the PCM header for debugging.
             // WAV PCM: duration = (fileSize - 44) / (sampleRate * channels * bytesPerSample)

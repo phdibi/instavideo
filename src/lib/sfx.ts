@@ -527,7 +527,7 @@ export function generateSFXMarkers(
       else if (layout === "diagonal") soundType = "swoosh";
       else if (layout === "cinematic") soundType = "reverse-hit";
       else if (layout === "pip") soundType = "pop";
-      else soundType = "reverse-hit";
+      else soundType = "whoosh";
     }
     // Entering typography
     else if (curr.mode === "typography") {
@@ -656,6 +656,81 @@ function scheduleTone(
   osc.stop(time + duration + 0.01);
 }
 
+/** Schedule all audio nodes for a given sound type at a specific time */
+function scheduleSoundAtTime(
+  ctx: OfflineAudioContext,
+  t: number,
+  vol: number,
+  soundType: SFXSoundType
+) {
+  switch (soundType) {
+    case "whoosh":
+      scheduleNoise(ctx, t, 0.3, 0.6, vol, 5000, 150, 1.5);
+      scheduleTone(ctx, t, 0.2, vol * 0.3, 400, 80);
+      break;
+    case "whoosh-out":
+      scheduleNoise(ctx, t, 0.22, 0.5, vol * 0.7, 200, 4000, 1.8);
+      scheduleTone(ctx, t, 0.18, vol * 0.15, 100, 600);
+      break;
+    case "impact":
+      scheduleTone(ctx, t, 0.3, vol * 1.2, 90, 35);
+      scheduleTone(ctx, t, 0.08, vol * 0.8, 200, 60, "triangle");
+      scheduleNoise(ctx, t, 0.015, 1, vol * 0.5, 2000, 1000, 1);
+      break;
+    case "rise":
+      scheduleTone(ctx, t, 0.35, vol * 0.4, 180, 900);
+      break;
+    case "slide":
+      scheduleNoise(ctx, t, 0.12, 0.7, vol, 3000, 800, 3);
+      break;
+    case "pop":
+      scheduleTone(ctx, t, 0.06, vol * 0.5, 800, 200);
+      break;
+    case "swoosh":
+      scheduleNoise(ctx, t, 0.18, 0.5, vol, 4000, 300, 4);
+      scheduleTone(ctx, t, 0.18, vol * 0.25, 600, 100);
+      break;
+    case "ding":
+      scheduleTone(ctx, t, 0.3, vol * 0.6, 1200, 1200);
+      scheduleTone(ctx, t, 0.2, vol * 0.2, 2400, 2400);
+      break;
+    case "thud":
+      scheduleTone(ctx, t, 0.3, vol * 1.3, 50, 25);
+      scheduleNoise(ctx, t, 0.02, 0.8, vol * 0.4, 2000, 1000, 1);
+      break;
+    case "shimmer":
+      scheduleNoise(ctx, t, 0.5, 0.4, vol * 0.6, 4000, 8000, 1);
+      break;
+    case "snap":
+      scheduleNoise(ctx, t, 0.015, 1, vol * 0.8, 3000, 3000, 2);
+      break;
+    case "reverse-hit":
+      scheduleTone(ctx, t, 0.35, vol * 1.0, 30, 80);
+      scheduleNoise(ctx, t, 0.35, 0.6, vol * 0.5, 200, 2000, 1.5);
+      break;
+  }
+}
+
+/** Resolve the SFX sound type for a mode transition */
+function getTransitionSoundType(
+  prev: ExportSegment,
+  curr: ExportSegment
+): SFXSoundType | null {
+  if (curr.mode === prev.mode) return null;
+  if (curr.mode === "broll") {
+    const layout = curr.brollLayout || "fullscreen";
+    if (layout === "split") return "slide";
+    if (layout === "diagonal") return "swoosh";
+    if (layout === "cinematic") return "reverse-hit";
+    if (layout === "pip") return "pop";
+    return "whoosh";
+  }
+  if (curr.mode === "typography") return "impact";
+  if (prev.mode === "broll") return "whoosh-out";
+  if (prev.mode === "typography") return "rise";
+  return null;
+}
+
 export async function renderSFXToBuffer(
   ctx: OfflineAudioContext,
   modeSegments: ExportSegment[],
@@ -664,112 +739,17 @@ export async function renderSFXToBuffer(
 ): Promise<void> {
   const sorted = [...modeSegments].sort((a, b) => a.startTime - b.startTime);
 
+  // Render transition SFX at mode boundaries
   for (let i = 1; i < sorted.length; i++) {
-    const prev = sorted[i - 1];
-    const curr = sorted[i];
-    const t = curr.startTime;
-
-    if (curr.mode === prev.mode) continue;
-
-    // Entering b-roll
-    if (curr.mode === "broll") {
-      if (curr.brollLayout === "split") {
-        // Slide: short filtered noise
-        scheduleNoise(ctx, t, 0.12, 0.7, masterVolume, 3000, 800, 3);
-      } else if (curr.brollLayout === "diagonal") {
-        // Swoosh: fast narrow-band noise + descending tone
-        scheduleNoise(ctx, t, 0.18, 0.5, masterVolume, 4000, 300, 4);
-        scheduleTone(ctx, t, 0.18, masterVolume * 0.25, 600, 100);
-      } else if (curr.brollLayout === "cinematic") {
-        // Reverse hit: crescendo sub bass
-        scheduleTone(ctx, t, 0.35, masterVolume * 1.0, 30, 80);
-        scheduleNoise(ctx, t, 0.35, 0.6, masterVolume * 0.5, 200, 2000, 1.5);
-      } else if (curr.brollLayout === "pip") {
-        // Pop: short sine burst
-        scheduleTone(ctx, t, 0.06, masterVolume * 0.5, 800, 200);
-      } else {
-        // Whoosh in: noise sweep + tonal body
-        scheduleNoise(ctx, t, 0.3, 0.6, masterVolume, 5000, 150, 1.5);
-        scheduleTone(ctx, t, 0.2, masterVolume * 0.3, 400, 80);
-      }
-      continue;
-    }
-
-    // Entering typography
-    if (curr.mode === "typography") {
-      // Impact: sub bass + mid transient
-      scheduleTone(ctx, t, 0.3, masterVolume * 1.2, 90, 35);
-      scheduleTone(ctx, t, 0.08, masterVolume * 0.8, 200, 60, "triangle");
-      scheduleNoise(ctx, t, 0.015, 1, masterVolume * 0.5, 2000, 1000, 1);
-      continue;
-    }
-
-    // Exiting b-roll
-    if (prev.mode === "broll") {
-      // Reverse whoosh
-      scheduleNoise(ctx, t, 0.22, 0.5, masterVolume * 0.7, 200, 4000, 1.8);
-      scheduleTone(ctx, t, 0.18, masterVolume * 0.15, 100, 600);
-      continue;
-    }
-
-    // Exiting typography
-    if (prev.mode === "typography") {
-      // Rise
-      scheduleTone(ctx, t, 0.35, masterVolume * 0.4, 180, 900);
-      continue;
-    }
+    const soundType = getTransitionSoundType(sorted[i - 1], sorted[i]);
+    if (soundType) scheduleSoundAtTime(ctx, sorted[i].startTime, masterVolume, soundType);
   }
 
-  // ── Render SFX Markers ──────────────────────────────────────────────
+  // Render explicit SFX markers
+  const maxTime = ctx.length / ctx.sampleRate;
   for (const marker of sfxMarkers) {
-    const t = marker.time;
-    if (t < 0 || t >= ctx.length / ctx.sampleRate) continue;
-
-    switch (marker.soundType) {
-      case "whoosh":
-        scheduleNoise(ctx, t, 0.3, 0.6, masterVolume, 5000, 150, 1.5);
-        scheduleTone(ctx, t, 0.2, masterVolume * 0.3, 400, 80);
-        break;
-      case "whoosh-out":
-        scheduleNoise(ctx, t, 0.22, 0.5, masterVolume * 0.7, 200, 4000, 1.8);
-        scheduleTone(ctx, t, 0.18, masterVolume * 0.15, 100, 600);
-        break;
-      case "impact":
-        scheduleTone(ctx, t, 0.3, masterVolume * 1.2, 90, 35);
-        scheduleTone(ctx, t, 0.08, masterVolume * 0.8, 200, 60, "triangle");
-        scheduleNoise(ctx, t, 0.015, 1, masterVolume * 0.5, 2000, 1000, 1);
-        break;
-      case "rise":
-        scheduleTone(ctx, t, 0.35, masterVolume * 0.4, 180, 900);
-        break;
-      case "slide":
-        scheduleNoise(ctx, t, 0.12, 0.7, masterVolume, 3000, 800, 3);
-        break;
-      case "pop":
-        scheduleTone(ctx, t, 0.06, masterVolume * 0.5, 800, 200);
-        break;
-      case "swoosh":
-        scheduleNoise(ctx, t, 0.18, 0.5, masterVolume, 4000, 300, 4);
-        scheduleTone(ctx, t, 0.18, masterVolume * 0.25, 600, 100);
-        break;
-      case "ding":
-        scheduleTone(ctx, t, 0.3, masterVolume * 0.6, 1200, 1200);
-        scheduleTone(ctx, t, 0.2, masterVolume * 0.2, 2400, 2400);
-        break;
-      case "thud":
-        scheduleTone(ctx, t, 0.3, masterVolume * 1.3, 50, 25);
-        scheduleNoise(ctx, t, 0.02, 0.8, masterVolume * 0.4, 2000, 1000, 1);
-        break;
-      case "shimmer":
-        scheduleNoise(ctx, t, 0.5, 0.4, masterVolume * 0.6, 4000, 8000, 1);
-        break;
-      case "snap":
-        scheduleNoise(ctx, t, 0.015, 1, masterVolume * 0.8, 3000, 3000, 2);
-        break;
-      case "reverse-hit":
-        scheduleTone(ctx, t, 0.35, masterVolume * 1.0, 30, 80);
-        scheduleNoise(ctx, t, 0.35, 0.6, masterVolume * 0.5, 200, 2000, 1.5);
-        break;
+    if (marker.time >= 0 && marker.time < maxTime) {
+      scheduleSoundAtTime(ctx, marker.time, masterVolume, marker.soundType);
     }
   }
 }

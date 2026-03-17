@@ -292,9 +292,20 @@ export const useProjectStore = create<ProjectStore>()(
         .sort((a, b) => a.startTime - b.startTime),
     })),
   deletePhraseCaption: (id) =>
-    set((state) => ({
-      phraseCaptions: state.phraseCaptions.filter((c) => c.id !== id),
-    })),
+    set((state) => {
+      const caption = state.phraseCaptions.find((c) => c.id === id);
+      const updated = state.phraseCaptions.filter((c) => c.id !== id);
+      // Clean orphaned stanzaStyleOverrides if no more captions share this stanzaId
+      let overrides = state.stanzaStyleOverrides;
+      if (caption?.stanzaId) {
+        const stanzaStillUsed = updated.some((c) => c.stanzaId === caption.stanzaId);
+        if (!stanzaStillUsed) {
+          const { [caption.stanzaId]: _, ...rest } = overrides;
+          overrides = rest;
+        }
+      }
+      return { phraseCaptions: updated, stanzaStyleOverrides: overrides };
+    }),
   setMusicConfig: (config) =>
     set((state) => ({
       musicConfig: { ...state.musicConfig, ...config },
@@ -329,8 +340,8 @@ export const useProjectStore = create<ProjectStore>()(
         const oldDuration = oldEnd - oldStart;
         const newDuration = newEnd - newStart;
 
-        // Only cascade if there's a meaningful time change
-        if (oldDuration > 0.01 && (Math.abs(oldStart - newStart) > 0.01 || Math.abs(oldEnd - newEnd) > 0.01)) {
+        // Cascade if time range changed and old segment had nonzero duration
+        if (oldDuration > 0 && (oldStart !== newStart || oldEnd !== newEnd)) {
           // Proportional rescale: map [oldStart, oldEnd] → [newStart, newEnd]
           const rescale = (t: number) => {
             const progress = (t - oldStart) / oldDuration;
@@ -439,12 +450,17 @@ export const useProjectStore = create<ProjectStore>()(
         };
       }
 
-      // Remove SFX markers within the deleted b-roll range
+      // Remove SFX markers within the deleted segment range (inclusive)
       const cleanedMarkers = state.sfxMarkers.filter(
-        (m) => m.time < seg.startTime || m.time > seg.endTime
+        (m) => m.time < seg.startTime || m.time >= seg.endTime
       );
 
-      return { modeSegments: segments, selectedItem: null, sfxMarkers: cleanedMarkers };
+      // Only clear selectedItem if it was the deleted segment
+      const selectedItem = (state.selectedItem?.type === "segment" && state.selectedItem.id === id)
+        ? null
+        : state.selectedItem;
+
+      return { modeSegments: segments, selectedItem, sfxMarkers: cleanedMarkers };
     }),
 
   applyStyleOverrideToAll: (override) =>
@@ -567,8 +583,9 @@ export const useProjectStore = create<ProjectStore>()(
         return rest;
       },
       onRehydrateStorage: () => (state) => {
-        if (state?.videoUrl) {
-          state.status = "ready";
+        if (state) {
+          const isValid = !!(state.videoUrl && state.videoDuration > 0);
+          state.status = isValid ? "ready" : "idle";
         }
       },
     }

@@ -156,7 +156,7 @@ export default function BRollSwapGrid({ segment }: Props) {
     [segment.id, updateModeSegment]
   );
 
-  const selectLocalMedia = (media: LocalMedia) => {
+  const selectLocalMedia = useCallback((media: LocalMedia) => {
     if (media.type === "video") {
       updateModeSegment(segment.id, {
         brollVideoUrl: media.url,
@@ -170,36 +170,36 @@ export default function BRollSwapGrid({ segment }: Props) {
         brollVideoUrl: undefined,
       });
     }
-  };
+  }, [segment.id, updateModeSegment]);
 
-  const isLocalActive = (media: LocalMedia) =>
-    media.type === "video"
-      ? segment.brollMediaType !== "photo" && segment.brollVideoUrl === media.url
-      : segment.brollMediaType === "photo" && segment.brollImageUrl === media.url;
-
-  const selectVideo = (video: PexelsVideoResult) => {
+  const selectVideo = useCallback((video: PexelsVideoResult) => {
     updateModeSegment(segment.id, {
       brollVideoUrl: video.url,
       brollMediaType: "video",
       brollImageUrl: undefined,
     });
-  };
+  }, [segment.id, updateModeSegment]);
 
-  const selectPhoto = (photo: PexelsPhotoResult) => {
+  const selectPhoto = useCallback((photo: PexelsPhotoResult) => {
     updateModeSegment(segment.id, {
       brollImageUrl: photo.url,
       brollMediaType: "photo",
       brollVideoUrl: undefined,
     });
-  };
+  }, [segment.id, updateModeSegment]);
 
-  const selectGeneratedImage = (url: string) => {
+  const selectGeneratedImage = useCallback((url: string) => {
     updateModeSegment(segment.id, {
       brollImageUrl: url,
       brollMediaType: "photo",
       brollVideoUrl: undefined,
     });
-  };
+  }, [segment.id, updateModeSegment]);
+
+  const isLocalActive = (media: LocalMedia) =>
+    media.type === "video"
+      ? segment.brollMediaType !== "photo" && segment.brollVideoUrl === media.url
+      : segment.brollMediaType === "photo" && segment.brollImageUrl === media.url;
 
   const isVideoActive = (video: PexelsVideoResult) =>
     segment.brollMediaType !== "photo" &&

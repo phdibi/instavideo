@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
+import { checkRateLimit } from "@/lib/rateLimit";
 import type { TranscriptionResult } from "@/types";
 
 function getOpenAI() {
@@ -8,6 +9,11 @@ function getOpenAI() {
 
 export async function POST(request: NextRequest) {
   try {
+    const rl = checkRateLimit("transcribe", { limit: 5, windowSeconds: 60 });
+    if (!rl.allowed) {
+      return NextResponse.json({ error: "Muitas transcrições. Aguarde um momento." }, { status: 429 });
+    }
+
     if (!process.env.OPENAI_API_KEY) {
       return NextResponse.json(
         { error: "Service not configured" },
@@ -78,9 +84,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result);
   } catch (error: unknown) {
     console.error("Whisper transcription error:", error);
-    return NextResponse.json(
-      { error: "Transcription failed" },
-      { status: 500 }
-    );
+    let msg = "Transcription failed";
+    if (error instanceof OpenAI.APIError) {
+      if (error.status === 401) msg = "OpenAI API key inválida";
+      else if (error.status === 429) msg = "Limite da API OpenAI atingido. Tente novamente em alguns minutos.";
+      else if (error.status === 413) msg = "Arquivo de áudio muito grande para a API";
+      else msg = `OpenAI error: ${error.message}`;
+    }
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

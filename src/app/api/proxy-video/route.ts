@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 const MAX_SIZE = 100 * 1024 * 1024; // 100MB
 
@@ -9,11 +10,16 @@ const ALLOWED_CONTENT_TYPES = [
 
 export async function GET(request: NextRequest) {
   try {
+    const rl = checkRateLimit("proxy-video", { limit: 60, windowSeconds: 60 });
+    if (!rl.allowed) {
+      return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+    }
+
     const { searchParams } = new URL(request.url);
     const url = searchParams.get("url");
 
-    if (!url) {
-      return NextResponse.json({ error: "Missing url" }, { status: 400 });
+    if (!url || url.length > 2000) {
+      return NextResponse.json({ error: "Missing or invalid url" }, { status: 400 });
     }
 
     // Only allow Pexels and Replicate CDN domains (with boundary check to prevent SSRF)

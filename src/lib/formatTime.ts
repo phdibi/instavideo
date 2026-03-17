@@ -9,15 +9,15 @@ export function formatTime(seconds: number): string {
 }
 
 export function parseTime(timeStr: string): number {
-  const parts = timeStr.split(":");
-  if (parts.length === 2) {
-    const [mins, rest] = parts;
-    const [secs, ms] = rest.split(".");
-    return (
-      parseInt(mins) * 60 +
-      parseInt(secs) +
-      (ms ? parseInt(ms) / 100 : 0)
-    );
+  // Match "MM:SS.CC" or "MM:SS" or bare number
+  const match = timeStr.match(/^(\d+):(\d+)(?:\.(\d+))?$/);
+  if (match) {
+    const mins = parseInt(match[1], 10);
+    const secs = parseInt(match[2], 10);
+    const cs = match[3] ? parseInt(match[3].padEnd(2, "0").slice(0, 2), 10) : 0;
+    const result = mins * 60 + secs + cs / 100;
+    return isFinite(result) ? result : 0;
   }
-  return parseFloat(timeStr) || 0;
+  const num = parseFloat(timeStr);
+  return isFinite(num) ? num : 0;
 }

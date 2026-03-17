@@ -25,9 +25,8 @@ import {
   Plus,
   Trash2,
   Copy,
-  ChevronLeft,
-  ChevronRight,
 } from "lucide-react";
+import SegmentNavigator from "../SegmentNavigator";
 
 const EFFECTS: { value: BRollEffect; label: string; icon: React.ReactNode }[] = [
   { value: "static", label: "Estático", icon: <Square className="w-4 h-4" /> },
@@ -101,32 +100,13 @@ export default function BRollPanel() {
     return (
       <div className="p-4 space-y-5">
         {/* Presenter navigation */}
-        {(() => {
-          const idx = presenterSegments.findIndex((s) => s.id === selectedPresenterSegment.id);
-          const prev = idx > 0 ? presenterSegments[idx - 1] : null;
-          const next = idx < presenterSegments.length - 1 ? presenterSegments[idx + 1] : null;
-          return (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => { if (prev) { setCurrentTime(prev.startTime); setSelectedItem({ type: "segment", id: prev.id }); } }}
-                disabled={!prev}
-                className="p-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)] disabled:opacity-30 disabled:pointer-events-none transition-all"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-              </button>
-              <span className="flex-1 text-xs text-center text-blue-300 font-medium">
-                Presenter {idx + 1} / {presenterSegments.length}
-              </span>
-              <button
-                onClick={() => { if (next) { setCurrentTime(next.startTime); setSelectedItem({ type: "segment", id: next.id }); } }}
-                disabled={!next}
-                className="p-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)] disabled:opacity-30 disabled:pointer-events-none transition-all"
-              >
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          );
-        })()}
+        <SegmentNavigator
+          items={presenterSegments.map((s) => ({ id: s.id, time: s.startTime }))}
+          currentId={selectedPresenterSegment.id}
+          label="Presenter"
+          colorClass="text-blue-300"
+          onSelect={(id, time) => { setCurrentTime(time); setSelectedItem({ type: "segment", id }); }}
+        />
         {/* Trim controls */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
@@ -387,33 +367,13 @@ export default function BRollPanel() {
     <div className="space-y-5 overflow-y-auto max-h-full">
       {/* B-Roll navigation */}
       <div className="px-4 pt-4 space-y-2">
-        {(() => {
-          const idx = brollSegments.findIndex((s) => s.id === selectedSegment.id);
-          const prev = idx > 0 ? brollSegments[idx - 1] : null;
-          const next = idx < brollSegments.length - 1 ? brollSegments[idx + 1] : null;
-          if (brollSegments.length <= 1) return null;
-          return (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => { if (prev) { setCurrentTime(prev.startTime); setSelectedItem({ type: "segment", id: prev.id }); } }}
-                disabled={!prev}
-                className="p-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)] disabled:opacity-30 disabled:pointer-events-none transition-all"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-              </button>
-              <span className="flex-1 text-xs text-center text-orange-300 font-medium">
-                B-Roll {idx + 1} / {brollSegments.length}
-              </span>
-              <button
-                onClick={() => { if (next) { setCurrentTime(next.startTime); setSelectedItem({ type: "segment", id: next.id }); } }}
-                disabled={!next}
-                className="p-1.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)] disabled:opacity-30 disabled:pointer-events-none transition-all"
-              >
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          );
-        })()}
+        <SegmentNavigator
+          items={brollSegments.map((s) => ({ id: s.id, time: s.startTime }))}
+          currentId={selectedSegment.id}
+          label="B-Roll"
+          colorClass="text-orange-300"
+          onSelect={(id, time) => { setCurrentTime(time); setSelectedItem({ type: "segment", id }); }}
+        />
         {/* Trim controls */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">

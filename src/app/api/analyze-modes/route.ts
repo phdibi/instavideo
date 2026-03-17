@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 const SegmentSchema = z.array(
   z.object({
@@ -20,6 +21,11 @@ function getAnthropic() {
 
 export async function POST(request: NextRequest) {
   try {
+    const rl = checkRateLimit("analyze-modes", { limit: 5, windowSeconds: 60 });
+    if (!rl.allowed) {
+      return NextResponse.json({ error: "Muitas análises. Aguarde um momento." }, { status: 429 });
+    }
+
     if (!process.env.ANTHROPIC_API_KEY) {
       return NextResponse.json(
         { error: "Service not configured" },
@@ -29,12 +35,15 @@ export async function POST(request: NextRequest) {
 
     const { transcription, duration } = await request.json();
 
-    if (!transcription) {
+    if (!transcription || typeof transcription !== "string") {
       return NextResponse.json(
         { error: "Missing transcription" },
         { status: 400 }
       );
     }
+
+    // Limit transcription length to prevent abuse
+    const safeTranscription = transcription.slice(0, 20_000);
 
     const systemPrompt = `You are a cinematic video editor AI. You analyze video transcriptions and create compelling visual sequences for short-form vertical video content (Instagram Reels style).
 
@@ -86,7 +95,7 @@ Respond with a JSON array only, no other text. Each element must have:
       messages: [
         {
           role: "user",
-          content: `Here is the transcription with timestamps. Video duration: ${duration} seconds.\n\n${transcription}\n\nCreate the mode segments array as JSON.`,
+          content: `Here is the transcription with timestamps. Video duration: ${duration} seconds.\n\n${safeTranscription}\n\nCreate the mode segments array as JSON.`,
         },
       ],
     });
@@ -103,7 +112,16 @@ Respond with a JSON array only, no other text. Each element must have:
       jsonText = jsonMatch[1].trim();
     }
 
-    const parsed = JSON.parse(jsonText);
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch {
+      console.error("Failed to parse Claude response as JSON:", jsonText.slice(0, 500));
+      return NextResponse.json(
+        { error: "Resposta da IA não é JSON válido. Tente novamente." },
+        { status: 500 }
+      );
+    }
 
     const result = SegmentSchema.safeParse(parsed);
     if (!result.success) {
@@ -129,9 +147,12 @@ Respond with a JSON array only, no other text. Each element must have:
     return NextResponse.json({ segments: validatedSegments });
   } catch (error: unknown) {
     console.error("Mode analysis error:", error);
-    return NextResponse.json(
-      { error: "Mode analysis failed" },
-      { status: 500 }
-    );
+    let msg = "Mode analysis failed";
+    if (error instanceof Anthropic.APIError) {
+      if (error.status === 401) msg = "Anthropic API key inválida";
+      else if (error.status === 429) msg = "Limite da API Anthropic atingido. Tente novamente.";
+      else msg = `Anthropic error: ${error.message}`;
+    }
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
-import { checkRateLimit } from "@/lib/rateLimit";
+import { checkRateLimit, getClientIP } from "@/lib/rateLimit";
 import type { TranscriptionResult } from "@/types";
 
 function getOpenAI() {
@@ -9,7 +9,8 @@ function getOpenAI() {
 
 export async function POST(request: NextRequest) {
   try {
-    const rl = checkRateLimit("transcribe", { limit: 5, windowSeconds: 60 });
+    const ip = getClientIP(request);
+    const rl = checkRateLimit(`transcribe:${ip}`, { limit: 5, windowSeconds: 60 });
     if (!rl.allowed) {
       return NextResponse.json({ error: "Muitas transcrições. Aguarde um momento." }, { status: 429 });
     }
@@ -26,6 +27,18 @@ export async function POST(request: NextRequest) {
 
     if (!audioFile) {
       return NextResponse.json({ error: "No audio file provided" }, { status: 400 });
+    }
+
+    // Validate MIME type
+    const allowedAudioTypes = [
+      "audio/wav", "audio/mpeg", "audio/mp3", "audio/mp4", "audio/ogg",
+      "audio/webm", "audio/flac", "audio/x-m4a", "video/mp4", "video/webm",
+    ];
+    if (audioFile.type && !allowedAudioTypes.some((t) => audioFile.type.startsWith(t))) {
+      return NextResponse.json(
+        { error: "Tipo de arquivo não suportado. Envie áudio ou vídeo." },
+        { status: 400 }
+      );
     }
 
     // Check file size (Whisper limit: 25MB)

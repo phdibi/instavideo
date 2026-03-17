@@ -1,7 +1,9 @@
 /**
- * Simple in-memory rate limiter for API routes.
- * Works per-server instance (best effort on serverless).
+ * In-memory rate limiter for API routes, keyed by IP + route.
+ * Best-effort on serverless (each instance has its own store).
  */
+
+import type { NextRequest } from "next/server";
 
 interface RateLimitEntry {
   count: number;
@@ -10,13 +12,14 @@ interface RateLimitEntry {
 
 const store = new Map<string, RateLimitEntry>();
 
-// Clean expired entries periodically
-setInterval(() => {
+// Clean expired entries periodically (unref so it doesn't block process exit)
+const timer = setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of store) {
     if (now >= entry.resetAt) store.delete(key);
   }
 }, 60_000);
+if (typeof timer === "object" && "unref" in timer) timer.unref();
 
 interface RateLimitOptions {
   /** Max requests per window */
@@ -29,6 +32,15 @@ interface RateLimitResult {
   allowed: boolean;
   remaining: number;
   resetAt: number;
+}
+
+/** Extract client IP from request headers */
+export function getClientIP(request: NextRequest): string {
+  return (
+    request.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
+    request.headers.get("x-real-ip") ||
+    "unknown"
+  );
 }
 
 export function checkRateLimit(

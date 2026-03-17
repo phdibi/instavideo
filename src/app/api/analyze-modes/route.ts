@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import { checkRateLimit } from "@/lib/rateLimit";
+import { checkRateLimit, getClientIP } from "@/lib/rateLimit";
 
 const SegmentSchema = z.array(
   z.object({
@@ -21,7 +21,8 @@ function getAnthropic() {
 
 export async function POST(request: NextRequest) {
   try {
-    const rl = checkRateLimit("analyze-modes", { limit: 5, windowSeconds: 60 });
+    const ip = getClientIP(request);
+    const rl = checkRateLimit(`analyze-modes:${ip}`, { limit: 5, windowSeconds: 60 });
     if (!rl.allowed) {
       return NextResponse.json({ error: "Muitas análises. Aguarde um momento." }, { status: 429 });
     }

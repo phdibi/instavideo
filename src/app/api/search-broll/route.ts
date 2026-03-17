@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { checkRateLimit } from "@/lib/rateLimit";
+import { checkRateLimit, getClientIP } from "@/lib/rateLimit";
 import type { PexelsVideoResult, PexelsPhotoResult } from "@/types";
 
 interface PexelsFile {
@@ -41,7 +41,8 @@ interface PexelsPhoto {
 
 export async function GET(request: NextRequest) {
   try {
-    const rl = checkRateLimit("search-broll", { limit: 30, windowSeconds: 60 });
+    const ip = getClientIP(request);
+    const rl = checkRateLimit(`search-broll:${ip}`, { limit: 30, windowSeconds: 60 });
     if (!rl.allowed) {
       return NextResponse.json({ error: "Muitas buscas. Aguarde um momento." }, { status: 429 });
     }

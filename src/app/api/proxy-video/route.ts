@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { checkRateLimit } from "@/lib/rateLimit";
+import { checkRateLimit, getClientIP } from "@/lib/rateLimit";
 
 const MAX_SIZE = 100 * 1024 * 1024; // 100MB
 
@@ -10,7 +10,8 @@ const ALLOWED_CONTENT_TYPES = [
 
 export async function GET(request: NextRequest) {
   try {
-    const rl = checkRateLimit("proxy-video", { limit: 60, windowSeconds: 60 });
+    const ip = getClientIP(request);
+    const rl = checkRateLimit(`proxy-video:${ip}`, { limit: 60, windowSeconds: 60 });
     if (!rl.allowed) {
       return NextResponse.json({ error: "Too many requests" }, { status: 429 });
     }
@@ -42,9 +43,7 @@ export async function GET(request: NextRequest) {
       matchesDomain("pexels.com") ||
       matchesDomain("pexelscdn.com") ||
       matchesDomain("vimeo.com") ||
-      matchesDomain("akamaized.net") ||
-      matchesDomain("replicate.delivery") ||
-      matchesDomain("replicate.com");
+      matchesDomain("replicate.delivery");
     if (!allowed) {
       return NextResponse.json({ error: "Invalid domain" }, { status: 403 });
     }
@@ -56,9 +55,24 @@ export async function GET(request: NextRequest) {
       upstreamHeaders["Range"] = rangeHeader;
     }
 
-    const response = await fetch(url, { headers: upstreamHeaders });
+    const response = await fetch(url, { headers: upstreamHeaders, redirect: "follow" });
     if (!response.ok && response.status !== 206) {
       throw new Error(`Upstream error: ${response.status}`);
+    }
+
+    // After following redirects, validate the final URL's domain
+    if (response.url && response.url !== url) {
+      const finalHost = new URL(response.url).hostname;
+      const matchesFinalDomain = (domain: string) =>
+        finalHost === domain || finalHost.endsWith(`.${domain}`);
+      const finalAllowed =
+        matchesFinalDomain("pexels.com") ||
+        matchesFinalDomain("pexelscdn.com") ||
+        matchesFinalDomain("vimeo.com") ||
+        matchesFinalDomain("replicate.delivery");
+      if (!finalAllowed) {
+        return NextResponse.json({ error: "Redirect to disallowed domain" }, { status: 403 });
+      }
     }
 
     // Validate content-type
@@ -86,7 +100,7 @@ export async function GET(request: NextRequest) {
     const resHeaders: Record<string, string> = {
       "Content-Type": contentType,
       "Cache-Control": "public, max-age=86400",
-      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Origin": getOwnOrigin(request),
       "Cross-Origin-Resource-Policy": "cross-origin",
       "Accept-Ranges": "bytes",
     };
@@ -111,4 +125,10 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+function getOwnOrigin(request: NextRequest): string {
+  const proto = (request.headers.get("x-forwarded-proto") || "https").split(",")[0].trim();
+  const host = request.headers.get("host") || "localhost";
+  return `${proto}://${host}`;
 }

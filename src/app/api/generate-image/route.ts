@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { checkRateLimit } from "@/lib/rateLimit";
+import { checkRateLimit, getClientIP } from "@/lib/rateLimit";
 
 export async function POST(request: NextRequest) {
   try {
-    const rl = checkRateLimit("generate-image", { limit: 10, windowSeconds: 60 });
+    const ip = getClientIP(request);
+    const rl = checkRateLimit(`generate-image:${ip}`, { limit: 10, windowSeconds: 60 });
     if (!rl.allowed) {
       return NextResponse.json(
         { error: "Muitas requisições. Aguarde um momento." },

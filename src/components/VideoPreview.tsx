@@ -122,6 +122,24 @@ export default function VideoPreview() {
     };
   }, []);
 
+  // Resume audio + video when returning from background (iOS/browsers suspend AudioContext)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState !== "visible") return;
+      // Resume suspended AudioContext
+      if (audioCtxRef.current?.state === "suspended") {
+        audioCtxRef.current.resume();
+      }
+      // Resume video if it was playing before going to background
+      const vid = videoRef.current;
+      if (vid && isPlayingRef.current && vid.paused) {
+        vid.play().catch(() => {});
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, []);
+
   // Current mode segment
   const currentSegment = useMemo(
     () => getCurrentMode(modeSegments, currentTime),

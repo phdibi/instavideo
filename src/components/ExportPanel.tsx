@@ -249,15 +249,12 @@ export default function ExportPanel() {
       const scatteredRand = (seed: number) => ((Math.sin(seed * 9371) * 43758.5453) % 1 + 1) % 1;
       const totalFrames = Math.ceil(videoDuration * FPS);
       await seekVideo(video, 0);
-      video.play();
+      await video.play();
+      const exportStartWall = performance.now();
 
       for (let frame = 0; frame < totalFrames; frame++) {
+        if (video.ended) break;
         const time = frame / FPS;
-
-        // Seek video
-        if (Math.abs(video.currentTime - time) > 0.1) {
-          await seekVideo(video, time);
-        }
 
         // Get current mode
         const segment = getCurrentMode(modeSegments, time);
@@ -784,8 +781,11 @@ export default function ExportPanel() {
 
         setProgress(Math.round((frame / totalFrames) * 100));
 
-        // Wait for next frame timing
-        await new Promise((r) => setTimeout(r, 1000 / FPS));
+        // Wall-clock pacing: align render loop to real-time so audio stays in sync
+        // (fixed setTimeout drifts because it doesn't account for render time)
+        const nextFrameWall = exportStartWall + ((frame + 1) / FPS) * 1000;
+        const waitMs = Math.max(1, nextFrameWall - performance.now());
+        await new Promise((r) => setTimeout(r, waitMs));
       }
 
       video.pause();

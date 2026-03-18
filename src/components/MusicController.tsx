@@ -128,6 +128,19 @@ export default function MusicController() {
     gain.gain.linearRampToValueAtTime(targetVolume, ctx.currentTime + 0.3);
   }, [currentTime, modeSegments, isPlaying, musicConfig, videoDuration]);
 
+  // Resume AudioContext when returning from background
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState !== "visible") return;
+      const ctx = audioCtxRef.current;
+      if (ctx?.state === "suspended") {
+        ctx.resume();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, []);
+
   // Cleanup
   useEffect(() => {
     return () => {

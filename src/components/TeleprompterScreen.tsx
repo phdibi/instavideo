@@ -500,7 +500,7 @@ export default function TeleprompterScreen() {
   );
 
   return (
-    <div className="h-[100dvh] flex flex-col bg-[var(--background)]">
+    <div className="min-h-screen h-[100dvh] flex flex-col bg-[var(--background)]">
       {/* Header */}
       <header className="h-12 bg-[var(--surface)] border-b border-[var(--border)] flex items-center px-4 gap-3 shrink-0 z-30">
         <button onClick={goBack} className="p-1.5 rounded-lg hover:bg-[var(--surface-hover)] transition-colors">

@@ -111,7 +111,7 @@ export default function EditorLayout() {
   }, []);
 
   return (
-    <div className="h-[100dvh] flex flex-col bg-[var(--background)]">
+    <div className="min-h-screen h-[100dvh] flex flex-col bg-[var(--background)]">
       {/* Header */}
       <header className="h-12 bg-[var(--surface)] border-b border-[var(--border)] flex items-center px-4 gap-3 shrink-0">
         <button

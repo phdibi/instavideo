@@ -9,7 +9,7 @@ import type { NextRequest } from "next/server";
  * 2. Browser requests must come from the same host (Origin matches Host)
  * 3. Preflight (OPTIONS) is handled for the proxy route which needs CORS for <video>/<img>
  */
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Only protect /api/* routes

@@ -348,6 +348,7 @@ export interface SFXMarker {
   id: string;
   time: number;
   soundType: SFXSoundType;
+  volume?: number; // 0-1, per-marker volume multiplier (default 1.0)
 }
 
 // ===== SFX System =====

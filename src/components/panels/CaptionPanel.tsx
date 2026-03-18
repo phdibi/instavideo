@@ -14,7 +14,9 @@ import {
   Trash2,
   RotateCcw,
   Copy,
+  Plus,
 } from "lucide-react";
+import { v4 as uuidv4 } from "uuid";
 
 const PRESETS: { name: string; config: Partial<CaptionConfig> }[] = [
   {
@@ -102,6 +104,9 @@ export default function CaptionPanel() {
     deletePhraseCaption,
     applyStyleOverrideToAll,
     setCurrentTime,
+    currentTime,
+    videoDuration,
+    addPhraseCaption,
   } = useProjectStore(
     useShallow((s) => ({
       captionConfig: s.captionConfig,
@@ -114,6 +119,9 @@ export default function CaptionPanel() {
       deletePhraseCaption: s.deletePhraseCaption,
       applyStyleOverrideToAll: s.applyStyleOverrideToAll,
       setCurrentTime: s.setCurrentTime,
+      currentTime: s.currentTime,
+      videoDuration: s.videoDuration,
+      addPhraseCaption: s.addPhraseCaption,
     }))
   );
 
@@ -247,8 +255,24 @@ export default function CaptionPanel() {
     });
   };
 
+  const handleAddCaption = useCallback(() => {
+    const id = uuidv4();
+    const endTime = Math.min(currentTime + 1, videoDuration);
+    addPhraseCaption({ id, startTime: currentTime, endTime, text: "texto" });
+    setSelectedItem({ type: "phrase", id });
+  }, [currentTime, videoDuration, addPhraseCaption, setSelectedItem]);
+
   return (
     <div className="p-4 space-y-5 overflow-y-auto max-h-full">
+      {/* ═══ Add caption button ═══ */}
+      <button
+        onClick={handleAddCaption}
+        className="w-full py-2 rounded-xl text-sm font-medium flex items-center justify-center gap-2 bg-[var(--accent)]/15 text-[var(--accent-light)] hover:bg-[var(--accent)]/25 transition-colors"
+      >
+        <Plus className="w-4 h-4" />
+        Adicionar legenda na posição atual
+      </button>
+
       {/* ═══ Word Editor (when phrase selected) ═══ */}
       {selectedPhrase && (
         <Section title="Editar frase selecionada">

@@ -17,6 +17,7 @@ const RULER_HEIGHT = 24;
 const TRACK_HEIGHT = 40;
 const TRACK_GAP = 2;
 const LABEL_WIDTH = 72;
+const MIN_DURATION = 0.3;
 
 /** Convert a touch event to look like a mouse event for our drag handlers */
 function touchToMouse(e: React.TouchEvent): React.MouseEvent | null {
@@ -52,6 +53,7 @@ export default function Timeline() {
     updateSFXMarker,
     deleteModeSegment,
     splitSegmentForBroll,
+    addPhraseCaption,
   } = useProjectStore(useShallow((s) => ({
     videoDuration: s.videoDuration,
     currentTime: s.currentTime,
@@ -70,6 +72,7 @@ export default function Timeline() {
     updateSFXMarker: s.updateSFXMarker,
     deleteModeSegment: s.deleteModeSegment,
     splitSegmentForBroll: s.splitSegmentForBroll,
+    addPhraseCaption: s.addPhraseCaption,
   })));
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -630,9 +633,84 @@ export default function Timeline() {
       const rect = scroll.getBoundingClientRect();
       const x = e.clientX - rect.left + scroll.scrollLeft;
       const time = pixelToTime(x);
-      addSFXMarker({ id: uuidv4(), time, soundType: "impact" });
+      addSFXMarker({ id: uuidv4(), time, soundType: "impact", volume: 1.0 });
     },
     [pixelToTime, addSFXMarker]
+  );
+
+  // Resize stanza group by dragging edge handle
+  const handleStanzaResize = useCallback(
+    (e: React.MouseEvent, _stanzaId: string, caps: PhraseCaption[], edge: "start" | "end") => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+
+      const origStart = Math.min(...caps.map((c) => c.startTime));
+      const origEnd = Math.max(...caps.map((c) => c.endTime));
+      const origDuration = origEnd - origStart;
+      if (origDuration <= 0) return;
+
+      const scroll = scrollRef.current;
+      if (!scroll) return;
+
+      const handleMove = (ev: MouseEvent) => {
+        const s = scrollRef.current;
+        if (!s) return;
+        const r = s.getBoundingClientRect();
+        const x = ev.clientX - r.left + s.scrollLeft;
+        const time = pixelToTime(x);
+
+        let newStart = origStart;
+        let newEnd = origEnd;
+
+        if (edge === "start") {
+          newStart = Math.max(0, Math.min(time, origEnd - MIN_DURATION));
+        } else {
+          newEnd = Math.min(videoDuration, Math.max(time, origStart + MIN_DURATION));
+        }
+
+        const newDuration = newEnd - newStart;
+        const scale = newDuration / origDuration;
+
+        // Proportionally resize all words in the stanza
+        for (const cap of caps) {
+          const relStart = (cap.startTime - origStart) / origDuration;
+          const relEnd = (cap.endTime - origStart) / origDuration;
+          updatePhraseCaption(cap.id, {
+            startTime: newStart + relStart * newDuration,
+            endTime: newStart + relEnd * newDuration,
+          });
+        }
+      };
+
+      const handleUp = () => {
+        document.removeEventListener("mousemove", handleMove);
+        document.removeEventListener("mouseup", handleUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+
+      document.addEventListener("mousemove", handleMove);
+      document.addEventListener("mouseup", handleUp);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+    },
+    [pixelToTime, videoDuration, updatePhraseCaption]
+  );
+
+  // Double-click on caption track to add a new caption
+  const handleCaptionTrackDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      const scroll = scrollRef.current;
+      if (!scroll) return;
+      const rect = scroll.getBoundingClientRect();
+      const x = e.clientX - rect.left + scroll.scrollLeft;
+      const time = pixelToTime(x);
+      const id = uuidv4();
+      const endTime = Math.min(time + 1, videoDuration);
+      addPhraseCaption({ id, startTime: time, endTime, text: "texto" });
+      setSelectedItem({ type: "phrase", id });
+    },
+    [pixelToTime, addPhraseCaption, setSelectedItem, videoDuration]
   );
 
   // Resolve selected item for trim controls
@@ -657,7 +735,6 @@ export default function Timeline() {
   }, [selectedItem, modeSegments, phraseCaptions, sfxMarkers]);
 
   const TRIM_STEP = 0.1;
-  const MIN_DURATION = 0.3;
 
   const handleTrimStart = useCallback(
     (delta: number) => {
@@ -870,8 +947,22 @@ export default function Timeline() {
           </div>
 
           {/* ═══ Track 2: Legendas (regular only) ═══ */}
-          <div className="relative" style={{ height: TRACK_HEIGHT, marginTop: TRACK_GAP }}>
+          <div
+            className="relative"
+            style={{ height: TRACK_HEIGHT, marginTop: TRACK_GAP }}
+            onDoubleClick={handleCaptionTrackDoubleClick}
+          >
             <TrackLabel label="Legendas" />
+            {regularCaptions.length === 0 && (
+              <div
+                className="absolute top-0 bottom-0 flex items-center pointer-events-none"
+                style={{ left: LABEL_WIDTH + 16 }}
+              >
+                <span className="text-[9px] text-[var(--text-secondary)]/40 italic select-none">
+                  Duplo-clique para adicionar legenda
+                </span>
+              </div>
+            )}
             {regularCaptions.map((cap) => {
               const left = timeToX(cap.startTime);
               const width = timeToX(cap.endTime) - left;
@@ -905,7 +996,7 @@ export default function Timeline() {
           {/* ═══ Track 3: Estrofes (stanza captions) ═══ */}
           <div className="relative" style={{ height: TRACK_HEIGHT, marginTop: TRACK_GAP }}>
             <TrackLabel label="Estrofes" />
-            {/* Group backgrounds */}
+            {/* Group backgrounds with resize handles */}
             {Object.entries(stanzaGroups).map(([stanzaId, caps]) => {
               const minStart = Math.min(...caps.map((c) => c.startTime));
               const maxEnd = Math.max(...caps.map((c) => c.endTime));
@@ -914,14 +1005,43 @@ export default function Timeline() {
               return (
                 <div
                   key={`stanza-bg-${stanzaId}`}
-                  className="absolute top-0.5 bottom-0.5 pointer-events-none"
+                  className="absolute top-0.5 bottom-0.5 group/stanza"
                   style={{
                     left: left + LABEL_WIDTH,
-                    width: Math.max(width, 12),
+                    width: Math.max(width, 24),
                     backgroundColor: "rgba(139,92,246,0.08)",
                     borderRadius: 6,
                   }}
-                />
+                >
+                  {/* Left resize handle */}
+                  <div
+                    className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize opacity-0 group-hover/stanza:opacity-100 transition-opacity z-10"
+                    style={{ backgroundColor: "rgba(139,92,246,0.5)", borderRadius: "6px 0 0 6px" }}
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      handleStanzaResize(e, stanzaId, caps, "start");
+                    }}
+                    onTouchStart={(e) => {
+                      e.stopPropagation();
+                      const m = touchToMouse(e);
+                      if (m) handleStanzaResize(m, stanzaId, caps, "start");
+                    }}
+                  />
+                  {/* Right resize handle */}
+                  <div
+                    className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize opacity-0 group-hover/stanza:opacity-100 transition-opacity z-10"
+                    style={{ backgroundColor: "rgba(139,92,246,0.5)", borderRadius: "0 6px 6px 0" }}
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      handleStanzaResize(e, stanzaId, caps, "end");
+                    }}
+                    onTouchStart={(e) => {
+                      e.stopPropagation();
+                      const m = touchToMouse(e);
+                      if (m) handleStanzaResize(m, stanzaId, caps, "end");
+                    }}
+                  />
+                </div>
               );
             })}
             {/* Individual stanza words */}

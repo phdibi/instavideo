@@ -67,7 +67,7 @@ export default function SFXPanel() {
 
   const handleAddAtPlayhead = () => {
     const id = uuidv4();
-    addSFXMarker({ id, time: currentTime, soundType: "impact" });
+    addSFXMarker({ id, time: currentTime, soundType: "impact", volume: 1.0 });
     setSelectedItem({ type: "sfx", id });
   };
 
@@ -121,7 +121,7 @@ export default function SFXPanel() {
                 key={s.key}
                 onClick={() => {
                   updateSFXMarker(selectedMarker.id, { soundType: s.key });
-                  SFX_PLAY_MAP[s.key](sfxConfig.masterVolume);
+                  SFX_PLAY_MAP[s.key]((selectedMarker.volume ?? 1) * sfxConfig.masterVolume);
                 }}
                 className={`flex flex-col items-center gap-0.5 py-2 px-1 rounded-lg text-[10px] transition-all ${
                   selectedMarker.soundType === s.key
@@ -132,6 +132,25 @@ export default function SFXPanel() {
                 {s.label}
               </button>
             ))}
+          </div>
+
+          {/* Per-marker volume */}
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Volume2 className="w-3.5 h-3.5 text-yellow-400/70" />
+              <label className="text-[10px] font-medium text-[var(--text-secondary)] uppercase tracking-wider flex-1">
+                Volume: {Math.round((selectedMarker.volume ?? 1) * 100)}%
+              </label>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={selectedMarker.volume ?? 1}
+              onChange={(e) => updateSFXMarker(selectedMarker.id, { volume: parseFloat(e.target.value) })}
+              className="w-full"
+            />
           </div>
 
           {/* Apply sound type to all markers */}
@@ -233,12 +252,17 @@ export default function SFXPanel() {
                   {/* Sound name */}
                   <span className="text-[11px] text-[var(--foreground)] flex-1 truncate">
                     {SFX_LABELS[marker.soundType]}
+                    {(marker.volume ?? 1) !== 1 && (
+                      <span className="ml-1 text-[9px] text-yellow-400/70">
+                        {Math.round((marker.volume ?? 1) * 100)}%
+                      </span>
+                    )}
                   </span>
                   {/* Preview */}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      SFX_PLAY_MAP[marker.soundType](sfxConfig.masterVolume);
+                      SFX_PLAY_MAP[marker.soundType]((marker.volume ?? 1) * sfxConfig.masterVolume);
                     }}
                     className="p-1 rounded hover:bg-[var(--surface-hover)] transition-colors"
                     title="Pré-visualizar"
@@ -296,7 +320,7 @@ export default function SFXPanel() {
         <div className="flex items-center gap-2">
           <Volume2 className="w-4 h-4 text-[var(--text-secondary)]" />
           <label className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider flex-1">
-            Volume: {Math.round(sfxConfig.masterVolume * 100)}%
+            Volume Global: {Math.round(sfxConfig.masterVolume * 100)}%
           </label>
         </div>
         <input

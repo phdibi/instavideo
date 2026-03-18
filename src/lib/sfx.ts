@@ -542,7 +542,7 @@ export function generateSFXMarkers(
       soundType = "rise";
     }
 
-    markers.push({ id: idGenerator(), time, soundType });
+    markers.push({ id: idGenerator(), time, soundType, volume: 1.0 });
   }
 
   return markers;
@@ -749,7 +749,7 @@ export async function renderSFXToBuffer(
   const maxTime = ctx.length / ctx.sampleRate;
   for (const marker of sfxMarkers) {
     if (marker.time >= 0 && marker.time < maxTime) {
-      scheduleSoundAtTime(ctx, marker.time, masterVolume, marker.soundType);
+      scheduleSoundAtTime(ctx, marker.time, (marker.volume ?? 1) * masterVolume, marker.soundType);
     }
   }
 }

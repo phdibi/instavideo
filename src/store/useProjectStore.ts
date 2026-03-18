@@ -18,6 +18,7 @@ import type {
   MusicConfig,
   StanzaConfig,
   TranscriptionResult,
+  VoiceEnhanceConfig,
 } from "@/types";
 
 interface ProjectStore {
@@ -47,9 +48,11 @@ interface ProjectStore {
   stanzaConfig: StanzaConfig;
   stanzaStyleOverrides: Record<string, Partial<StanzaConfig>>;
   transcriptionResult: TranscriptionResult | null;
+  voiceEnhanceConfig: VoiceEnhanceConfig;
 
   setStanzaConfig: (config: Partial<StanzaConfig>) => void;
   setStanzaOverride: (stanzaId: string, override: Partial<StanzaConfig>) => void;
+  setVoiceEnhanceConfig: (config: Partial<VoiceEnhanceConfig>) => void;
   setTranscriptionResult: (result: TranscriptionResult | null) => void;
   setSFXMarkers: (markers: SFXMarker[]) => void;
   addSFXMarker: (marker: SFXMarker) => void;
@@ -193,6 +196,7 @@ const initialState = {
   stanzaConfig: { ...defaultStanzaConfig },
   stanzaStyleOverrides: {},
   transcriptionResult: null,
+  voiceEnhanceConfig: { preset: "off" as const, intensity: 1.0 },
 };
 
 export const useProjectStore = create<ProjectStore>()(
@@ -265,6 +269,10 @@ export const useProjectStore = create<ProjectStore>()(
         ...state.stanzaStyleOverrides,
         [stanzaId]: { ...state.stanzaStyleOverrides[stanzaId], ...override },
       },
+    })),
+  setVoiceEnhanceConfig: (config) =>
+    set((state) => ({
+      voiceEnhanceConfig: { ...state.voiceEnhanceConfig, ...config },
     })),
   setTranscriptionResult: (result) => set({ transcriptionResult: result }),
   setModeSegments: (segments) => set({ modeSegments: segments }),

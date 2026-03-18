@@ -8,6 +8,7 @@ import { formatTime } from "@/lib/formatTime";
 import { getCurrentMode } from "@/lib/modes";
 import { computeBRollEffect, computePresenterEffect, effectToCSS } from "@/lib/brollEffects";
 import { SFX_PLAY_MAP } from "@/lib/sfx";
+import { createVoiceEnhancerChain, type VoiceEnhancerChain } from "@/lib/voiceEnhancer";
 import CaptionOverlay from "./CaptionOverlay";
 import TypographyCard from "./TypographyCard";
 
@@ -20,6 +21,11 @@ export default function VideoPreview() {
   const brollVideoRef = useRef<HTMLVideoElement>(null);
   const brollPreloadRef = useRef<HTMLVideoElement>(null);
   const brollImageRef = useRef<HTMLImageElement>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const voiceSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const voiceChainRef = useRef<VoiceEnhancerChain | null>(null);
+  const muteGainRef = useRef<GainNode | null>(null);
+  const audioInitRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const outerContainerRef = useRef<HTMLDivElement>(null);
   const animFrameRef = useRef<number>(0);
@@ -35,6 +41,7 @@ export default function VideoPreview() {
     modeSegments,
     sfxConfig,
     sfxMarkers,
+    voiceEnhanceConfig,
     setCurrentTime,
     setIsPlaying,
     setVideoDuration,
@@ -46,6 +53,7 @@ export default function VideoPreview() {
     modeSegments: s.modeSegments,
     sfxConfig: s.sfxConfig,
     sfxMarkers: s.sfxMarkers,
+    voiceEnhanceConfig: s.voiceEnhanceConfig,
     setCurrentTime: s.setCurrentTime,
     setIsPlaying: s.setIsPlaying,
     setVideoDuration: s.setVideoDuration,
@@ -63,6 +71,55 @@ export default function VideoPreview() {
     });
     ro.observe(outer);
     return () => ro.disconnect();
+  }, []);
+
+  // ── Voice Enhancer AudioContext + chain ──────────────────────────────
+  // Lazy init: only create AudioContext when user first enables a voice preset.
+  // Once created, the chain stays connected forever ("off" mode = transparent passthrough).
+  // This avoids audio clicks from disconnect/reconnect and preserves native mute when unused.
+  useEffect(() => {
+    // Don't init AudioContext until a real preset is selected
+    if (voiceEnhanceConfig.preset === "off" && !audioInitRef.current) return;
+
+    const vid = videoRef.current;
+    if (!vid) return;
+
+    // One-time init: AudioContext + MediaElementSource + chain + muteGain
+    if (!audioInitRef.current) {
+      const ctx = new AudioContext();
+      audioCtxRef.current = ctx;
+      voiceSourceRef.current = ctx.createMediaElementSource(vid);
+      muteGainRef.current = ctx.createGain();
+
+      const chain = createVoiceEnhancerChain(ctx, voiceEnhanceConfig);
+      voiceChainRef.current = chain;
+
+      // Permanent graph: source → chain → muteGain → destination
+      voiceSourceRef.current.connect(chain.input);
+      chain.output.connect(muteGainRef.current);
+      muteGainRef.current.connect(ctx.destination);
+
+      audioInitRef.current = true;
+      return;
+    }
+
+    // After init: just update parameters (no disconnect/reconnect)
+    voiceChainRef.current?.update(voiceEnhanceConfig);
+  }, [voiceEnhanceConfig]);
+
+  // Mute control: once AudioContext exists, video.muted no longer works
+  // so we use a GainNode. Before AudioContext, video.muted handles it natively.
+  useEffect(() => {
+    if (muteGainRef.current) {
+      muteGainRef.current.gain.value = muted ? 0 : 1;
+    }
+  }, [muted]);
+
+  // Cleanup AudioContext on unmount
+  useEffect(() => {
+    return () => {
+      audioCtxRef.current?.close().catch(() => {});
+    };
   }, []);
 
   // Current mode segment
@@ -363,6 +420,10 @@ export default function VideoPreview() {
   const togglePlay = useCallback(() => {
     const vid = videoRef.current;
     if (!vid) return;
+    // Resume AudioContext on user gesture (required for iOS/Safari)
+    if (audioCtxRef.current?.state === "suspended") {
+      audioCtxRef.current.resume();
+    }
     if (vid.paused) {
       firedMarkersRef.current.clear();
       isPlayingRef.current = true;

@@ -9,6 +9,7 @@ import { getTrackById } from "@/lib/musicLibrary";
 import { computeBRollEffect, computePresenterEffect } from "@/lib/brollEffects";
 import { getCanvasFontName } from "@/lib/fonts";
 import { renderSFXToBuffer } from "@/lib/sfx";
+import { createVoiceEnhancerChain } from "@/lib/voiceEnhancer";
 
 export default function ExportPanel() {
   const {
@@ -22,6 +23,7 @@ export default function ExportPanel() {
     stanzaConfig,
     sfxConfig,
     sfxMarkers,
+    voiceEnhanceConfig,
     setStatus,
   } = useProjectStore(
     useShallow((s) => ({
@@ -35,6 +37,7 @@ export default function ExportPanel() {
       stanzaConfig: s.stanzaConfig,
       sfxConfig: s.sfxConfig,
       sfxMarkers: s.sfxMarkers,
+      voiceEnhanceConfig: s.voiceEnhanceConfig,
       setStatus: s.setStatus,
     }))
   );
@@ -134,10 +137,17 @@ export default function ExportPanel() {
       audioCtx = new AudioContext();
       const dest = audioCtx.createMediaStreamDestination();
 
-      // Voice audio from video
+      // Voice audio from video (with optional voice enhancer)
       const voiceSource = audioCtx.createMediaElementSource(video);
-      voiceSource.connect(dest);
-      voiceSource.connect(audioCtx.destination);
+      if (voiceEnhanceConfig.preset !== "off") {
+        const chain = createVoiceEnhancerChain(audioCtx, voiceEnhanceConfig);
+        voiceSource.connect(chain.input);
+        chain.output.connect(dest);
+        chain.output.connect(audioCtx.destination);
+      } else {
+        voiceSource.connect(dest);
+        voiceSource.connect(audioCtx.destination);
+      }
 
       // Music audio
       let musicGain: GainNode | null = null;
@@ -815,6 +825,7 @@ export default function ExportPanel() {
     stanzaConfig,
     sfxConfig,
     sfxMarkers,
+    voiceEnhanceConfig,
     exporting,
     setStatus,
   ]);

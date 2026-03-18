@@ -372,6 +372,14 @@ export type CTATemplate =
   | "compartilhe";      // "Compartilhe com alguém que precisa"
 
 // ===== Personal Branding =====
+// ===== Voice Enhancer =====
+export type VoiceEnhancePreset = "off" | "natural" | "podcast" | "cinematic";
+
+export interface VoiceEnhanceConfig {
+  preset: VoiceEnhancePreset;
+  intensity: number; // 0-1
+}
+
 export interface BrandingConfig {
   name: string;
   title: string;

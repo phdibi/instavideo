@@ -144,23 +144,23 @@ export default function EditorLayout() {
         onCategoryChange={setActiveCategory}
       />
 
-      {/* Timeline resize handle + Timeline — hidden when panel is open */}
-      {activeCategory === null && (
-        <>
-          <div
-            className="h-2.5 bg-[var(--surface)] border-t border-[var(--border)] cursor-row-resize hover:bg-[var(--accent)]/20 active:bg-[var(--accent)]/30 transition-colors flex items-center justify-center shrink-0 group touch-none"
-            onMouseDown={handleResizeStart}
-            onTouchStart={handleTouchResizeStart}
-            onTouchMove={handleTouchResizeMove}
-            onTouchEnd={handleTouchResizeEnd}
-          >
-            <div className="w-8 h-0.5 rounded-full bg-[var(--text-secondary)]/30 group-hover:bg-[var(--accent)]/60 transition-colors" />
-          </div>
-          <div className="shrink-0" style={{ height: timelineHeight }}>
-            <Timeline />
-          </div>
-        </>
-      )}
+      {/* Timeline resize handle + Timeline — hidden (not unmounted) when panel is open */}
+      <div
+        className="h-2.5 bg-[var(--surface)] border-t border-[var(--border)] cursor-row-resize hover:bg-[var(--accent)]/20 active:bg-[var(--accent)]/30 transition-colors flex items-center justify-center shrink-0 group touch-none"
+        style={{ display: activeCategory === null ? undefined : "none" }}
+        onMouseDown={handleResizeStart}
+        onTouchStart={handleTouchResizeStart}
+        onTouchMove={handleTouchResizeMove}
+        onTouchEnd={handleTouchResizeEnd}
+      >
+        <div className="w-8 h-0.5 rounded-full bg-[var(--text-secondary)]/30 group-hover:bg-[var(--accent)]/60 transition-colors" />
+      </div>
+      <div
+        className="shrink-0"
+        style={{ height: timelineHeight, display: activeCategory === null ? undefined : "none" }}
+      >
+        <Timeline />
+      </div>
     </div>
   );
 }

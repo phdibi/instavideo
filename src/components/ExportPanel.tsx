@@ -149,8 +149,9 @@ export default function ExportPanel() {
         voiceSource.connect(audioCtx.destination);
       }
 
-      // Music audio
+      // Music audio — prepare but DON'T start yet (must sync with video.play())
       let musicGain: GainNode | null = null;
+      let musicSource: AudioBufferSourceNode | null = null;
       if (selectedMusicTrack) {
         const track = getTrackById(selectedMusicTrack);
         if (track) {
@@ -159,24 +160,23 @@ export default function ExportPanel() {
             const musicBuffer = await audioCtx.decodeAudioData(
               await musicResponse.arrayBuffer()
             );
-            const musicSource = audioCtx.createBufferSource();
+            musicSource = audioCtx.createBufferSource();
             musicSource.buffer = musicBuffer;
             musicSource.loop = true;
             musicGain = audioCtx.createGain();
             musicGain.gain.value = musicConfig.baseVolume;
             musicSource.connect(musicGain);
             musicGain.connect(dest);
-            musicSource.start(0);
           } catch (e) {
             console.warn("Failed to load music for export:", e);
           }
         }
       }
 
-      // SFX — render transition sounds into the audio stream
+      // SFX — render transition sounds, prepare but DON'T start yet
+      let sfxSource: AudioBufferSourceNode | null = null;
       if (sfxConfig.profile !== "none") {
         try {
-          // Create a short SFX buffer and play it alongside
           const sfxDuration = Math.max(2, videoDuration + 1);
           const offlineCtx = new OfflineAudioContext(
             2,
@@ -186,10 +186,9 @@ export default function ExportPanel() {
           await renderSFXToBuffer(offlineCtx, modeSegments, sfxConfig.masterVolume, sfxMarkers);
           const sfxBuffer = await offlineCtx.startRendering();
 
-          const sfxSource = audioCtx.createBufferSource();
+          sfxSource = audioCtx.createBufferSource();
           sfxSource.buffer = sfxBuffer;
           sfxSource.connect(dest);
-          sfxSource.start(0);
         } catch (e) {
           console.warn("SFX render failed:", e);
         }
@@ -201,15 +200,18 @@ export default function ExportPanel() {
         canvasStream.addTrack(track);
       }
 
-      const mimeType = MediaRecorder.isTypeSupported("video/mp4; codecs=avc1")
-        ? "video/mp4; codecs=avc1"
-        : MediaRecorder.isTypeSupported("video/webm; codecs=vp9")
-          ? "video/webm; codecs=vp9"
-          : "video/webm";
+      // Prefer H.264 High Profile (best quality) → Main → generic → WebM
+      const mimeType = [
+        "video/mp4;codecs=avc1.640028",  // High Profile L4.0
+        "video/mp4;codecs=avc1.4D0028",  // Main Profile L4.0
+        "video/mp4;codecs=avc1",
+        "video/webm;codecs=vp9",
+        "video/webm",
+      ].find((m) => MediaRecorder.isTypeSupported(m)) || "video/webm";
 
       const recorder = new MediaRecorder(canvasStream, {
         mimeType,
-        videoBitsPerSecond: 8_000_000,
+        videoBitsPerSecond: 15_000_000,
       });
 
       const chunks: Blob[] = [];
@@ -247,9 +249,15 @@ export default function ExportPanel() {
         : stanzaConfig.emphasisFontSize;
       // Deterministic rand for scattered layout (same as CaptionOverlay)
       const scatteredRand = (seed: number) => ((Math.sin(seed * 9371) * 43758.5453) % 1 + 1) % 1;
+      // Pre-compute presenter segments (constant during export — avoid per-frame filter)
+      const presenterSegs = modeSegments.filter((s) => s.mode === "presenter");
       const totalFrames = Math.ceil(videoDuration * FPS);
       await seekVideo(video, 0);
+      video.muted = false; // ensure browser decodes audio track (Safari skips when muted)
       await video.play();
+      // Start music & SFX in sync with video playback
+      if (musicSource) musicSource.start(0);
+      if (sfxSource) sfxSource.start(0);
       const exportStartWall = performance.now();
 
       for (let frame = 0; frame < totalFrames; frame++) {
@@ -293,7 +301,7 @@ export default function ExportPanel() {
             const brollElapsed = time - segment.startTime;
             const safeDuration = Number.isFinite(bv.duration) && bv.duration > 0 ? bv.duration : 1;
             const brollTime = brollElapsed % safeDuration;
-            if (Math.abs(bv.currentTime - brollTime) > 0.15) {
+            if (Math.abs(bv.currentTime - brollTime) > 0.05) {
               await seekVideo(bv, brollTime);
             }
           }
@@ -301,7 +309,6 @@ export default function ExportPanel() {
 
         if (mode === "presenter") {
           // Presenter fills entire 9:16 frame with dynamic Ken Burns
-          const presenterSegs = modeSegments.filter((s) => s.mode === "presenter");
           const presenterIndex = segment ? presenterSegs.findIndex((s) => s.id === segment.id) : 0;
           const segDur = segment ? segment.endTime - segment.startTime : 1;
           const rawProgress = segment ? Math.min((time - segment.startTime) / segDur, 1) : 0;
@@ -556,7 +563,7 @@ export default function ExportPanel() {
           ctx.fillStyle = textColor;
 
           if (typoAnim === "typewriter") {
-            // Character by character
+            // Character by character with word-wrap
             const chars = text.toUpperCase();
             const charStagger = typoStagger * 0.3;
             const visibleCount = Math.min(
@@ -564,52 +571,93 @@ export default function ExportPanel() {
               chars.length
             );
             const visibleText = chars.slice(0, visibleCount);
-            ctx.fillText(visibleText, WIDTH / 2, HEIGHT / 2);
+            const maxTextWidth = WIDTH * 0.8;
+            const twLines = wrapText(ctx, visibleText, maxTextWidth);
+            const twLineHeight = fontSize * 1.3;
+            const twTotalH = twLines.length * twLineHeight;
+            const twStartY = HEIGHT / 2 - twTotalH / 2 + twLineHeight / 2;
+            for (let li = 0; li < twLines.length; li++) {
+              ctx.fillText(twLines[li], WIDTH / 2, twStartY + li * twLineHeight);
+            }
           } else {
-            // Word-by-word animations
+            // Word-by-word animations with proper text-flow layout
             const words = text.toUpperCase().split(" ").filter((w) => w.length > 0);
-            const lineHeight = fontSize * 1.2;
-            const totalTextHeight = words.length > 3
-              ? lineHeight * Math.ceil(words.length / 2)
-              : lineHeight;
-            const startY = HEIGHT / 2 - totalTextHeight / 2;
+            const lineHeight = fontSize * 1.3;
+            const maxTextWidth = WIDTH * 0.8;
+            const wordGap = fontSize * 0.45;
 
-            words.forEach((word, i) => {
+            // Compute word positions using measureText for proper wrapping
+            type WordPos = { word: string; x: number; y: number; lineIdx: number };
+            const wordPositions: WordPos[] = [];
+            let lineWords: { word: string; width: number }[] = [];
+            let lineWidth = 0;
+            let lineIdx = 0;
+
+            for (const word of words) {
+              const w = ctx.measureText(word).width;
+              if (lineWords.length > 0 && lineWidth + wordGap + w > maxTextWidth) {
+                // Commit current line — center words
+                let curX = WIDTH / 2 - lineWidth / 2;
+                for (const lw of lineWords) {
+                  wordPositions.push({ word: lw.word, x: curX + lw.width / 2, y: 0, lineIdx });
+                  curX += lw.width + wordGap;
+                }
+                lineWords = [{ word, width: w }];
+                lineWidth = w;
+                lineIdx++;
+              } else {
+                if (lineWords.length > 0) lineWidth += wordGap;
+                lineWords.push({ word, width: w });
+                lineWidth += w;
+              }
+            }
+            // Commit last line
+            if (lineWords.length > 0) {
+              let curX = WIDTH / 2 - lineWidth / 2;
+              for (const lw of lineWords) {
+                wordPositions.push({ word: lw.word, x: curX + lw.width / 2, y: 0, lineIdx });
+                curX += lw.width + wordGap;
+              }
+            }
+
+            const totalLines = lineIdx + 1;
+            const totalTextHeight = totalLines * lineHeight;
+            const startY = HEIGHT / 2 - totalTextHeight / 2 + lineHeight / 2;
+
+            // Set Y positions
+            for (const wp of wordPositions) {
+              wp.y = startY + wp.lineIdx * lineHeight;
+            }
+
+            // Animate each word
+            for (let i = 0; i < wordPositions.length; i++) {
+              const wp = wordPositions[i];
               const wordDelay = i * typoStagger;
-              if (elapsed < wordDelay) return;
-
+              if (elapsed < wordDelay) continue;
               const wordProgress = Math.min((elapsed - wordDelay) / 0.15, 1);
-
-              const row = words.length > 3 ? Math.floor(i / 2) : 0;
-              const col = words.length > 3 ? i % 2 : i;
-              const x = words.length > 3
-                ? WIDTH / 2 + (col - 0.5) * fontSize * 3
-                : WIDTH / 2;
-              const y = startY + row * lineHeight + lineHeight / 2;
 
               ctx.save();
               ctx.globalAlpha = wordProgress;
+              ctx.textAlign = "center";
 
               if (typoAnim === "pop-in") {
-                ctx.translate(x, y);
+                ctx.translate(wp.x, wp.y);
                 ctx.scale(wordProgress, wordProgress);
-                ctx.fillText(word, 0, 0);
+                ctx.fillText(wp.word, 0, 0);
               } else if (typoAnim === "fade-up") {
-                const offsetY = (1 - wordProgress) * 20;
-                ctx.translate(x, y + offsetY);
-                ctx.fillText(word, 0, 0);
+                ctx.translate(wp.x, wp.y + (1 - wordProgress) * 20);
+                ctx.fillText(wp.word, 0, 0);
               } else if (typoAnim === "slide-in") {
-                const offsetX = (1 - wordProgress) * -WIDTH * 0.3;
-                ctx.translate(x + offsetX, y);
-                ctx.fillText(word, 0, 0);
+                ctx.translate(wp.x + (1 - wordProgress) * -WIDTH * 0.3, wp.y);
+                ctx.fillText(wp.word, 0, 0);
               } else {
-                ctx.translate(x, y);
+                ctx.translate(wp.x, wp.y);
                 ctx.scale(wordProgress, wordProgress);
-                ctx.fillText(word, 0, 0);
+                ctx.fillText(wp.word, 0, 0);
               }
 
               ctx.restore();
-            });
+            }
           }
         }
 
@@ -752,6 +800,13 @@ export default function ExportPanel() {
             ? activeCaption.text.toUpperCase()
             : activeCaption.text;
 
+          // Word-wrap long captions
+          const maxTextWidth = WIDTH * 0.85;
+          const lines = wrapText(ctx, displayText, maxTextWidth);
+          const lineHeight = cSize * 1.25;
+          const totalTextH = lines.length * lineHeight;
+          const startY = captionY - totalTextH / 2 + lineHeight / 2;
+
           // Shadow
           if (eff.shadowBlur > 0) {
             ctx.shadowColor = eff.shadowColor;
@@ -760,17 +815,19 @@ export default function ExportPanel() {
             ctx.shadowOffsetY = 2;
           }
 
-          // Stroke
-          if (eff.strokeWidth > 0) {
-            ctx.strokeStyle = eff.strokeColor;
-            ctx.lineWidth = eff.strokeWidth * 2;
-            ctx.lineJoin = "round";
-            ctx.strokeText(displayText, WIDTH / 2, captionY);
+          for (let li = 0; li < lines.length; li++) {
+            const lineY = startY + li * lineHeight;
+            // Stroke
+            if (eff.strokeWidth > 0) {
+              ctx.strokeStyle = eff.strokeColor;
+              ctx.lineWidth = eff.strokeWidth * 2;
+              ctx.lineJoin = "round";
+              ctx.strokeText(lines[li], WIDTH / 2, lineY);
+            }
+            // Main text
+            ctx.fillStyle = eff.color;
+            ctx.fillText(lines[li], WIDTH / 2, lineY);
           }
-
-          // Main text
-          ctx.fillStyle = eff.color;
-          ctx.fillText(displayText, WIDTH / 2, captionY);
 
           // Reset shadow
           ctx.shadowColor = "transparent";
@@ -884,6 +941,28 @@ export default function ExportPanel() {
 
     </div>
   );
+}
+
+// Helper: word-wrap text for canvas (fillText has no auto-wrap)
+function wrapText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number
+): string[] {
+  const words = text.split(" ");
+  const lines: string[] = [];
+  let currentLine = "";
+  for (const word of words) {
+    const testLine = currentLine ? `${currentLine} ${word}` : word;
+    if (ctx.measureText(testLine).width > maxWidth && currentLine) {
+      lines.push(currentLine);
+      currentLine = word;
+    } else {
+      currentLine = testLine;
+    }
+  }
+  if (currentLine) lines.push(currentLine);
+  return lines;
 }
 
 // Helper: draw rounded rectangle path

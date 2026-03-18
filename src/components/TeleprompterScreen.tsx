@@ -97,9 +97,9 @@ export default function TeleprompterScreen() {
             },
         audio: {
           sampleRate: { ideal: 48000 },
-          channelCount: { ideal: 1 },
-          echoCancellation: true,
-          noiseSuppression: true,
+          channelCount: { ideal: 2 },
+          echoCancellation: false,
+          noiseSuppression: false,
           autoGainControl: true,
         },
       };
@@ -219,21 +219,20 @@ export default function TeleprompterScreen() {
         setPhase("recording");
 
         chunksRef.current = [];
-        // Prefer MP4 (H.264/AAC) for universal compatibility (iOS, Android, desktop)
-        // Falls back to WebM (VP9/Opus or VP8/Vorbis) where MP4 is not supported
-        const mimeType = MediaRecorder.isTypeSupported("video/mp4;codecs=avc1.42E01E,mp4a.40.2")
-          ? "video/mp4;codecs=avc1.42E01E,mp4a.40.2"
-          : MediaRecorder.isTypeSupported("video/mp4")
-            ? "video/mp4"
-            : MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
-              ? "video/webm;codecs=vp9,opus"
-              : MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
-                ? "video/webm;codecs=vp8,opus"
-                : "video/webm";
+        // Prefer H.264 High Profile (B-frames + CABAC) → Main → Baseline → WebM
+        const mimeType = [
+          "video/mp4;codecs=avc1.640034,mp4a.40.2", // High Profile L5.2
+          "video/mp4;codecs=avc1.4D0034,mp4a.40.2", // Main Profile L5.2
+          "video/mp4;codecs=avc1.42E01E,mp4a.40.2", // Baseline
+          "video/mp4",
+          "video/webm;codecs=vp9,opus",
+          "video/webm;codecs=vp8,opus",
+          "video/webm",
+        ].find((m) => MediaRecorder.isTypeSupported(m)) || "video/webm";
 
         const recorder = new MediaRecorder(streamRef.current!, {
           mimeType,
-          videoBitsPerSecond: 20_000_000,
+          videoBitsPerSecond: 25_000_000,
           audioBitsPerSecond: 320_000,
         });
 

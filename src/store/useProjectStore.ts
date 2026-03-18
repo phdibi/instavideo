@@ -592,8 +592,14 @@ export const useProjectStore = create<ProjectStore>()(
       },
       onRehydrateStorage: () => (state) => {
         if (state) {
-          const isValid = !!(state.videoUrl && state.videoDuration > 0);
-          state.status = isValid ? "ready" : "idle";
+          // Blob URLs never survive page reloads — always reset to idle
+          if (!state.videoUrl || state.videoUrl.startsWith("blob:") || state.videoDuration <= 0) {
+            state.status = "idle";
+            state.videoUrl = "";
+            state.videoDuration = 0;
+          } else {
+            state.status = "ready";
+          }
         }
       },
     }

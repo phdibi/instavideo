@@ -6,7 +6,7 @@ import { useShallow } from "zustand/react/shallow";
 import { AVAILABLE_FONTS } from "@/lib/fonts";
 import { generatePhraseCaptions } from "@/lib/modes";
 import { formatTime } from "@/lib/formatTime";
-import { RefreshCw, ChevronLeft, ChevronRight, Copy, Trash2, Plus } from "lucide-react";
+import { RefreshCw, ChevronLeft, ChevronRight, Copy, Trash2, Plus, ArrowUpRight } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import type { StanzaConfig, PhraseCaption } from "@/types";
 
@@ -133,6 +133,94 @@ export default function StanzaPanel() {
     setSelectedItem({ type: "phrase", id: newCaption.id });
     setEditingWordId(newCaption.id);
   }, [selectedStanzaId, stanzaWords, addPhraseCaption, setSelectedItem]);
+
+  // Find adjacent non-stanza phrases for pull buttons
+  const sortedCaptions = useMemo(
+    () => [...phraseCaptions].sort((a, b) => a.startTime - b.startTime),
+    [phraseCaptions]
+  );
+
+  const prevNonStanzaPhrase = useMemo(() => {
+    if (!selectedStanzaId || stanzaWords.length === 0) return null;
+    const stanzaStart = Math.min(...stanzaWords.map((w) => w.startTime));
+    for (let i = sortedCaptions.length - 1; i >= 0; i--) {
+      const c = sortedCaptions[i];
+      if (!c.stanzaId && c.endTime <= stanzaStart + 0.01) return c;
+    }
+    return null;
+  }, [selectedStanzaId, stanzaWords, sortedCaptions]);
+
+  const nextNonStanzaPhrase = useMemo(() => {
+    if (!selectedStanzaId || stanzaWords.length === 0) return null;
+    const stanzaEnd = Math.max(...stanzaWords.map((w) => w.endTime));
+    for (const c of sortedCaptions) {
+      if (!c.stanzaId && c.startTime >= stanzaEnd - 0.01) return c;
+    }
+    return null;
+  }, [selectedStanzaId, stanzaWords, sortedCaptions]);
+
+  const handlePullPrev = useCallback(() => {
+    if (!prevNonStanzaPhrase || !selectedStanzaId) return;
+    const words = prevNonStanzaPhrase.text.split(" ");
+    if (words.length <= 1) {
+      // Single word → just assign stanzaId
+      updatePhraseCaption(prevNonStanzaPhrase.id, { stanzaId: selectedStanzaId });
+    } else {
+      // Multi-word → split into individual word captions with stanzaId
+      const duration = prevNonStanzaPhrase.endTime - prevNonStanzaPhrase.startTime;
+      const wordDur = duration / words.length;
+      // Update the first word in-place
+      updatePhraseCaption(prevNonStanzaPhrase.id, {
+        text: words[0],
+        endTime: prevNonStanzaPhrase.startTime + wordDur,
+        stanzaId: selectedStanzaId,
+      });
+      // Create new captions for remaining words
+      for (let i = 1; i < words.length; i++) {
+        addPhraseCaption({
+          id: uuidv4(),
+          text: words[i],
+          startTime: prevNonStanzaPhrase.startTime + wordDur * i,
+          endTime: prevNonStanzaPhrase.startTime + wordDur * (i + 1),
+          stanzaId: selectedStanzaId,
+        });
+      }
+    }
+  }, [prevNonStanzaPhrase, selectedStanzaId, updatePhraseCaption, addPhraseCaption]);
+
+  const handlePullNext = useCallback(() => {
+    if (!nextNonStanzaPhrase || !selectedStanzaId) return;
+    const words = nextNonStanzaPhrase.text.split(" ");
+    if (words.length <= 1) {
+      updatePhraseCaption(nextNonStanzaPhrase.id, { stanzaId: selectedStanzaId });
+    } else {
+      const duration = nextNonStanzaPhrase.endTime - nextNonStanzaPhrase.startTime;
+      const wordDur = duration / words.length;
+      updatePhraseCaption(nextNonStanzaPhrase.id, {
+        text: words[0],
+        endTime: nextNonStanzaPhrase.startTime + wordDur,
+        stanzaId: selectedStanzaId,
+      });
+      for (let i = 1; i < words.length; i++) {
+        addPhraseCaption({
+          id: uuidv4(),
+          text: words[i],
+          startTime: nextNonStanzaPhrase.startTime + wordDur * i,
+          endTime: nextNonStanzaPhrase.startTime + wordDur * (i + 1),
+          stanzaId: selectedStanzaId,
+        });
+      }
+    }
+  }, [nextNonStanzaPhrase, selectedStanzaId, updatePhraseCaption, addPhraseCaption]);
+
+  const handleEjectWord = useCallback((wordId: string) => {
+    const remaining = stanzaWords.filter((w) => w.id !== wordId);
+    if (remaining.length <= 1 && remaining.length > 0) {
+      // Last remaining word loses stanzaId too
+      updatePhraseCaption(remaining[0].id, { stanzaId: undefined });
+    }
+    updatePhraseCaption(wordId, { stanzaId: undefined });
+  }, [stanzaWords, updatePhraseCaption]);
 
   // Handle config change: per-stanza or global depending on checkbox
   const handleConfigChange = useCallback((update: Partial<StanzaConfig>) => {
@@ -379,6 +467,27 @@ export default function StanzaPanel() {
           {/* Editable word list for selected stanza */}
           {selectedStanzaId && stanzaWords.length > 0 && (
             <Section title="Palavras da estrofe">
+              {/* Pull adjacent captions into stanza */}
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                <button
+                  onClick={handlePullPrev}
+                  disabled={!prevNonStanzaPhrase}
+                  className="flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/30 hover:bg-purple-500/20 disabled:opacity-30 disabled:pointer-events-none transition-all"
+                  title="Puxar legenda anterior para estrofe"
+                >
+                  <ChevronLeft className="w-3 h-3" />
+                  Puxar anterior
+                </button>
+                <button
+                  onClick={handlePullNext}
+                  disabled={!nextNonStanzaPhrase}
+                  className="flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/30 hover:bg-purple-500/20 disabled:opacity-30 disabled:pointer-events-none transition-all"
+                  title="Puxar legenda seguinte para estrofe"
+                >
+                  Puxar seguinte
+                  <ChevronRight className="w-3 h-3" />
+                </button>
+              </div>
               <div className="space-y-1">
                 {stanzaWords.map((word) => {
                   const isSelected = selectedItem?.id === word.id;
@@ -426,6 +535,16 @@ export default function StanzaPanel() {
                         }`}
                       >
                         E
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEjectWord(word.id);
+                        }}
+                        title="Ejetar para legenda normal"
+                        className="shrink-0 w-6 h-6 flex items-center justify-center rounded text-[var(--text-secondary)] hover:text-purple-400 hover:bg-purple-500/10 transition-all"
+                      >
+                        <ArrowUpRight className="w-3 h-3" />
                       </button>
                       <button
                         onClick={(e) => {

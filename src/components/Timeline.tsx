@@ -724,7 +724,7 @@ export default function Timeline() {
     if (selectedItem.type === "phrase") {
       const cap = phraseCaptions.find((c) => c.id === selectedItem.id);
       if (!cap) return null;
-      return { type: "phrase" as const, id: cap.id, startTime: cap.startTime, endTime: cap.endTime };
+      return { type: "phrase" as const, id: cap.id, startTime: cap.startTime, endTime: cap.endTime, isStanza: !!cap.stanzaId };
     }
     if (selectedItem.type === "sfx") {
       const marker = sfxMarkers.find((m) => m.id === selectedItem.id);
@@ -745,7 +745,8 @@ export default function Timeline() {
         return;
       }
       const newStart = Math.max(0, trimTarget.startTime! + delta);
-      if (trimTarget.endTime! - newStart < MIN_DURATION) return;
+      const minDur = trimTarget.type === "phrase" && trimTarget.isStanza ? 0.02 : MIN_DURATION;
+      if (trimTarget.endTime! - newStart < minDur) return;
       if (trimTarget.type === "segment") updateModeSegment(trimTarget.id, { startTime: newStart });
       else updatePhraseCaption(trimTarget.id, { startTime: newStart });
     },
@@ -756,7 +757,8 @@ export default function Timeline() {
     (delta: number) => {
       if (!trimTarget || trimTarget.type === "sfx") return;
       const newEnd = Math.min(videoDuration, trimTarget.endTime! + delta);
-      if (newEnd - trimTarget.startTime! < MIN_DURATION) return;
+      const minDur = trimTarget.type === "phrase" && trimTarget.isStanza ? 0.02 : MIN_DURATION;
+      if (newEnd - trimTarget.startTime! < minDur) return;
       if (trimTarget.type === "segment") updateModeSegment(trimTarget.id, { endTime: newEnd });
       else updatePhraseCaption(trimTarget.id, { endTime: newEnd });
     },

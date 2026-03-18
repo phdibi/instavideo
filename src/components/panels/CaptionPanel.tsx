@@ -11,6 +11,7 @@ import {
   AlignVerticalJustifyEnd,
   ChevronLeft,
   ChevronRight,
+  Scissors,
   Trash2,
   RotateCcw,
   Copy,
@@ -262,6 +263,29 @@ export default function CaptionPanel() {
     setSelectedItem({ type: "phrase", id });
   }, [currentTime, videoDuration, addPhraseCaption, setSelectedItem]);
 
+  const handleSplit = useCallback(() => {
+    if (!selectedPhrase) return;
+    const { startTime, endTime, text, styleOverride, stanzaId, isEmphasis } = selectedPhrase;
+    const words = text.split(" ");
+    const duration = endTime - startTime;
+    if (words.length >= 2) {
+      const midIdx = Math.ceil(words.length / 2);
+      const firstText = words.slice(0, midIdx).join(" ");
+      const secondText = words.slice(midIdx).join(" ");
+      const splitTime = startTime + duration * (midIdx / words.length);
+      updatePhraseCaption(selectedPhrase.id, { text: firstText, endTime: splitTime });
+      const newId = uuidv4();
+      addPhraseCaption({ id: newId, startTime: splitTime, endTime, text: secondText, styleOverride, stanzaId, isEmphasis });
+      setSelectedItem({ type: "phrase", id: newId });
+    } else {
+      const midTime = startTime + duration / 2;
+      updatePhraseCaption(selectedPhrase.id, { endTime: midTime });
+      const newId = uuidv4();
+      addPhraseCaption({ id: newId, startTime: midTime, endTime, text, styleOverride, stanzaId, isEmphasis });
+      setSelectedItem({ type: "phrase", id: newId });
+    }
+  }, [selectedPhrase, updatePhraseCaption, addPhraseCaption, setSelectedItem]);
+
   return (
     <div className="p-4 space-y-5 overflow-y-auto max-h-full">
       {/* ═══ Add caption button ═══ */}
@@ -354,6 +378,16 @@ export default function CaptionPanel() {
                 Puxar →
               </button>
             </div>
+
+            {/* Split button */}
+            <button
+              onClick={handleSplit}
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-medium bg-[var(--surface-hover)] border border-[var(--border)] hover:border-[var(--accent)]/50 transition-all"
+              title="Dividir legenda ao meio"
+            >
+              <Scissors className="w-3 h-3" />
+              Dividir
+            </button>
 
             {/* Context: show prev/next phrases */}
             <div className="space-y-1 pt-1 border-t border-[var(--border)]">

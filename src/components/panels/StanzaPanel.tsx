@@ -162,27 +162,27 @@ export default function StanzaPanel() {
 
   const handlePullPrev = useCallback(() => {
     if (!prevNonStanzaPhrase || !selectedStanzaId) return;
-    const words = prevNonStanzaPhrase.text.split(" ");
+    // Read fresh from store to avoid stale closure
+    const current = useProjectStore.getState().phraseCaptions;
+    const phrase = current.find(p => p.id === prevNonStanzaPhrase.id);
+    if (!phrase) return;
+    const words = phrase.text.split(" ");
     if (words.length <= 1) {
-      // Single word → just assign stanzaId
-      updatePhraseCaption(prevNonStanzaPhrase.id, { stanzaId: selectedStanzaId });
+      updatePhraseCaption(phrase.id, { stanzaId: selectedStanzaId });
     } else {
-      // Multi-word → split into individual word captions with stanzaId
-      const duration = prevNonStanzaPhrase.endTime - prevNonStanzaPhrase.startTime;
+      const duration = phrase.endTime - phrase.startTime;
       const wordDur = duration / words.length;
-      // Update the first word in-place
-      updatePhraseCaption(prevNonStanzaPhrase.id, {
+      updatePhraseCaption(phrase.id, {
         text: words[0],
-        endTime: prevNonStanzaPhrase.startTime + wordDur,
+        endTime: phrase.startTime + wordDur,
         stanzaId: selectedStanzaId,
       });
-      // Create new captions for remaining words
       for (let i = 1; i < words.length; i++) {
         addPhraseCaption({
           id: uuidv4(),
           text: words[i],
-          startTime: prevNonStanzaPhrase.startTime + wordDur * i,
-          endTime: prevNonStanzaPhrase.startTime + wordDur * (i + 1),
+          startTime: phrase.startTime + wordDur * i,
+          endTime: phrase.startTime + wordDur * (i + 1),
           stanzaId: selectedStanzaId,
         });
       }
@@ -191,23 +191,26 @@ export default function StanzaPanel() {
 
   const handlePullNext = useCallback(() => {
     if (!nextNonStanzaPhrase || !selectedStanzaId) return;
-    const words = nextNonStanzaPhrase.text.split(" ");
+    const current = useProjectStore.getState().phraseCaptions;
+    const phrase = current.find(p => p.id === nextNonStanzaPhrase.id);
+    if (!phrase) return;
+    const words = phrase.text.split(" ");
     if (words.length <= 1) {
-      updatePhraseCaption(nextNonStanzaPhrase.id, { stanzaId: selectedStanzaId });
+      updatePhraseCaption(phrase.id, { stanzaId: selectedStanzaId });
     } else {
-      const duration = nextNonStanzaPhrase.endTime - nextNonStanzaPhrase.startTime;
+      const duration = phrase.endTime - phrase.startTime;
       const wordDur = duration / words.length;
-      updatePhraseCaption(nextNonStanzaPhrase.id, {
+      updatePhraseCaption(phrase.id, {
         text: words[0],
-        endTime: nextNonStanzaPhrase.startTime + wordDur,
+        endTime: phrase.startTime + wordDur,
         stanzaId: selectedStanzaId,
       });
       for (let i = 1; i < words.length; i++) {
         addPhraseCaption({
           id: uuidv4(),
           text: words[i],
-          startTime: nextNonStanzaPhrase.startTime + wordDur * i,
-          endTime: nextNonStanzaPhrase.startTime + wordDur * (i + 1),
+          startTime: phrase.startTime + wordDur * i,
+          endTime: phrase.startTime + wordDur * (i + 1),
           stanzaId: selectedStanzaId,
         });
       }

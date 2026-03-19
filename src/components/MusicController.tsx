@@ -138,9 +138,10 @@ export default function MusicController() {
         break;
     }
 
-    // Fade out at end of video
-    if (musicConfig.fadeOutDuration > 0 && videoDuration > 0 && currentTime > videoDuration - musicConfig.fadeOutDuration) {
-      const fadeProgress = (videoDuration - currentTime) / musicConfig.fadeOutDuration;
+    // Fade out at end of video (clamp fade duration to video length)
+    const effectiveFadeDur = Math.min(musicConfig.fadeOutDuration, videoDuration);
+    if (effectiveFadeDur > 0 && videoDuration > 0 && currentTime > videoDuration - effectiveFadeDur) {
+      const fadeProgress = (videoDuration - currentTime) / effectiveFadeDur;
       targetVolume *= Math.max(0, fadeProgress);
     }
 

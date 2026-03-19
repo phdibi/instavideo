@@ -21,6 +21,7 @@ export default function ExportPanel() {
     selectedMusicTrack,
     captionConfig,
     stanzaConfig,
+    stanzaStyleOverrides,
     sfxConfig,
     sfxMarkers,
     voiceEnhanceConfig,
@@ -35,6 +36,7 @@ export default function ExportPanel() {
       selectedMusicTrack: s.selectedMusicTrack,
       captionConfig: s.captionConfig,
       stanzaConfig: s.stanzaConfig,
+      stanzaStyleOverrides: s.stanzaStyleOverrides,
       sfxConfig: s.sfxConfig,
       sfxMarkers: s.sfxMarkers,
       voiceEnhanceConfig: s.voiceEnhanceConfig,
@@ -231,28 +233,7 @@ export default function ExportPanel() {
 
       recorder.start(100);
 
-      // Render loop — pre-compute stanza values (avoid per-frame lookups)
-      const stanzaEmphFont = getCanvasFontName(stanzaConfig.emphasisFontFamily);
-      const stanzaNormFont = getCanvasFontName(stanzaConfig.normalFontFamily);
-      const stanzaLayout = stanzaConfig.stanzaLayout;
-      const isCascading = stanzaLayout === "cascading";
-      const stanzaBaseY = isCascading
-        ? HEIGHT * 0.80
-        : stanzaLayout === "inline"
-          ? HEIGHT * 0.88
-          : stanzaLayout === "diagonal"
-            ? HEIGHT * 0.92
-            : stanzaLayout === "scattered"
-              ? HEIGHT * 0.95
-              : captionConfig.position === "top"
-                ? HEIGHT * 0.15
-                : captionConfig.position === "center"
-                  ? HEIGHT * 0.5
-                  : HEIGHT * 0.85;
-      const stanzaBaseX = isCascading ? WIDTH * 0.06 : WIDTH / 2;
-      const stanzaEmphSize = isCascading
-        ? stanzaConfig.emphasisFontSize * 1.4
-        : stanzaConfig.emphasisFontSize;
+      // Render loop
       // Deterministic rand for scattered layout (same as CaptionOverlay)
       const scatteredRand = (seed: number) => ((Math.sin(seed * 9371) * 43758.5453) % 1 + 1) % 1;
       // Pre-compute presenter segments and index map (avoid per-frame filter/findIndex)
@@ -296,9 +277,10 @@ export default function ExportPanel() {
               vol = 0.3;
               break;
           }
-          if (musicConfig.fadeOutDuration > 0 && time > videoDuration - musicConfig.fadeOutDuration) {
+          const effectiveFadeDur = Math.min(musicConfig.fadeOutDuration, videoDuration);
+          if (effectiveFadeDur > 0 && time > videoDuration - effectiveFadeDur) {
             const fadeProgress =
-              (videoDuration - time) / musicConfig.fadeOutDuration;
+              (videoDuration - time) / effectiveFadeDur;
             vol *= Math.max(0, fadeProgress);
           }
           musicGain.gain.setTargetAtTime(vol, audioCtx.currentTime, 0.05);
@@ -333,13 +315,13 @@ export default function ExportPanel() {
           const segProgress = zoomStart >= zoomEnd
             ? 0
             : Math.min(Math.max((rawProgress - zoomStart) / (zoomEnd - zoomStart), 0), 1);
-          const zoomType = segment?.presenterZoom ?? (presenterIndex % 2 === 0 ? "zoom-in" : "zoom-out");
+          const zoomType = segment?.presenterZoom ?? "zoom-in";
           const pTransform = computePresenterEffect(
             zoomType,
             segProgress,
-            segment?.presenterZoomIntensity ?? 1.0,
+            segment?.presenterZoomIntensity ?? 1.5,
             presenterIndex,
-            segment?.presenterZoomEasing ?? "smooth"
+            segment?.presenterZoomEasing ?? "abrupt"
           );
 
           ctx.save();
@@ -413,6 +395,7 @@ export default function ExportPanel() {
               ctx.save();
               ctx.shadowColor = "rgba(0,0,0,0.4)";
               ctx.shadowBlur = 30;
+              ctx.shadowOffsetX = 0;
               ctx.shadowOffsetY = 8;
               ctx.translate(cardX + cardW / 2, cardY + cardH / 2);
               ctx.scale(cardScale * transform.scale, cardScale * transform.scale);
@@ -690,7 +673,34 @@ export default function ExportPanel() {
         const isStanza = stanzaActiveCaptions.length >= 1;
 
         if (isStanza) {
-          const normalSize = stanzaConfig.normalFontSize;
+          // Merge per-stanza style overrides (must match CaptionOverlay behavior)
+          const activeStanzaId = stanzaActiveCaptions[0]?.stanzaId;
+          const effStanza = activeStanzaId && stanzaStyleOverrides[activeStanzaId]
+            ? { ...stanzaConfig, ...stanzaStyleOverrides[activeStanzaId] }
+            : stanzaConfig;
+
+          const normalSize = effStanza.normalFontSize;
+          const effEmphFont = getCanvasFontName(effStanza.emphasisFontFamily);
+          const effNormFont = getCanvasFontName(effStanza.normalFontFamily);
+          const effLayout = effStanza.stanzaLayout;
+          const effIsCascading = effLayout === "cascading";
+          const effEmphSize = effIsCascading
+            ? effStanza.emphasisFontSize * 1.4
+            : effStanza.emphasisFontSize;
+          const effBaseY = effIsCascading
+            ? HEIGHT * 0.80
+            : effLayout === "inline"
+              ? HEIGHT * 0.88
+              : effLayout === "diagonal"
+                ? HEIGHT * 0.92
+                : effLayout === "scattered"
+                  ? HEIGHT * 0.95
+                  : captionConfig.position === "top"
+                    ? HEIGHT * 0.15
+                    : captionConfig.position === "center"
+                      ? HEIGHT * 0.5
+                      : HEIGHT * 0.85;
+          const effBaseX = effIsCascading ? WIDTH * 0.06 : WIDTH / 2;
 
           const getStanzaUppercase = (cap: typeof stanzaActiveCaptions[0]) => {
             if (cap.styleOverride?.uppercase !== undefined) return cap.styleOverride.uppercase;
@@ -698,8 +708,8 @@ export default function ExportPanel() {
           };
 
           const drawStanzaWord = (cap: typeof stanzaActiveCaptions[0], x: number, y: number, alpha: number) => {
-            const fSize = cap.isEmphasis ? stanzaEmphSize : normalSize;
-            const fontName = cap.isEmphasis ? stanzaEmphFont : stanzaNormFont;
+            const fSize = cap.isEmphasis ? effEmphSize : normalSize;
+            const fontName = cap.isEmphasis ? effEmphFont : effNormFont;
             const weight = cap.isEmphasis ? "italic 700" : "400";
             ctx.font = `${weight} ${fSize}px ${fontName}, system-ui, sans-serif`;
             const displayText = getStanzaUppercase(cap) ? cap.text.toUpperCase() : cap.text;
@@ -713,18 +723,20 @@ export default function ExportPanel() {
             ctx.globalAlpha = 1;
             ctx.shadowColor = "transparent";
             ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
           };
 
-          if (stanzaLayout === "inline") {
+          if (effLayout === "inline") {
             // Inline/Fluido: words side by side with word-wrap
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            const lineY = stanzaBaseY;
+            const lineY = effBaseY;
             let totalWidth = 0;
             const wordWidths: number[] = [];
             for (const cap of stanzaActiveCaptions) {
-              const fSize = cap.isEmphasis ? stanzaEmphSize : normalSize;
-              const fontName = cap.isEmphasis ? stanzaEmphFont : stanzaNormFont;
+              const fSize = cap.isEmphasis ? effEmphSize : normalSize;
+              const fontName = cap.isEmphasis ? effEmphFont : effNormFont;
               const weight = cap.isEmphasis ? "italic 700" : "400";
               ctx.font = `${weight} ${fSize}px ${fontName}, system-ui, sans-serif`;
               const displayText = getStanzaUppercase(cap) ? cap.text.toUpperCase() : cap.text;
@@ -742,55 +754,59 @@ export default function ExportPanel() {
               drawStanzaWord(cap, curX, lineY, alpha);
               curX += wordWidths[i] + gap;
             }
-          } else if (stanzaLayout === "diagonal") {
-            // Diagonal: bottom-left to top-right
+          } else if (effLayout === "diagonal") {
+            // Diagonal: bottom-left to top-right (match CaptionOverlay container: bottom-[8%] height 35%)
             ctx.textAlign = "left";
             ctx.textBaseline = "middle";
-            const baseX = WIDTH * 0.08;
-            const baseBottomY = HEIGHT * 0.85;
+            const baseX = WIDTH * 0.015;
+            const baseBottomY = HEIGHT * 0.92;
             const stepX = WIDTH * 0.14;
-            const stepY = HEIGHT * 0.08;
+            const stepY = HEIGHT * 0.035;
             for (let i = 0; i < stanzaActiveCaptions.length; i++) {
               const cap = stanzaActiveCaptions[i];
               const x = baseX + i * stepX;
               const y = baseBottomY - i * stepY;
               drawStanzaWord(cap, x, y, cap.isEmphasis ? 1 : 0.6);
             }
-          } else if (stanzaLayout === "scattered") {
-            // Scattered: pseudo-random positions
+          } else if (effLayout === "scattered") {
+            // Scattered: pseudo-random positions (match CaptionOverlay container: bottom-[5%] height 40%)
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             for (let i = 0; i < stanzaActiveCaptions.length; i++) {
               const cap = stanzaActiveCaptions[i];
               const seed = i * 7 + (cap.text.charCodeAt(0) || 0);
-              const x = scatteredRand(seed) * WIDTH * 0.7 + WIDTH * 0.15;
-              const y = HEIGHT * 0.55 + scatteredRand(seed + 1) * HEIGHT * 0.3;
+              const x = scatteredRand(seed) * WIDTH * 0.7 + WIDTH * 0.05;
+              // CaptionOverlay: bottom 10-70% within 40% container at 5% from bottom
+              // Absolute from top: 0.91 - rand*0.24
+              const y = HEIGHT * (0.91 - scatteredRand(seed + 1) * 0.24);
               drawStanzaWord(cap, x, y, cap.isEmphasis ? 1 : 0.55);
             }
           } else {
             // Centered / Cascading (original)
-            ctx.textAlign = isCascading ? "left" : "center";
+            ctx.textAlign = effIsCascading ? "left" : "center";
             ctx.textBaseline = "middle";
 
-            const cascadeIndentStep = WIDTH * 0.055;
-            const cascadeEmphNudge = -WIDTH * 0.02;
-            const cascadeMaxIndent = WIDTH * 0.4;
+            // Scale from CaptionOverlay constants (40px, -12px, 220px at 720px preview)
+            const cascadeScale = WIDTH / 720;
+            const cascadeIndentStep = 40 * cascadeScale;
+            const cascadeEmphNudge = -12 * cascadeScale;
+            const cascadeMaxIndent = 220 * cascadeScale;
             const lines = stanzaActiveCaptions.map((cap, index) => {
-              const size = cap.isEmphasis ? stanzaEmphSize : normalSize;
-              const emphPad = cap.isEmphasis && isCascading ? size * 0.15 : 0;
-              const indent = isCascading
+              const size = cap.isEmphasis ? effEmphSize : normalSize;
+              const emphPad = cap.isEmphasis && effIsCascading ? size * 0.15 : 0;
+              const indent = effIsCascading
                 ? Math.min(index * cascadeIndentStep + (cap.isEmphasis ? cascadeEmphNudge : 0), cascadeMaxIndent)
                 : 0;
               return { caption: cap, fontSize: size, lineHeight: size * 1.2 + emphPad, indent };
             });
             const totalHeight = lines.reduce((sum, l) => sum + l.lineHeight, 0);
-            let currentY = stanzaBaseY - totalHeight / 2;
+            let currentY = effBaseY - totalHeight / 2;
 
             for (const line of lines) {
               const { caption: cap } = line;
               const drawY = currentY + line.lineHeight / 2;
-              const alpha = isCascading && !cap.isEmphasis ? 0.55 : 1;
-              drawStanzaWord(cap, stanzaBaseX + line.indent, drawY, alpha);
+              const alpha = effIsCascading && !cap.isEmphasis ? 0.55 : 1;
+              drawStanzaWord(cap, effBaseX + line.indent, drawY, alpha);
               currentY += line.lineHeight;
             }
           }
@@ -900,6 +916,7 @@ export default function ExportPanel() {
     selectedMusicTrack,
     captionConfig,
     stanzaConfig,
+    stanzaStyleOverrides,
     sfxConfig,
     sfxMarkers,
     voiceEnhanceConfig,

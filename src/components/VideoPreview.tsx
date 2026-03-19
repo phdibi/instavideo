@@ -90,6 +90,8 @@ export default function VideoPreview() {
       audioCtxRef.current = ctx;
       voiceSourceRef.current = ctx.createMediaElementSource(vid);
       muteGainRef.current = ctx.createGain();
+      // Apply current mute state (may have been set before AudioContext existed)
+      muteGainRef.current.gain.value = muted ? 0 : 1;
 
       const chain = createVoiceEnhancerChain(ctx, voiceEnhanceConfig);
       voiceChainRef.current = chain;

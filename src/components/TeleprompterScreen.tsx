@@ -547,13 +547,6 @@ export default function TeleprompterScreen() {
     sheetDragRef.current = null;
   }, [mobileSheetHeight]);
 
-  // Clean up recordedUrl blob on unmount to prevent memory leak
-  useEffect(() => {
-    return () => {
-      if (recordedUrl) URL.revokeObjectURL(recordedUrl);
-    };
-  }, [recordedUrl]);
-
   const scriptLines = useMemo(() => {
     return teleprompterSettings.script.split("\n").map((line) => line.trim());
   }, [teleprompterSettings.script]);

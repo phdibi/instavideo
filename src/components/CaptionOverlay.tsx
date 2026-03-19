@@ -89,7 +89,7 @@ function CaptionOverlay({ currentTime }: Props) {
         else regular.push(c);
       }
     }
-    return { stanzaCaptions: stanza, regularCaptions: regular, isStanza: stanza.length > 1 };
+    return { stanzaCaptions: stanza, regularCaptions: regular, isStanza: stanza.length >= 1 };
   }, [phraseCaptions, currentTime]);
 
   return (

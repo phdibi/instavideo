@@ -190,34 +190,43 @@ export default function CaptionPanel() {
   // Move the first word of selected phrase to end of previous phrase
   const moveWordToPrev = () => {
     if (!selectedPhrase || !prevPhrase) return;
-    const words = selectedPhrase.text.split(" ");
+    const current = useProjectStore.getState().phraseCaptions;
+    const sel = current.find(p => p.id === selectedPhrase.id);
+    const prev = current.find(p => p.id === prevPhrase.id);
+    if (!sel || !prev) return;
+    const words = sel.text.split(" ");
     if (words.length <= 1) return;
     const wordToMove = words[0];
     const remaining = words.slice(1).join(" ");
-    updatePhraseCaption(prevPhrase.id, {
-      text: prevPhrase.text + " " + wordToMove,
-      endTime: selectedPhrase.startTime + (selectedPhrase.endTime - selectedPhrase.startTime) * (1 / words.length),
+    const splitTime = sel.startTime + (sel.endTime - sel.startTime) * (1 / words.length);
+    updatePhraseCaption(prev.id, {
+      text: prev.text + " " + wordToMove,
+      endTime: splitTime,
     });
-    updatePhraseCaption(selectedPhrase.id, {
+    updatePhraseCaption(sel.id, {
       text: remaining,
-      startTime: selectedPhrase.startTime + (selectedPhrase.endTime - selectedPhrase.startTime) * (1 / words.length),
+      startTime: splitTime,
     });
   };
 
   // Move the last word of selected phrase to beginning of next phrase
   const moveWordToNext = () => {
     if (!selectedPhrase || !nextPhrase) return;
-    const words = selectedPhrase.text.split(" ");
+    const current = useProjectStore.getState().phraseCaptions;
+    const sel = current.find(p => p.id === selectedPhrase.id);
+    const next = current.find(p => p.id === nextPhrase.id);
+    if (!sel || !next) return;
+    const words = sel.text.split(" ");
     if (words.length <= 1) return;
     const wordToMove = words[words.length - 1];
     const remaining = words.slice(0, -1).join(" ");
-    const splitTime = selectedPhrase.startTime + (selectedPhrase.endTime - selectedPhrase.startTime) * ((words.length - 1) / words.length);
-    updatePhraseCaption(selectedPhrase.id, {
+    const splitTime = sel.startTime + (sel.endTime - sel.startTime) * ((words.length - 1) / words.length);
+    updatePhraseCaption(sel.id, {
       text: remaining,
       endTime: splitTime,
     });
-    updatePhraseCaption(nextPhrase.id, {
-      text: wordToMove + " " + nextPhrase.text,
+    updatePhraseCaption(next.id, {
+      text: wordToMove + " " + next.text,
       startTime: splitTime,
     });
   };
@@ -225,17 +234,21 @@ export default function CaptionPanel() {
   // Move last word of previous phrase to beginning of selected
   const pullWordFromPrev = () => {
     if (!selectedPhrase || !prevPhrase) return;
-    const prevWords = prevPhrase.text.split(" ");
+    const current = useProjectStore.getState().phraseCaptions;
+    const sel = current.find(p => p.id === selectedPhrase.id);
+    const prev = current.find(p => p.id === prevPhrase.id);
+    if (!sel || !prev) return;
+    const prevWords = prev.text.split(" ");
     if (prevWords.length <= 1) return;
     const wordToMove = prevWords[prevWords.length - 1];
     const remaining = prevWords.slice(0, -1).join(" ");
-    const splitTime = prevPhrase.startTime + (prevPhrase.endTime - prevPhrase.startTime) * ((prevWords.length - 1) / prevWords.length);
-    updatePhraseCaption(prevPhrase.id, {
+    const splitTime = prev.startTime + (prev.endTime - prev.startTime) * ((prevWords.length - 1) / prevWords.length);
+    updatePhraseCaption(prev.id, {
       text: remaining,
       endTime: splitTime,
     });
-    updatePhraseCaption(selectedPhrase.id, {
-      text: wordToMove + " " + selectedPhrase.text,
+    updatePhraseCaption(sel.id, {
+      text: wordToMove + " " + sel.text,
       startTime: splitTime,
     });
   };
@@ -243,16 +256,20 @@ export default function CaptionPanel() {
   // Move first word of next phrase to end of selected
   const pullWordFromNext = () => {
     if (!selectedPhrase || !nextPhrase) return;
-    const nextWords = nextPhrase.text.split(" ");
+    const current = useProjectStore.getState().phraseCaptions;
+    const sel = current.find(p => p.id === selectedPhrase.id);
+    const next = current.find(p => p.id === nextPhrase.id);
+    if (!sel || !next) return;
+    const nextWords = next.text.split(" ");
     if (nextWords.length <= 1) return;
     const wordToMove = nextWords[0];
     const remaining = nextWords.slice(1).join(" ");
-    const splitTime = nextPhrase.startTime + (nextPhrase.endTime - nextPhrase.startTime) * (1 / nextWords.length);
-    updatePhraseCaption(selectedPhrase.id, {
-      text: selectedPhrase.text + " " + wordToMove,
+    const splitTime = next.startTime + (next.endTime - next.startTime) * (1 / nextWords.length);
+    updatePhraseCaption(sel.id, {
+      text: sel.text + " " + wordToMove,
       endTime: splitTime,
     });
-    updatePhraseCaption(nextPhrase.id, {
+    updatePhraseCaption(next.id, {
       text: remaining,
       startTime: splitTime,
     });

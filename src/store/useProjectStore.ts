@@ -56,6 +56,8 @@ interface ProjectStore {
   customMusicTracks: MusicTrack[];
   // Export resolution
   exportResolution: ResolutionKey;
+  // Export quality: "fast" (MediaRecorder real-time) or "hd" (WebCodecs offline, better quality)
+  exportQuality: "fast" | "hd";
   // Waveform peaks for timeline
   waveformPeaks: Float32Array | null;
 
@@ -109,8 +111,9 @@ interface ProjectStore {
   // Custom music
   addCustomMusicTrack: (track: MusicTrack) => void;
   removeCustomMusicTrack: (id: string) => void;
-  // Export resolution
+  // Export resolution & quality
   setExportResolution: (resolution: ResolutionKey) => void;
+  setExportQuality: (quality: "fast" | "hd") => void;
   // Waveform
   setWaveformPeaks: (peaks: Float32Array | null) => void;
   reset: () => void;
@@ -215,6 +218,7 @@ const initialState = {
   voiceEnhanceConfig: { preset: "off" as const, intensity: 1.0 },
   customMusicTracks: [] as MusicTrack[],
   exportResolution: "1080x1920" as ResolutionKey,
+  exportQuality: "hd" as "fast" | "hd",
   waveformPeaks: null as Float32Array | null,
 };
 
@@ -614,6 +618,7 @@ export const useProjectStore = create<ProjectStore>()(
       selectedMusicTrack: state.selectedMusicTrack === id ? null : state.selectedMusicTrack,
     })),
   setExportResolution: (resolution) => set({ exportResolution: resolution }),
+  setExportQuality: (quality) => set({ exportQuality: quality }),
   setWaveformPeaks: (peaks) => set({ waveformPeaks: peaks }),
   reset: () => set({
     ...initialState,
@@ -632,7 +637,7 @@ export const useProjectStore = create<ProjectStore>()(
       partialize: (state) => {
         // Exclude transient fields from undo history
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { videoFile, status, statusMessage, currentTime, isPlaying, selectedItem, selectedItems, waveformPeaks, customMusicTracks, ...rest } = state;
+        const { videoFile, status, statusMessage, currentTime, isPlaying, selectedItem, selectedItems, waveformPeaks, customMusicTracks, exportQuality, ...rest } = state;
         return rest;
       },
     }

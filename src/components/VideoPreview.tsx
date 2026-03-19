@@ -426,7 +426,7 @@ export default function VideoPreview() {
     return computePresenterEffect(
       zoomType,
       progress,
-      currentSegment.presenterZoomIntensity ?? 1.5,
+      currentSegment.presenterZoomIntensity ?? 1.0,
       presenterIdx,
       currentSegment.presenterZoomEasing ?? "abrupt"
     );

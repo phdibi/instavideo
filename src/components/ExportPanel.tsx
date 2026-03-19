@@ -13,6 +13,15 @@ import { renderSFXToBuffer } from "@/lib/sfx";
 import { createVoiceEnhancerChain } from "@/lib/voiceEnhancer";
 import { getTransitionAlpha } from "@/lib/transitions";
 import {
+  probeWebCodecs,
+  seekVideo as seekVideoToTime,
+  createMuxerBundle,
+  encodeAudio,
+  encodeVideoFrame,
+  finalizeMuxer,
+  type WebCodecsConfig,
+} from "@/lib/webcodecExporter";
+import {
   REF_WIDTH,
   CASCADE_EMPH_SCALE,
   CASCADE_INDENT_STEP,
@@ -47,6 +56,8 @@ export default function ExportPanel() {
     setStatus,
     exportResolution,
     setExportResolution,
+    exportQuality,
+    setExportQuality,
     customMusicTracks,
   } = useProjectStore(
     useShallow((s) => ({
@@ -65,6 +76,8 @@ export default function ExportPanel() {
       setStatus: s.setStatus,
       exportResolution: s.exportResolution,
       setExportResolution: s.setExportResolution,
+      exportQuality: s.exportQuality,
+      setExportQuality: s.setExportQuality,
       customMusicTracks: s.customMusicTracks,
     }))
   );
@@ -278,138 +291,24 @@ export default function ExportPanel() {
 
       if (signal.aborted) { setStatus("ready", "Export cancelado"); return; }
 
-      // 4. Set up playback of pre-mixed audio for MediaRecorder
-      const dest = audioCtx.createMediaStreamDestination();
-      const playbackSrc = audioCtx.createBufferSource();
-      playbackSrc.buffer = mixedAudio;
-      playbackSrc.connect(dest);
-
-      // Combine canvas + audio into MediaRecorder
-      const canvasStream = canvas.captureStream(FPS);
-      for (const track of dest.stream.getAudioTracks()) {
-        canvasStream.addTrack(track);
-      }
-
-      // Codec priority: MP4 H.264+AAC (Safari, Chrome 126+) → WebM VP9+Opus → VP8+Opus
-      const mimeType = [
-        "video/mp4;codecs=avc1.640028,mp4a.40.2",  // H.264 High + AAC (best for Safari/iOS)
-        "video/webm;codecs=vp9,opus",                // VP9 + Opus (best WebM quality)
-        "video/webm;codecs=vp8,opus",                // VP8 + Opus (broad WebM support)
-        "video/mp4;codecs=avc1.640028",              // H.264 High (no audio codec spec)
-        "video/mp4",
-        "video/webm",
-      ].find((m) => MediaRecorder.isTypeSupported(m)) || "video/webm";
-
-      // Dynamic bitrate based on resolution for optimal quality
-      const pixels = WIDTH * HEIGHT;
-      const videoBps = pixels >= 2_000_000 ? 12_000_000   // 1080p+ → 12 Mbps
-                     : pixels >= 1_000_000 ? 8_000_000    // 720p+  → 8 Mbps
-                     : 6_000_000;                          // smaller → 6 Mbps
-
-      const recorder = new MediaRecorder(canvasStream, {
-        mimeType,
-        videoBitsPerSecond: videoBps,
-        audioBitsPerSecond: 128_000,  // 128 kbps stereo (Opus/AAC standard)
-      });
-
-      const chunks: Blob[] = [];
-      recorder.addEventListener("dataavailable", (e) => {
-        if (e.data.size > 0) chunks.push(e.data);
-      });
-
-      const exportPromise = new Promise<void>((resolve) => {
-        recorder.addEventListener("stop", () => resolve(), { once: true });
-      });
-
-      // Handle recorder errors
-      recorder.addEventListener("error", (e) => {
-        console.error("MediaRecorder error:", e);
-      });
-
-      // ── Play-based Render Loop ──
-      // Play the video natively (hardware-accelerated decoder) instead of seeking
-      // per-frame. Audio is pre-mixed offline, so both play at 1x and stay in sync
-      // naturally. This eliminates seek-per-frame overhead that caused stuttering.
-
+      // ── Shared rendering setup ──
       setStatus("exporting", "Renderizando...");
 
       const presenterSegs = modeSegments.filter((s) => s.mode === "presenter");
       const presenterIndexMap = new Map(presenterSegs.map((s, i) => [s.id, i]));
 
-      // CRITICAL ORDER: recorder → video.play() → audio.start()
-      // Audio must start AFTER video to avoid permanent desync on mobile
-      // (video.play() can take 50-200ms to actually begin decoding)
-      recorder.start(1000);
+      const pixels = WIDTH * HEIGHT;
+      const videoBps = pixels >= 2_000_000 ? 25_000_000   // 1080p+ → 25 Mbps
+                     : pixels >= 1_000_000 ? 16_000_000   // 720p+  → 16 Mbps
+                     : 10_000_000;                          // smaller → 10 Mbps
 
-      try {
-        await video.play();
-      } catch (e) {
-        throw new Error(`Não foi possível reproduzir o vídeo para export: ${e instanceof Error ? e.message : e}`);
-      }
-
-      // Draw first frame immediately so recorder doesn't capture a blank canvas
-      ctx.drawImage(video, 0, 0, WIDTH, HEIGHT);
-
-      // NOW start audio — in sync with video since video is already playing
-      playbackSrc.start(0);
-
-      // B-roll video lifecycle: play/pause as segments change
-      let activeBrollSegId: string | null = null;
-      let renderStopped = false;
-
-      // Promise-based RAF render loop
-      let renderDone: (() => void) | null = null;
-      const renderPromise = new Promise<void>((resolve) => { renderDone = resolve; });
-
-      // Also listen for video ended event as a safety net
-      video.addEventListener("ended", () => { if (!renderStopped) stopRender(); }, { once: true });
-
-      function stopRender() {
-        if (renderStopped) return;
-        renderStopped = true;
-        video.pause();
-        if (activeBrollSegId && brollVideos[activeBrollSegId]) {
-          brollVideos[activeBrollSegId].pause();
-        }
-        renderDone?.();
-      }
-
-      const safetyTimer = setTimeout(stopRender, (videoDuration + 2) * 1000);
-
-      function renderFrame() {
-        if (renderStopped) return;
-
-        if (signal.aborted) {
-          clearTimeout(safetyTimer);
-          stopRender();
-          return;
-        }
-
-        const time = video.currentTime;
-        if (time >= videoDuration - 0.01 || video.ended) {
-          clearTimeout(safetyTimer);
-          stopRender();
-          return;
-        }
-
+      // ── drawFrameContent: renders one frame at the given time ──
+      // Captures all rendering state via closure. Used by both export paths.
+      function drawFrameContent(time: number) {
         const segment = getCurrentMode(modeSegments, time);
         const mode = segment?.mode || "presenter";
         const layout = segment?.brollLayout || "fullscreen";
 
-        // Manage b-roll video playback (start/stop as segments change)
-        const wantBrollId = (mode === "broll" && segment && segment.brollMediaType !== "photo" && brollVideos[segment.id])
-          ? segment.id : null;
-        if (wantBrollId !== activeBrollSegId) {
-          if (activeBrollSegId && brollVideos[activeBrollSegId]) brollVideos[activeBrollSegId].pause();
-          if (wantBrollId) {
-            const bv = brollVideos[wantBrollId];
-            bv.currentTime = 0;
-            bv.play().catch(() => {});
-          }
-          activeBrollSegId = wantBrollId;
-        }
-
-        // Clear canvas
         ctx.clearRect(0, 0, WIDTH, HEIGHT);
 
         if (mode === "presenter") {
@@ -427,7 +326,7 @@ export default function ExportPanel() {
           const pTransform = computePresenterEffect(
             zoomType,
             segProgress,
-            segment?.presenterZoomIntensity ?? 1.5,
+            segment?.presenterZoomIntensity ?? 1.0,
             presenterIndex,
             segment?.presenterZoomEasing ?? "abrupt"
           );
@@ -1019,73 +918,263 @@ export default function ExportPanel() {
             (ctx as unknown as Record<string, string>).letterSpacing = "0px";
           }
         }
+      } // end drawFrameContent
 
-        setProgress(Math.round((time / videoDuration) * 100));
+      // ── Choose export path ──
+      let finalBlob: Blob;
+      let finalExt: string;
+      let finalMimeType: string;
 
-        if (!renderStopped) {
-          requestAnimationFrame(renderFrame);
+      // Probe WebCodecs when HD quality is selected
+      const webCodecsConfig: WebCodecsConfig | null = exportQuality === "hd"
+        ? await probeWebCodecs(WIDTH, HEIGHT, FPS, videoBps)
+        : null;
+
+      if (webCodecsConfig) {
+        // ═════════════════════════════════════════════════════════════
+        // ══ WebCodecs Path (HD, offline frame-by-frame encoding) ════
+        // ═════════════════════════════════════════════════════════════
+        // Produces much higher quality than MediaRecorder because:
+        // - latencyMode: "quality" (not real-time fast preset)
+        // - bitrateMode: "variable" (VBR allocates more bits to complex frames)
+        // - Exact frame timestamps (no drift or dropped frames)
+        // Trade-off: ~2-4x slower than real-time (seek per frame)
+
+        const bundle = createMuxerBundle(webCodecsConfig, WIDTH, HEIGHT, FPS);
+
+        // 1. Encode all pre-mixed audio
+        setStatus("exporting", "Codificando áudio...");
+        await encodeAudio(bundle.audioEncoder, mixedAudio);
+
+        if (signal.aborted) {
+          try { bundle.videoEncoder.close(); bundle.audioEncoder.close(); } catch {}
+          setStatus("ready", "Export cancelado");
+          return;
         }
+
+        // 2. Frame-by-frame: seek → draw → encode
+        setStatus("exporting", "Renderizando HD...");
+        const totalFrames = Math.ceil(videoDuration * FPS);
+
+        for (let frame = 0; frame < totalFrames; frame++) {
+          if (signal.aborted) break;
+
+          const time = frame / FPS;
+
+          // Seek presenter video to exact time
+          await seekVideoToTime(video, time);
+
+          // Seek active b-roll video if needed
+          const seg = getCurrentMode(modeSegments, time);
+          if (seg?.mode === "broll" && seg.brollMediaType !== "photo" && brollVideos[seg.id]) {
+            const brollDur = brollVideos[seg.id].duration || 1;
+            const brollTime = (time - seg.startTime) % brollDur;
+            await seekVideoToTime(brollVideos[seg.id], brollTime);
+          }
+
+          // Draw frame content
+          drawFrameContent(time);
+
+          // Encode frame (with backpressure handling)
+          await encodeVideoFrame(bundle.videoEncoder, canvas, frame, FPS);
+
+          // Check for async encoder errors
+          if (bundle.encoderError) {
+            throw bundle.encoderError;
+          }
+
+          setProgress(Math.round(((frame + 1) / totalFrames) * 100));
+        }
+
+        if (signal.aborted) {
+          try { bundle.videoEncoder.close(); bundle.audioEncoder.close(); } catch {}
+          setStatus("ready", "Export cancelado");
+          return;
+        }
+
+        // 3. Finalize
+        setStatus("exporting", "Finalizando HD...");
+        finalBlob = await finalizeMuxer(bundle);
+        finalExt = "mp4";
+        finalMimeType = "video/mp4";
+
+      } else {
+        // ═════════════════════════════════════════════════════════════
+        // ══ MediaRecorder Path (Fast, real-time encoding) ═══════════
+        // ═════════════════════════════════════════════════════════════
+
+        // Set up audio playback for MediaRecorder
+        const dest = audioCtx.createMediaStreamDestination();
+        const playbackSrc = audioCtx.createBufferSource();
+        playbackSrc.buffer = mixedAudio;
+        playbackSrc.connect(dest);
+
+        const canvasStream = canvas.captureStream(0);
+        for (const track of dest.stream.getAudioTracks()) {
+          canvasStream.addTrack(track);
+        }
+
+        // Codec priority: MP4 H.264+AAC → WebM VP9+Opus → VP8+Opus
+        const mimeType = [
+          "video/mp4;codecs=avc1.640028,mp4a.40.2",
+          "video/webm;codecs=vp9,opus",
+          "video/webm;codecs=vp8,opus",
+          "video/mp4;codecs=avc1.640028",
+          "video/mp4",
+          "video/webm",
+        ].find((m) => MediaRecorder.isTypeSupported(m)) || "video/webm";
+
+        const recorder = new MediaRecorder(canvasStream, {
+          mimeType,
+          videoBitsPerSecond: videoBps,
+          audioBitsPerSecond: 128_000,
+        });
+
+        const chunks: Blob[] = [];
+        recorder.addEventListener("dataavailable", (e) => {
+          if (e.data.size > 0) chunks.push(e.data);
+        });
+
+        const exportPromise = new Promise<void>((resolve) => {
+          recorder.addEventListener("stop", () => resolve(), { once: true });
+        });
+
+        recorder.addEventListener("error", (e) => {
+          console.error("MediaRecorder error:", e);
+        });
+
+        // Play-based render loop (real-time, hardware-accelerated)
+        recorder.start(1000);
+
+        try {
+          await video.play();
+        } catch (e) {
+          throw new Error(`Não foi possível reproduzir o vídeo para export: ${e instanceof Error ? e.message : e}`);
+        }
+
+        // Draw first frame with full compositing (captions, etc.)
+        drawFrameContent(0);
+        playbackSrc.start(0);
+
+        // For captureStream(0), we need to request frames explicitly on non-Chrome browsers
+        const captureTrack = canvasStream.getVideoTracks()[0];
+        const needsRequestFrame = captureTrack && "requestFrame" in captureTrack;
+
+        let activeBrollSegId: string | null = null;
+        let renderStopped = false;
+        let renderDone: (() => void) | null = null;
+        const renderPromise = new Promise<void>((resolve) => { renderDone = resolve; });
+
+        video.addEventListener("ended", () => { if (!renderStopped) stopRender(); }, { once: true });
+
+        function stopRender() {
+          if (renderStopped) return;
+          renderStopped = true;
+          video.pause();
+          if (activeBrollSegId && brollVideos[activeBrollSegId]) {
+            brollVideos[activeBrollSegId].pause();
+          }
+          renderDone?.();
+        }
+
+        const safetyTimer = setTimeout(stopRender, (videoDuration + 2) * 1000);
+
+        function renderFrame() {
+          if (renderStopped) return;
+
+          if (signal.aborted) {
+            clearTimeout(safetyTimer);
+            stopRender();
+            return;
+          }
+
+          const time = video.currentTime;
+          if (time >= videoDuration - 0.01 || video.ended) {
+            clearTimeout(safetyTimer);
+            stopRender();
+            return;
+          }
+
+          // Manage b-roll video playback
+          const seg = getCurrentMode(modeSegments, time);
+          const wantBrollId = (seg?.mode === "broll" && seg.brollMediaType !== "photo" && brollVideos[seg.id])
+            ? seg.id : null;
+          if (wantBrollId !== activeBrollSegId) {
+            if (activeBrollSegId && brollVideos[activeBrollSegId]) brollVideos[activeBrollSegId].pause();
+            if (wantBrollId) {
+              const bv = brollVideos[wantBrollId];
+              bv.currentTime = 0;
+              bv.play().catch(() => {});
+            }
+            activeBrollSegId = wantBrollId;
+          }
+
+          // Draw frame
+          drawFrameContent(time);
+
+          // Signal captureStream to grab the new frame (required by Firefox/Safari with captureStream(0))
+          if (needsRequestFrame) {
+            (captureTrack as CanvasCaptureMediaStreamTrack).requestFrame();
+          }
+
+          setProgress(Math.round((time / videoDuration) * 100));
+
+          if (!renderStopped) {
+            requestAnimationFrame(renderFrame);
+          }
+        }
+
+        requestAnimationFrame(renderFrame);
+        await renderPromise;
+        clearTimeout(safetyTimer);
+
+        // Finalization
+        setStatus("exporting", "Finalizando...");
+        try { playbackSrc.stop(); } catch {}
+
+        if (recorder.state === "recording") {
+          try { recorder.requestData(); } catch {}
+          recorder.stop();
+        } else if (recorder.state === "paused") {
+          recorder.resume();
+          try { recorder.requestData(); } catch {}
+          recorder.stop();
+        }
+
+        await Promise.race([
+          exportPromise,
+          new Promise<void>((resolve) => setTimeout(resolve, 10_000)),
+        ]);
+
+        if (signal.aborted) {
+          setStatus("ready", "Export cancelado");
+          return;
+        }
+
+        const isMP4 = mimeType.includes("mp4");
+        finalExt = isMP4 ? "mp4" : "webm";
+        finalMimeType = isMP4 ? "video/mp4" : "video/webm";
+        finalBlob = new Blob(chunks, { type: finalMimeType });
       }
 
-      requestAnimationFrame(renderFrame);
-      await renderPromise;
-      clearTimeout(safetyTimer);
-
-      // ── Finalization phase ──
-      setStatus("exporting", "Finalizando...");
-
-      // Stop audio playback
-      try { playbackSrc.stop(); } catch { /* already stopped */ }
-
-      // Flush any buffered data, then stop recorder
-      if (recorder.state === "recording") {
-        try { recorder.requestData(); } catch { /* not all browsers support this */ }
-        recorder.stop();
-      } else if (recorder.state === "paused") {
-        recorder.resume();
-        try { recorder.requestData(); } catch { /* ignore */ }
-        recorder.stop();
-      }
-
-      // Wait for recorder to finish — timeout prevents infinite hang
-      // (iOS Safari ~40% of the time doesn't fire onstop)
-      await Promise.race([
-        exportPromise,
-        new Promise<void>((resolve) => setTimeout(resolve, 10_000)),
-      ]);
-
-      // If cancelled, don't download
-      if (signal.aborted) {
-        setStatus("ready", "Export cancelado");
-        return;
-      }
-
-      // Build blob
-      const isMP4 = mimeType.includes("mp4");
-      const ext = isMP4 ? "mp4" : "webm";
-      const blobType = isMP4 ? "video/mp4" : "video/webm";
-      const blob = new Blob(chunks, { type: blobType });
-
-      if (blob.size === 0) {
+      // ── Shared download logic ──
+      if (finalBlob.size === 0) {
         throw new Error("Export gerou arquivo vazio");
       }
 
-      // ── Download — multi-strategy for cross-platform reliability ──
-      const filename = `cineai-export.${ext}`;
+      const filename = `cineai-export.${finalExt}`;
 
-      // Strategy 1 (mobile): navigator.share — most reliable on iOS Safari
+      // Strategy 1 (mobile): navigator.share
       const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
       if (isMobile && typeof navigator.share === "function" && typeof navigator.canShare === "function") {
-        const file = new File([blob], filename, { type: blobType });
+        const file = new File([finalBlob], filename, { type: finalMimeType });
         if (navigator.canShare({ files: [file] })) {
           try {
             await navigator.share({ files: [file] });
             setStatus("ready", "Export concluído!");
             return;
           } catch (shareErr) {
-            // User cancelled share sheet or share failed — fall through to anchor download
             if ((shareErr as DOMException)?.name === "AbortError") {
-              // User cancelled, still successful export
               setStatus("ready", "Export concluído!");
               return;
             }
@@ -1094,7 +1183,7 @@ export default function ExportPanel() {
       }
 
       // Strategy 2 (desktop / fallback): anchor download
-      const url = URL.createObjectURL(blob);
+      const url = URL.createObjectURL(finalBlob);
       const a = document.createElement("a");
       a.href = url;
       a.download = filename;
@@ -1102,9 +1191,8 @@ export default function ExportPanel() {
       document.body.appendChild(a);
       a.click();
 
-      // Cleanup after a delay to ensure download starts
       setTimeout(() => {
-        try { document.body.removeChild(a); } catch { /* already removed */ }
+        try { document.body.removeChild(a); } catch {}
         URL.revokeObjectURL(url);
       }, 3000);
 
@@ -1133,6 +1221,7 @@ export default function ExportPanel() {
     sfxMarkers,
     voiceEnhanceConfig,
     exportResolution,
+    exportQuality,
     customMusicTracks,
     setStatus,
   ]);
@@ -1158,6 +1247,39 @@ export default function ExportPanel() {
             <option key={key} value={key}>{val.label}</option>
           ))}
         </select>
+      </div>
+
+      {/* Quality picker */}
+      <div className="space-y-2">
+        <label className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
+          Qualidade
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => setExportQuality("fast")}
+            disabled={exporting}
+            className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-all border ${
+              exportQuality === "fast"
+                ? "bg-blue-500/15 text-blue-400 border-blue-500/40"
+                : "bg-[var(--surface)] text-[var(--text-secondary)] border-[var(--border)] hover:border-blue-500/30"
+            }`}
+          >
+            Rápido
+            <span className="block text-[10px] opacity-60 mt-0.5">Tempo real</span>
+          </button>
+          <button
+            onClick={() => setExportQuality("hd")}
+            disabled={exporting}
+            className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-all border ${
+              exportQuality === "hd"
+                ? "bg-purple-500/15 text-purple-400 border-purple-500/40"
+                : "bg-[var(--surface)] text-[var(--text-secondary)] border-[var(--border)] hover:border-purple-500/30"
+            }`}
+          >
+            Alta Qualidade
+            <span className="block text-[10px] opacity-60 mt-0.5">Mais lento</span>
+          </button>
+        </div>
       </div>
 
       {/* Info */}

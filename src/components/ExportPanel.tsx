@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import { Download, Loader2, Film, X } from "lucide-react";
+import { Download, Loader2, Film } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { useShallow } from "zustand/react/shallow";
 import { getCurrentMode } from "@/lib/modes";
@@ -176,8 +176,8 @@ export default function ExportPanel() {
         ),
       ]);
 
-      // Set up audio
-      audioCtx = new AudioContext();
+      // Set up audio — 48kHz is the standard sample rate for video
+      audioCtx = new AudioContext({ sampleRate: 48000 });
       const dest = audioCtx.createMediaStreamDestination();
 
       // Voice audio from video (with optional voice enhancer)
@@ -243,30 +243,43 @@ export default function ExportPanel() {
         canvasStream.addTrack(track);
       }
 
-      // Prefer H.264 High Profile (best quality) → Main → generic → WebM
+      // Codec priority: MP4 H.264+AAC (Safari, Chrome 126+) → WebM VP9+Opus → VP8+Opus
       const mimeType = [
-        "video/mp4;codecs=avc1.640028",  // High Profile L4.0
-        "video/mp4;codecs=avc1.4D0028",  // Main Profile L4.0
-        "video/mp4;codecs=avc1",
-        "video/webm;codecs=vp9",
+        "video/mp4;codecs=avc1.640028,mp4a.40.2",  // H.264 High + AAC (best for Safari/iOS)
+        "video/webm;codecs=vp9,opus",                // VP9 + Opus (best WebM quality)
+        "video/webm;codecs=vp8,opus",                // VP8 + Opus (broad WebM support)
+        "video/mp4;codecs=avc1.640028",              // H.264 High (no audio codec spec)
+        "video/mp4",
         "video/webm",
       ].find((m) => MediaRecorder.isTypeSupported(m)) || "video/webm";
 
+      // Dynamic bitrate based on resolution for optimal quality
+      const pixels = WIDTH * HEIGHT;
+      const videoBps = pixels >= 2_000_000 ? 12_000_000   // 1080p+ → 12 Mbps
+                     : pixels >= 1_000_000 ? 8_000_000    // 720p+  → 8 Mbps
+                     : 6_000_000;                          // smaller → 6 Mbps
+
       const recorder = new MediaRecorder(canvasStream, {
         mimeType,
-        videoBitsPerSecond: 15_000_000,
+        videoBitsPerSecond: videoBps,
+        audioBitsPerSecond: 128_000,  // 128 kbps stereo (Opus/AAC standard)
       });
 
       const chunks: Blob[] = [];
-      recorder.ondataavailable = (e) => {
+      recorder.addEventListener("dataavailable", (e) => {
         if (e.data.size > 0) chunks.push(e.data);
-      };
-
-      const exportPromise = new Promise<void>((resolve) => {
-        recorder.onstop = () => resolve();
       });
 
-      recorder.start(100);
+      const exportPromise = new Promise<void>((resolve) => {
+        recorder.addEventListener("stop", () => resolve(), { once: true });
+      });
+
+      // Handle recorder errors
+      recorder.addEventListener("error", (e) => {
+        console.error("MediaRecorder error:", e);
+      });
+
+      recorder.start(1000);  // 1s chunks — balances memory vs overhead
 
       // Render loop
       // Pre-compute presenter segments and index map (avoid per-frame filter/findIndex)
@@ -285,7 +298,7 @@ export default function ExportPanel() {
       let activeBrollSegId: string | null = null;
 
       for (let frame = 0; frame < totalFrames; frame++) {
-        if (video.ended || signal.aborted) break;
+        if (signal.aborted) break;
         const time = frame / FPS;
 
         // Get current mode
@@ -938,14 +951,31 @@ export default function ExportPanel() {
           ctx.shadowOffsetY = 0;
         }
 
-        setProgress(Math.round((frame / totalFrames) * 100));
+        setProgress(Math.round(((frame + 1) / totalFrames) * 100));
 
         // Wall-clock pacing: align render loop to real-time so audio stays in sync
-        // (fixed setTimeout drifts because it doesn't account for render time)
         const nextFrameWall = exportStartWall + ((frame + 1) / FPS) * 1000;
-        const waitMs = Math.max(1, nextFrameWall - performance.now());
-        await new Promise((r) => setTimeout(r, waitMs));
+        const drift = nextFrameWall - performance.now();
+
+        if (drift > 1) {
+          // Render is ahead of real-time — wait to sync
+          await new Promise((r) => setTimeout(r, drift));
+        } else if (drift < -200) {
+          // Render fell >200ms behind — skip frames to catch up with audio
+          const skipTo = Math.floor((performance.now() - exportStartWall) / 1000 * FPS);
+          if (skipTo > frame + 1 && skipTo < totalFrames) {
+            frame = skipTo - 1; // loop will increment to skipTo
+          } else {
+            await new Promise((r) => setTimeout(r, 1));
+          }
+        } else {
+          // Small lag (<200ms) — yield and continue
+          await new Promise((r) => setTimeout(r, 1));
+        }
       }
+
+      // ── Finalization phase ──
+      setStatus("exporting", "Finalizando...");
 
       video.pause();
       // Pause all b-roll videos that were playing
@@ -954,8 +984,23 @@ export default function ExportPanel() {
       }
       if (musicSource) try { musicSource.stop(); } catch { /* already stopped */ }
       if (sfxSource) try { sfxSource.stop(); } catch { /* already stopped */ }
-      recorder.stop();
-      await exportPromise;
+
+      // Flush any buffered data, then stop recorder
+      if (recorder.state === "recording") {
+        try { recorder.requestData(); } catch { /* not all browsers support this */ }
+        recorder.stop();
+      } else if (recorder.state === "paused") {
+        recorder.resume();
+        try { recorder.requestData(); } catch { /* ignore */ }
+        recorder.stop();
+      }
+
+      // Wait for recorder to finish — timeout prevents infinite hang
+      // (iOS Safari ~40% of the time doesn't fire onstop)
+      await Promise.race([
+        exportPromise,
+        new Promise<void>((resolve) => setTimeout(resolve, 10_000)),
+      ]);
 
       // If cancelled, don't download
       if (signal.aborted) {
@@ -963,18 +1008,53 @@ export default function ExportPanel() {
         return;
       }
 
-      // Download
-      const blob = new Blob(chunks, {
-        type: mimeType.startsWith("video/mp4") ? "video/mp4" : "video/webm",
-      });
+      // Build blob
+      const isMP4 = mimeType.includes("mp4");
+      const ext = isMP4 ? "mp4" : "webm";
+      const blobType = isMP4 ? "video/mp4" : "video/webm";
+      const blob = new Blob(chunks, { type: blobType });
+
+      if (blob.size === 0) {
+        throw new Error("Export gerou arquivo vazio");
+      }
+
+      // ── Download — multi-strategy for cross-platform reliability ──
+      const filename = `cineai-export.${ext}`;
+
+      // Strategy 1 (mobile): navigator.share — most reliable on iOS Safari
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      if (isMobile && typeof navigator.share === "function" && typeof navigator.canShare === "function") {
+        const file = new File([blob], filename, { type: blobType });
+        if (navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({ files: [file] });
+            setStatus("ready", "Export concluído!");
+            return;
+          } catch (shareErr) {
+            // User cancelled share sheet or share failed — fall through to anchor download
+            if ((shareErr as DOMException)?.name === "AbortError") {
+              // User cancelled, still successful export
+              setStatus("ready", "Export concluído!");
+              return;
+            }
+          }
+        }
+      }
+
+      // Strategy 2 (desktop / fallback): anchor download
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `cineai-export.${mimeType.startsWith("video/mp4") ? "mp4" : "webm"}`;
+      a.download = filename;
+      a.style.display = "none";
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+
+      // Cleanup after a delay to ensure download starts
+      setTimeout(() => {
+        try { document.body.removeChild(a); } catch { /* already removed */ }
+        URL.revokeObjectURL(url);
+      }, 3000);
 
       setStatus("ready", "Export concluído!");
     } catch (error) {
@@ -1001,6 +1081,7 @@ export default function ExportPanel() {
     sfxMarkers,
     voiceEnhanceConfig,
     exportResolution,
+    customMusicTracks,
     setStatus,
   ]);
 
@@ -1053,7 +1134,7 @@ export default function ExportPanel() {
         {exporting ? (
           <>
             <Loader2 className="w-4 h-4 animate-spin" />
-            Exportando... {progress}%
+            {progress >= 100 ? "Finalizando..." : `Exportando... ${progress}%`}
           </>
         ) : (
           <>

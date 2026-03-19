@@ -9,6 +9,7 @@ import { SFX_LABELS } from "@/lib/sfx";
 import { formatTime } from "@/lib/formatTime";
 import { ZoomIn, ZoomOut, ChevronLeft, ChevronRight } from "lucide-react";
 import type { ModeSegment, PhraseCaption, SFXMarker } from "@/types";
+import { extractWaveform } from "@/lib/waveformExtractor";
 
 const DEFAULT_PPS = 60;
 const MIN_PPS = 20;
@@ -18,6 +19,7 @@ const TRACK_HEIGHT = 40;
 const TRACK_GAP = 2;
 const LABEL_WIDTH = 72;
 const MIN_DURATION = 0.3;
+const WAVEFORM_HEIGHT = 24;
 
 /** Convert a touch event to look like a mouse event for our drag handlers */
 function touchToMouse(e: React.TouchEvent): React.MouseEvent | null {
@@ -54,6 +56,9 @@ export default function Timeline() {
     deleteModeSegment,
     splitSegmentForBroll,
     addPhraseCaption,
+    videoUrl,
+    waveformPeaks,
+    setWaveformPeaks,
   } = useProjectStore(useShallow((s) => ({
     videoDuration: s.videoDuration,
     currentTime: s.currentTime,
@@ -73,6 +78,9 @@ export default function Timeline() {
     deleteModeSegment: s.deleteModeSegment,
     splitSegmentForBroll: s.splitSegmentForBroll,
     addPhraseCaption: s.addPhraseCaption,
+    videoUrl: s.videoUrl,
+    waveformPeaks: s.waveformPeaks,
+    setWaveformPeaks: s.setWaveformPeaks,
   })));
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -150,6 +158,35 @@ export default function Timeline() {
       el.removeEventListener("touchend", onTouchEnd);
     };
   }, []);
+
+  // Extract waveform when video URL changes (works for both blob: and http: URLs)
+  const waveformCanvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    if (!videoUrl) return;
+    let cancelled = false;
+    extractWaveform(videoUrl, 500).then((peaks) => {
+      if (!cancelled) setWaveformPeaks(peaks);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [videoUrl, setWaveformPeaks]);
+
+  // Draw waveform when peaks or zoom changes
+  useEffect(() => {
+    const canvas = waveformCanvasRef.current;
+    if (!canvas || !waveformPeaks) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "rgba(96, 165, 250, 0.5)";
+    const numBins = waveformPeaks.length;
+    const barWidth = w / numBins;
+    for (let i = 0; i < numBins; i++) {
+      const barH = waveformPeaks[i] * h;
+      ctx.fillRect(i * barWidth, h - barH, Math.max(barWidth - 0.5, 0.5), barH);
+    }
+  }, [waveformPeaks, pixelsPerSecond, videoDuration]);
 
   const totalWidth = Math.max(videoDuration * pixelsPerSecond, 300);
 
@@ -766,7 +803,8 @@ export default function Timeline() {
   );
 
   const playheadX = timeToX(currentTime);
-  const totalContentHeight = RULER_HEIGHT + (TRACK_HEIGHT + TRACK_GAP) * 5 + 8;
+  const hasWaveform = !!waveformPeaks;
+  const totalContentHeight = RULER_HEIGHT + (hasWaveform ? WAVEFORM_HEIGHT + TRACK_GAP : 0) + (TRACK_HEIGHT + TRACK_GAP) * 5 + 8;
 
   const zoomIn = useCallback(() => {
     setPixelsPerSecond((prev) => Math.min(prev * 1.4, MAX_PPS));
@@ -895,6 +933,21 @@ export default function Timeline() {
             ))}
           </div>
 
+          {/* ═══ Waveform Track (Audio) ═══ */}
+          {hasWaveform && (
+            <div className="relative" style={{ height: WAVEFORM_HEIGHT, marginTop: TRACK_GAP }}>
+              <TrackLabel label="Audio" />
+              <div style={{ position: "absolute", left: LABEL_WIDTH, right: 0, top: 0, bottom: 0 }}>
+                <canvas
+                  ref={waveformCanvasRef}
+                  width={Math.round(totalWidth)}
+                  height={WAVEFORM_HEIGHT}
+                  style={{ width: totalWidth, height: WAVEFORM_HEIGHT }}
+                />
+              </div>
+            </div>
+          )}
+
           {/* ═══ Track 1: Modo ═══ */}
           <div className="relative" style={{ height: TRACK_HEIGHT, marginTop: TRACK_GAP }}>
             <TrackLabel label="Modo" />
@@ -941,6 +994,34 @@ export default function Timeline() {
                       {getModeLabel(seg.mode)}
                       {seg.mode === "broll" && seg.brollQuery ? `: ${seg.brollQuery}` : ""}
                       {seg.mode === "typography" && seg.typographyText ? `: ${seg.typographyText}` : ""}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+            {/* Transition indicators between segments */}
+            {modeSegments.map((seg, idx) => {
+              if (idx === 0) return null;
+              const transition = seg.transition || "cut";
+              if (transition === "cut") return null;
+              const x = timeToX(seg.startTime) + LABEL_WIDTH;
+              return (
+                <div
+                  key={`trans-${seg.id}`}
+                  className="absolute top-0 bottom-0 flex items-center justify-center z-10 cursor-pointer"
+                  style={{ left: x - 10, width: 20 }}
+                  title={`Transição: ${transition}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // Cycle transition types
+                    const types: Array<"cut" | "crossfade" | "fade-black"> = ["cut", "crossfade", "fade-black"];
+                    const nextIdx = (types.indexOf(transition) + 1) % types.length;
+                    updateModeSegment(seg.id, { transition: types[nextIdx] });
+                  }}
+                >
+                  <div className="w-4 h-4 rounded-full bg-yellow-500/60 border border-yellow-400/80 flex items-center justify-center">
+                    <span className="text-[7px] font-bold text-yellow-100">
+                      {transition === "crossfade" ? "X" : "F"}
                     </span>
                   </div>
                 </div>
@@ -1217,6 +1298,28 @@ export default function Timeline() {
               Remover B-Roll
             </button>
           )}
+          {/* Transition type selector */}
+          <div className="border-t border-white/10 mt-1 pt-1">
+            <span className="block px-4 py-1 text-[10px] text-[var(--text-secondary)] uppercase">Transição</span>
+            {(["cut", "crossfade", "fade-black"] as const).map((t) => {
+              const seg = modeSegments.find((s) => s.id === contextMenu.segId);
+              const current = seg?.transition || "cut";
+              return (
+                <button
+                  key={t}
+                  className={`w-full text-left px-4 py-1.5 text-xs hover:bg-white/10 transition-colors ${
+                    current === t ? "text-[var(--accent-light)] font-semibold" : "text-white"
+                  }`}
+                  onClick={() => {
+                    updateModeSegment(contextMenu.segId, { transition: t, transitionDuration: t === "cut" ? 0 : 0.5 });
+                    setContextMenu(null);
+                  }}
+                >
+                  {t === "cut" ? "Corte seco" : t === "crossfade" ? "Crossfade" : "Fade preto"}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

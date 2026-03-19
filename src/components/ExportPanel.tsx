@@ -1,15 +1,34 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
-import { Download, Loader2, Film } from "lucide-react";
+import { Download, Loader2, Film, X } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { useShallow } from "zustand/react/shallow";
 import { getCurrentMode } from "@/lib/modes";
 import { getTrackById } from "@/lib/musicLibrary";
 import { computeBRollEffect, computePresenterEffect } from "@/lib/brollEffects";
 import { getCanvasFontName } from "@/lib/fonts";
+import { wrapText, roundedRect, drawMediaCover, drawVideoCover } from "@/lib/canvasHelpers";
 import { renderSFXToBuffer } from "@/lib/sfx";
 import { createVoiceEnhancerChain } from "@/lib/voiceEnhancer";
+import { getTransitionAlpha } from "@/lib/transitions";
+import {
+  REF_WIDTH,
+  CASCADE_EMPH_SCALE,
+  CASCADE_INDENT_STEP,
+  CASCADE_EMPH_NUDGE,
+  CASCADE_MAX_INDENT,
+  DIAGONAL_BASE_X,
+  DIAGONAL_BASE_BOTTOM_Y,
+  DIAGONAL_STEP_X,
+  DIAGONAL_STEP_Y,
+  SCATTERED_X_OFFSET,
+  SCATTERED_Y_BASE,
+  SCATTERED_Y_RANGE,
+  scatteredRand,
+  RESOLUTION_PRESETS,
+  type ResolutionKey,
+} from "@/lib/renderConstants";
 
 export default function ExportPanel() {
   const {
@@ -26,6 +45,9 @@ export default function ExportPanel() {
     sfxMarkers,
     voiceEnhanceConfig,
     setStatus,
+    exportResolution,
+    setExportResolution,
+    customMusicTracks,
   } = useProjectStore(
     useShallow((s) => ({
       videoUrl: s.videoUrl,
@@ -41,23 +63,36 @@ export default function ExportPanel() {
       sfxMarkers: s.sfxMarkers,
       voiceEnhanceConfig: s.voiceEnhanceConfig,
       setStatus: s.setStatus,
+      exportResolution: s.exportResolution,
+      setExportResolution: s.setExportResolution,
+      customMusicTracks: s.customMusicTracks,
     }))
   );
 
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState(0);
   const exportingRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const handleCancel = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
 
   const handleExport = useCallback(async () => {
     if (!videoUrl || exportingRef.current) return;
     exportingRef.current = true;
 
+    const abortController = new AbortController();
+    abortRef.current = abortController;
+    const signal = abortController.signal;
+
     setExporting(true);
     setProgress(0);
     setStatus("exporting", "Exportando vídeo...");
 
-    const WIDTH = 1080;
-    const HEIGHT = 1920;
+    const preset = RESOLUTION_PRESETS[exportResolution] || RESOLUTION_PRESETS["1080x1920"];
+    const WIDTH = preset.width;
+    const HEIGHT = preset.height;
     const FPS = 30;
     let audioCtx: AudioContext | null = null;
 
@@ -161,7 +196,7 @@ export default function ExportPanel() {
       let musicGain: GainNode | null = null;
       let musicSource: AudioBufferSourceNode | null = null;
       if (selectedMusicTrack) {
-        const track = getTrackById(selectedMusicTrack);
+        const track = getTrackById(selectedMusicTrack, customMusicTracks);
         if (track) {
           try {
             const musicResponse = await fetch(track.file);
@@ -234,8 +269,6 @@ export default function ExportPanel() {
       recorder.start(100);
 
       // Render loop
-      // Deterministic rand for scattered layout (same as CaptionOverlay)
-      const scatteredRand = (seed: number) => ((Math.sin(seed * 9371) * 43758.5453) % 1 + 1) % 1;
       // Pre-compute presenter segments and index map (avoid per-frame filter/findIndex)
       const presenterSegs = modeSegments.filter((s) => s.mode === "presenter");
       const presenterIndexMap = new Map(presenterSegs.map((s, i) => [s.id, i]));
@@ -252,7 +285,7 @@ export default function ExportPanel() {
       let activeBrollSegId: string | null = null;
 
       for (let frame = 0; frame < totalFrames; frame++) {
-        if (video.ended) break;
+        if (video.ended || signal.aborted) break;
         const time = frame / FPS;
 
         // Get current mode
@@ -659,6 +692,25 @@ export default function ExportPanel() {
           }
         }
 
+        // Apply transition alpha (crossfade = fade-in, fade-black = through black)
+        if (segment && segment.transition && segment.transition !== "cut") {
+          const transDur = segment.transitionDuration ?? 0.5;
+          const transElapsed = time - segment.startTime;
+          if (transDur > 0 && transElapsed < transDur) {
+            const progress = transElapsed / transDur;
+            const { inAlpha, blackAlpha } = getTransitionAlpha(segment.transition, progress);
+            // Darken frame: crossfade uses (1 - inAlpha) overlay, fade-black uses blackAlpha
+            const darkAmount = Math.max(1 - inAlpha, blackAlpha);
+            if (darkAmount > 0.01) {
+              ctx.save();
+              ctx.globalAlpha = darkAmount;
+              ctx.fillStyle = "#000000";
+              ctx.fillRect(0, 0, WIDTH, HEIGHT);
+              ctx.restore();
+            }
+          }
+        }
+
         // Captions on top (all modes) — using captionConfig
         // Separate stanza from regular captions (must match CaptionOverlay logic)
         // Single-pass caption partitioning (avoids 3 separate filter calls per frame)
@@ -685,7 +737,7 @@ export default function ExportPanel() {
           const effLayout = effStanza.stanzaLayout;
           const effIsCascading = effLayout === "cascading";
           const effEmphSize = effIsCascading
-            ? effStanza.emphasisFontSize * 1.4
+            ? effStanza.emphasisFontSize * CASCADE_EMPH_SCALE
             : effStanza.emphasisFontSize;
           const effBaseY = effIsCascading
             ? HEIGHT * 0.80
@@ -758,10 +810,10 @@ export default function ExportPanel() {
             // Diagonal: bottom-left to top-right (match CaptionOverlay container: bottom-[8%] height 35%)
             ctx.textAlign = "left";
             ctx.textBaseline = "middle";
-            const baseX = WIDTH * 0.015;
-            const baseBottomY = HEIGHT * 0.92;
-            const stepX = WIDTH * 0.14;
-            const stepY = HEIGHT * 0.035;
+            const baseX = WIDTH * DIAGONAL_BASE_X;
+            const baseBottomY = HEIGHT * DIAGONAL_BASE_BOTTOM_Y;
+            const stepX = WIDTH * DIAGONAL_STEP_X;
+            const stepY = HEIGHT * DIAGONAL_STEP_Y;
             for (let i = 0; i < stanzaActiveCaptions.length; i++) {
               const cap = stanzaActiveCaptions[i];
               const x = baseX + i * stepX;
@@ -775,10 +827,8 @@ export default function ExportPanel() {
             for (let i = 0; i < stanzaActiveCaptions.length; i++) {
               const cap = stanzaActiveCaptions[i];
               const seed = i * 7 + (cap.text.charCodeAt(0) || 0);
-              const x = scatteredRand(seed) * WIDTH * 0.7 + WIDTH * 0.05;
-              // CaptionOverlay: bottom 10-70% within 40% container at 5% from bottom
-              // Absolute from top: 0.91 - rand*0.24
-              const y = HEIGHT * (0.91 - scatteredRand(seed + 1) * 0.24);
+              const x = scatteredRand(seed) * WIDTH * 0.7 + WIDTH * SCATTERED_X_OFFSET;
+              const y = HEIGHT * (SCATTERED_Y_BASE - scatteredRand(seed + 1) * SCATTERED_Y_RANGE);
               drawStanzaWord(cap, x, y, cap.isEmphasis ? 1 : 0.55);
             }
           } else {
@@ -786,11 +836,10 @@ export default function ExportPanel() {
             ctx.textAlign = effIsCascading ? "left" : "center";
             ctx.textBaseline = "middle";
 
-            // Scale from CaptionOverlay constants (40px, -12px, 220px at 720px preview)
-            const cascadeScale = WIDTH / 720;
-            const cascadeIndentStep = 40 * cascadeScale;
-            const cascadeEmphNudge = -12 * cascadeScale;
-            const cascadeMaxIndent = 220 * cascadeScale;
+            const cascadeScale = WIDTH / REF_WIDTH;
+            const cascadeIndentStep = CASCADE_INDENT_STEP * cascadeScale;
+            const cascadeEmphNudge = CASCADE_EMPH_NUDGE * cascadeScale;
+            const cascadeMaxIndent = CASCADE_MAX_INDENT * cascadeScale;
             const lines = stanzaActiveCaptions.map((cap, index) => {
               const size = cap.isEmphasis ? effEmphSize : normalSize;
               const emphPad = cap.isEmphasis && effIsCascading ? size * 0.15 : 0;
@@ -835,6 +884,30 @@ export default function ExportPanel() {
           const lineHeight = cSize * 1.25;
           const totalTextH = lines.length * lineHeight;
           const startY = captionY - totalTextH / 2 + lineHeight / 2;
+
+          // Background box
+          if (eff.backgroundEnabled) {
+            const bgColor = eff.backgroundColor || "#000000";
+            const bgOpacity = eff.backgroundOpacity ?? 0.6;
+            const bgPadding = (eff.backgroundPadding ?? 8) * (WIDTH / REF_WIDTH);
+            const bgRadius = (eff.backgroundBorderRadius ?? 4) * (WIDTH / REF_WIDTH);
+            const r = parseInt(bgColor.slice(1, 3), 16);
+            const g = parseInt(bgColor.slice(3, 5), 16);
+            const b = parseInt(bgColor.slice(5, 7), 16);
+            ctx.fillStyle = `rgba(${r},${g},${b},${bgOpacity})`;
+            // Measure max line width for bg rect
+            let maxLineW = 0;
+            for (const line of lines) {
+              const w = ctx.measureText(line).width;
+              if (w > maxLineW) maxLineW = w;
+            }
+            const bgX = WIDTH / 2 - maxLineW / 2 - bgPadding;
+            const bgY = startY - lineHeight / 2 - bgPadding * 0.5;
+            const bgW = maxLineW + bgPadding * 2;
+            const bgH = totalTextH + bgPadding;
+            roundedRect(ctx, bgX, bgY, bgW, bgH, bgRadius);
+            ctx.fill();
+          }
 
           // Shadow
           if (eff.shadowBlur > 0) {
@@ -884,6 +957,12 @@ export default function ExportPanel() {
       recorder.stop();
       await exportPromise;
 
+      // If cancelled, don't download
+      if (signal.aborted) {
+        setStatus("ready", "Export cancelado");
+        return;
+      }
+
       // Download
       const blob = new Blob(chunks, {
         type: mimeType.startsWith("video/mp4") ? "video/mp4" : "video/webm",
@@ -903,6 +982,7 @@ export default function ExportPanel() {
       setStatus("ready", "Erro no export");
     } finally {
       try { audioCtx?.close(); } catch { /* already closed */ }
+      abortRef.current = null;
       exportingRef.current = false;
       setExporting(false);
       setProgress(0);
@@ -920,6 +1000,7 @@ export default function ExportPanel() {
     sfxConfig,
     sfxMarkers,
     voiceEnhanceConfig,
+    exportResolution,
     setStatus,
   ]);
 
@@ -929,11 +1010,28 @@ export default function ExportPanel() {
         Exportar Vídeo
       </h3>
 
+      {/* Resolution picker */}
+      <div className="space-y-2">
+        <label className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
+          Resolução
+        </label>
+        <select
+          value={exportResolution}
+          onChange={(e) => setExportResolution(e.target.value as ResolutionKey)}
+          disabled={exporting}
+          className="w-full px-3 py-2 bg-[var(--surface)] border border-[var(--border)] rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+        >
+          {Object.entries(RESOLUTION_PRESETS).map(([key, val]) => (
+            <option key={key} value={key}>{val.label}</option>
+          ))}
+        </select>
+      </div>
+
       {/* Info */}
       <div className="space-y-2">
         <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
           <Film className="w-4 h-4" />
-          <span>1080 × 1920 (9:16)</span>
+          <span>{RESOLUTION_PRESETS[exportResolution]?.label || "1080×1920 (9:16)"}</span>
         </div>
         <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
           <span>{modeSegments.length} segmentos</span>
@@ -965,121 +1063,24 @@ export default function ExportPanel() {
         )}
       </button>
 
-      {/* Progress bar */}
+      {/* Progress bar + Cancel */}
       {exporting && (
-        <div className="w-full bg-zinc-800 rounded-full h-2">
-          <div
-            className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-            style={{ width: `${progress}%` }}
-          />
+        <div className="space-y-2">
+          <div className="w-full bg-zinc-800 rounded-full h-2">
+            <div
+              className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <button
+            onClick={handleCancel}
+            className="w-full py-2 rounded-xl text-sm font-medium bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors"
+          >
+            Cancelar
+          </button>
         </div>
       )}
 
     </div>
   );
-}
-
-// Helper: word-wrap text for canvas (fillText has no auto-wrap)
-function wrapText(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  maxWidth: number
-): string[] {
-  const words = text.split(" ");
-  const lines: string[] = [];
-  let currentLine = "";
-  for (const word of words) {
-    const testLine = currentLine ? `${currentLine} ${word}` : word;
-    if (ctx.measureText(testLine).width > maxWidth && currentLine) {
-      lines.push(currentLine);
-      currentLine = word;
-    } else {
-      currentLine = testLine;
-    }
-  }
-  if (currentLine) lines.push(currentLine);
-  return lines;
-}
-
-// Helper: draw rounded rectangle path
-function roundedRect(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number
-) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
-}
-
-// Helper: draw video or image covering the given rect (center crop)
-function drawMediaCover(
-  ctx: CanvasRenderingContext2D,
-  media: HTMLVideoElement | HTMLImageElement,
-  dx: number,
-  dy: number,
-  dw: number,
-  dh: number
-) {
-  const isVideo = media instanceof HTMLVideoElement;
-  const mw = isVideo ? media.videoWidth : media.naturalWidth;
-  const mh = isVideo ? media.videoHeight : media.naturalHeight;
-  if (!mw || !mh) return;
-
-  const targetRatio = dw / dh;
-  const mediaRatio = mw / mh;
-
-  let sx = 0, sy = 0, sw = mw, sh = mh;
-  if (mediaRatio > targetRatio) {
-    sw = mh * targetRatio;
-    sx = (mw - sw) / 2;
-  } else {
-    sh = mw / targetRatio;
-    sy = (mh - sh) / 2;
-  }
-
-  ctx.drawImage(media, sx, sy, sw, sh, dx, dy, dw, dh);
-}
-
-// Helper: draw video covering the given rect (center crop)
-function drawVideoCover(
-  ctx: CanvasRenderingContext2D,
-  video: HTMLVideoElement,
-  dx: number,
-  dy: number,
-  dw: number,
-  dh: number
-) {
-  const vw = video.videoWidth;
-  const vh = video.videoHeight;
-  if (!vw || !vh) return;
-
-  const targetRatio = dw / dh;
-  const videoRatio = vw / vh;
-
-  let sx = 0,
-    sy = 0,
-    sw = vw,
-    sh = vh;
-
-  if (videoRatio > targetRatio) {
-    sw = vh * targetRatio;
-    sx = (vw - sw) / 2;
-  } else {
-    sh = vw / targetRatio;
-    sy = (vh - sh) / 2;
-  }
-
-  ctx.drawImage(video, sx, sy, sw, sh, dx, dy, dw, dh);
 }

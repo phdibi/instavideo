@@ -198,6 +198,11 @@ export interface CaptionConfig {
   animation: "none" | "fade" | "pop" | "slide-up" | "typewriter";
   uppercase: boolean;
   letterSpacing: number;
+  backgroundEnabled?: boolean;
+  backgroundColor?: string;     // default "#000000"
+  backgroundOpacity?: number;   // default 0.6
+  backgroundPadding?: number;   // default 8
+  backgroundBorderRadius?: number; // default 4
 }
 
 // ===== Stanza Config (stylized stacked captions) =====
@@ -213,6 +218,7 @@ export interface StanzaConfig {
 }
 
 // ===== New Mode System (vibefounder style) =====
+export type TransitionType = "cut" | "crossfade" | "fade-black";
 export type VideoMode = "presenter" | "broll" | "typography";
 
 export interface ModeSegment {
@@ -239,6 +245,8 @@ export interface ModeSegment {
   presenterZoomEasing?: "smooth" | "abrupt";
   presenterZoomStart?: number; // 0-1, when zoom starts (% of segment)
   presenterZoomEnd?: number;   // 0-1, when zoom ends (% of segment)
+  transition?: TransitionType;      // default 'cut'
+  transitionDuration?: number;      // default 0.5s
 }
 
 export interface PexelsVideoResult {
@@ -273,6 +281,7 @@ export interface MusicTrack {
   name: string;
   file: string;
   duration: number;
+  isCustom?: boolean; // blob URL, not persisted
 }
 
 export interface MusicConfig {

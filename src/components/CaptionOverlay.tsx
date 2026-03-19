@@ -5,6 +5,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useProjectStore } from "@/store/useProjectStore";
 import { useShallow } from "zustand/react/shallow";
 import { getFontValue } from "@/lib/fonts";
+import {
+  CASCADE_EMPH_SCALE, CASCADE_INDENT_STEP, CASCADE_EMPH_NUDGE, CASCADE_MAX_INDENT,
+  DIAGONAL_BASE_X, DIAGONAL_STEP_X, DIAGONAL_STEP_Y,
+  SCATTERED_X_OFFSET, SCATTERED_Y_BASE, SCATTERED_Y_RANGE,
+  scatteredRand,
+} from "@/lib/renderConstants";
 import type { PhraseCaption, CaptionConfig, StanzaConfig } from "@/types";
 
 interface Props {
@@ -127,14 +133,7 @@ const CENTERED_INITIAL = { opacity: 0, y: 8 };
 const CENTERED_ANIMATE = { opacity: 1, y: 0 };
 const CENTERED_TRANSITION = { duration: 0.15 };
 
-// Cascading layout constants
-const CASCADE_EMPH_SCALE = 1.4;
-const CASCADE_INDENT_STEP = 40; // px per word
-const CASCADE_EMPH_NUDGE = -12; // emphasis recedes for organic rhythm
-const CASCADE_MAX_INDENT = 220; // px cap
-
-// Deterministic pseudo-random for scattered layout
-const scatteredRand = (seed: number) => ((Math.sin(seed * 9371) * 43758.5453) % 1 + 1) % 1;
+// Cascading layout constants and scatteredRand imported from renderConstants
 
 /** Stacked stanza display — multiple words with mixed typography, multiple layouts */
 const StanzaDisplay = memo(function StanzaDisplay({ captions, config, stanzaConfig }: { captions: PhraseCaption[]; config: CaptionConfig; stanzaConfig: StanzaConfig }) {
@@ -217,8 +216,8 @@ const StanzaDisplay = memo(function StanzaDisplay({ captions, config, stanzaConf
               transition={{ duration: 0.2, delay: index * 0.06 }}
               style={{
                 ...wordStyle(caption),
-                left: `${index * 14}%`,
-                bottom: `${index * 10}%`,
+                left: `${DIAGONAL_BASE_X * 100 + index * DIAGONAL_STEP_X * 100}%`,
+                bottom: `${index * (DIAGONAL_STEP_Y / 0.35) * 100}%`,
               }}
             >
               {getUppercase(caption) ? caption.text.toUpperCase() : caption.text}
@@ -244,8 +243,12 @@ const StanzaDisplay = memo(function StanzaDisplay({ captions, config, stanzaConf
         <div className="relative w-full h-full">
           {captions.map((caption, index) => {
             const seed = index * 7 + (caption.text.charCodeAt(0) || 0);
-            const x = scatteredRand(seed) * 70 + 5; // 5-75%
-            const y = scatteredRand(seed + 1) * 60 + 10; // 10-70%
+            // Derive from shared constants: container is bottom:5% height:40%
+            // X: SCATTERED_X_OFFSET (5%) + rand * 70% of container width
+            const x = scatteredRand(seed) * 70 + SCATTERED_X_OFFSET * 100;
+            // Y: maps to abs bottom 9-33% via container (5% + y*40%)
+            // SCATTERED_Y_RANGE=0.24 over 0.40 container = 60%, base offset 10%
+            const y = scatteredRand(seed + 1) * (SCATTERED_Y_RANGE / 0.40) * 100 + 10;
             return (
               <motion.span
                 key={caption.id}
@@ -329,6 +332,28 @@ const PhraseDisplay = memo(function PhraseDisplay({ caption, config }: { caption
     ? { WebkitTextStroke: `${eff.strokeWidth}px ${eff.strokeColor}` }
     : {};
 
+  const bgEnabled = eff.backgroundEnabled;
+  const bgColor = eff.backgroundColor || "#000000";
+  const bgOpacity = eff.backgroundOpacity ?? 0.6;
+  const bgPadding = eff.backgroundPadding ?? 8;
+  const bgRadius = eff.backgroundBorderRadius ?? 4;
+
+  // Convert hex to rgba
+  const hexToRgba = (hex: string, alpha: number) => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  };
+
+  const bgStyle: React.CSSProperties = bgEnabled
+    ? {
+        backgroundColor: hexToRgba(bgColor, bgOpacity),
+        padding: `${bgPadding * 0.5}px ${bgPadding}px`,
+        borderRadius: `${bgRadius}px`,
+      }
+    : {};
+
   return (
     <motion.div
       className={`absolute left-0 right-0 ${positionClass} px-4 flex justify-center`}
@@ -351,6 +376,7 @@ const PhraseDisplay = memo(function PhraseDisplay({ caption, config }: { caption
           wordBreak: "break-word",
           maxWidth: "100%",
           ...strokeStyle,
+          ...bgStyle,
         }}
       >
         {displayText}

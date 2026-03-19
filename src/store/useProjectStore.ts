@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { temporal } from "zundo";
 import { v4 as uuidv4 } from "uuid";
 import type {
   Caption,
@@ -16,10 +17,12 @@ import type {
   ModeSegment,
   PhraseCaption,
   MusicConfig,
+  MusicTrack,
   StanzaConfig,
   TranscriptionResult,
   VoiceEnhanceConfig,
 } from "@/types";
+import type { ResolutionKey } from "@/lib/renderConstants";
 
 interface ProjectStore {
   videoFile: File | null;
@@ -49,6 +52,12 @@ interface ProjectStore {
   stanzaStyleOverrides: Record<string, Partial<StanzaConfig>>;
   transcriptionResult: TranscriptionResult | null;
   voiceEnhanceConfig: VoiceEnhanceConfig;
+  // Custom music tracks (blob URLs, not persisted)
+  customMusicTracks: MusicTrack[];
+  // Export resolution
+  exportResolution: ResolutionKey;
+  // Waveform peaks for timeline
+  waveformPeaks: Float32Array | null;
 
   setStanzaConfig: (config: Partial<StanzaConfig>) => void;
   setStanzaOverride: (stanzaId: string, override: Partial<StanzaConfig>) => void;
@@ -97,6 +106,13 @@ interface ProjectStore {
   applyStyleOverrideToAll: (override: Partial<CaptionConfig>) => void;
   /** Batch offset multiple items by a time delta — for Shift multi-select bulk editing */
   batchOffsetItems: (items: { type: "caption" | "effect" | "broll" | "segment"; id: string }[], deltaTime: number) => void;
+  // Custom music
+  addCustomMusicTrack: (track: MusicTrack) => void;
+  removeCustomMusicTrack: (id: string) => void;
+  // Export resolution
+  setExportResolution: (resolution: ResolutionKey) => void;
+  // Waveform
+  setWaveformPeaks: (peaks: Float32Array | null) => void;
   reset: () => void;
 }
 
@@ -197,10 +213,14 @@ const initialState = {
   stanzaStyleOverrides: {},
   transcriptionResult: null,
   voiceEnhanceConfig: { preset: "off" as const, intensity: 1.0 },
+  customMusicTracks: [] as MusicTrack[],
+  exportResolution: "1080x1920" as ResolutionKey,
+  waveformPeaks: null as Float32Array | null,
 };
 
 export const useProjectStore = create<ProjectStore>()(
   persist(
+  temporal(
     (set) => ({
   ...initialState,
 
@@ -584,6 +604,17 @@ export const useProjectStore = create<ProjectStore>()(
         segments: updatedSegments,
       };
     }),
+  addCustomMusicTrack: (track) =>
+    set((state) => ({
+      customMusicTracks: [...state.customMusicTracks, track],
+    })),
+  removeCustomMusicTrack: (id) =>
+    set((state) => ({
+      customMusicTracks: state.customMusicTracks.filter((t) => t.id !== id),
+      selectedMusicTrack: state.selectedMusicTrack === id ? null : state.selectedMusicTrack,
+    })),
+  setExportResolution: (resolution) => set({ exportResolution: resolution }),
+  setWaveformPeaks: (peaks) => set({ waveformPeaks: peaks }),
   reset: () => set({
     ...initialState,
     teleprompterSettings: { ...defaultTeleprompterSettings },
@@ -597,24 +628,34 @@ export const useProjectStore = create<ProjectStore>()(
   }),
     }),
     {
-      name: "instavideo-project",
+      limit: 50,
       partialize: (state) => {
+        // Exclude transient fields from undo history
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { videoFile, status, statusMessage, currentTime, isPlaying, selectedItem, selectedItems, ...rest } = state;
+        const { currentTime, isPlaying, selectedItem, selectedItems, waveformPeaks, customMusicTracks, ...rest } = state;
         return rest;
       },
-      onRehydrateStorage: () => (state) => {
-        if (state) {
-          // Blob URLs never survive page reloads — always reset to idle
-          if (!state.videoUrl || state.videoUrl.startsWith("blob:") || state.videoDuration <= 0) {
-            state.status = "idle";
-            state.videoUrl = "";
-            state.videoDuration = 0;
-          } else {
-            state.status = "ready";
-          }
-        }
-      },
     }
+  ),
+  {
+    name: "instavideo-project",
+    partialize: (state) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { videoFile, status, statusMessage, currentTime, isPlaying, selectedItem, selectedItems, customMusicTracks, waveformPeaks, ...rest } = state;
+      return rest;
+    },
+    onRehydrateStorage: () => (state) => {
+      if (state) {
+        // Blob URLs never survive page reloads — always reset to idle
+        if (!state.videoUrl || state.videoUrl.startsWith("blob:") || state.videoDuration <= 0) {
+          state.status = "idle";
+          state.videoUrl = "";
+          state.videoDuration = 0;
+        } else {
+          state.status = "ready";
+        }
+      }
+    },
+  }
   )
 );

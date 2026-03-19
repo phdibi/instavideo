@@ -9,12 +9,10 @@ import { getCurrentMode } from "@/lib/modes";
 import { computeBRollEffect, computePresenterEffect, effectToCSS } from "@/lib/brollEffects";
 import { SFX_PLAY_MAP } from "@/lib/sfx";
 import { createVoiceEnhancerChain, type VoiceEnhancerChain } from "@/lib/voiceEnhancer";
+import { getTransitionAlpha } from "@/lib/transitions";
+import { REF_WIDTH, REF_HEIGHT } from "@/lib/renderConstants";
 import CaptionOverlay from "./CaptionOverlay";
 import TypographyCard from "./TypographyCard";
-
-// Fixed reference resolution for consistent preview layout (9:16)
-const REF_WIDTH = 720;
-const REF_HEIGHT = 1280;
 
 export default function VideoPreview() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -150,6 +148,20 @@ export default function VideoPreview() {
 
   const currentMode = currentSegment?.mode || "presenter";
   const brollLayout = currentSegment?.brollLayout || "fullscreen";
+
+  // Compute transition state for current segment
+  const { transitionOpacity, transitionBlack } = useMemo(() => {
+    if (!currentSegment) return { transitionOpacity: 1, transitionBlack: 0 };
+    const transition = currentSegment.transition || "cut";
+    if (transition === "cut") return { transitionOpacity: 1, transitionBlack: 0 };
+    const dur = currentSegment.transitionDuration ?? 0.5;
+    if (dur <= 0) return { transitionOpacity: 1, transitionBlack: 0 };
+    const elapsed = currentTime - currentSegment.startTime;
+    if (elapsed >= dur) return { transitionOpacity: 1, transitionBlack: 0 };
+    const progress = elapsed / dur;
+    const { inAlpha, blackAlpha } = getTransitionAlpha(transition, progress);
+    return { transitionOpacity: inAlpha, transitionBlack: blackAlpha };
+  }, [currentSegment, currentTime]);
 
   // ── SFX Marker Playback ────────────────────────────────────────────
   const firedMarkersRef = useRef<Set<string>>(new Set());
@@ -543,7 +555,7 @@ export default function VideoPreview() {
             className="absolute top-0 left-0 bg-black rounded-xl overflow-hidden"
             style={{ width: REF_WIDTH, height: REF_HEIGHT, containerType: "inline-size", transform: `scale(${containerScale})`, transformOrigin: "top left" }}
           >
-            <div className="absolute inset-0 overflow-hidden">
+            <div className="absolute inset-0 overflow-hidden" style={{ opacity: transitionOpacity, transition: "opacity 0.05s linear" }}>
 
             {/* ── Layer 1: Background ── */}
             <div className="absolute inset-0 bg-[#0a0a0a]" />
@@ -729,6 +741,14 @@ export default function VideoPreview() {
             className="absolute inset-0 z-40 cursor-pointer"
             onClick={togglePlay}
           />
+
+          {/* ── Transition black overlay (fade-black) ── */}
+          {transitionBlack > 0.01 && (
+            <div
+              className="absolute inset-0 z-40 bg-black pointer-events-none"
+              style={{ opacity: transitionBlack }}
+            />
+          )}
 
           {/* ── Layer 4: Captions (all modes) ── */}
           <div className="absolute inset-0 z-50 pointer-events-none">

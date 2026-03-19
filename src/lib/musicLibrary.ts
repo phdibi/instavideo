@@ -4,7 +4,7 @@ import type { MusicTrack } from "@/types";
  * Music library — royalty-free tracks stored in /public/music/
  * User should add MP3 files (128kbps, 2-5 min loops) to that directory.
  */
-export const musicTracks: MusicTrack[] = [
+export const builtInTracks: MusicTrack[] = [
   {
     id: "upbeat-corporate",
     name: "Upbeat Corporate",
@@ -31,10 +31,10 @@ export const musicTracks: MusicTrack[] = [
   },
 ];
 
-export function getTrackById(id: string): MusicTrack | undefined {
-  return musicTracks.find((t) => t.id === id);
+export function getTrackById(id: string, customTracks: MusicTrack[] = []): MusicTrack | undefined {
+  return builtInTracks.find((t) => t.id === id) || customTracks.find((t) => t.id === id);
 }
 
 export function getRandomTrack(): MusicTrack {
-  return musicTracks[Math.floor(Math.random() * musicTracks.length)];
+  return builtInTracks[Math.floor(Math.random() * builtInTracks.length)];
 }

@@ -13,7 +13,7 @@ import { getModeAt } from "@/lib/modes";
  * Mode C (typography): 30% volume
  */
 export default function MusicController() {
-  const { musicConfig, selectedMusicTrack, isPlaying, currentTime, modeSegments, videoDuration } =
+  const { musicConfig, selectedMusicTrack, isPlaying, currentTime, modeSegments, videoDuration, customMusicTracks } =
     useProjectStore(
       useShallow((s) => ({
         musicConfig: s.musicConfig,
@@ -22,6 +22,7 @@ export default function MusicController() {
         currentTime: s.currentTime,
         modeSegments: s.modeSegments,
         videoDuration: s.videoDuration,
+        customMusicTracks: s.customMusicTracks,
       }))
     );
 
@@ -41,7 +42,7 @@ export default function MusicController() {
   // Load audio buffer when track changes (with cancellation for race safety)
   useEffect(() => {
     if (!selectedMusicTrack) return;
-    const track = getTrackById(selectedMusicTrack);
+    const track = getTrackById(selectedMusicTrack, customMusicTracks);
     if (!track) return;
     if (isLoadedRef.current === track.id) return;
 

@@ -16,8 +16,10 @@ import {
   RotateCcw,
   Copy,
   Plus,
+  Upload,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
+import { parseSubtitleFile } from "@/lib/subtitleParser";
 
 const PRESETS: { name: string; config: Partial<CaptionConfig> }[] = [
   {
@@ -108,6 +110,7 @@ export default function CaptionPanel() {
     currentTime,
     videoDuration,
     addPhraseCaption,
+    setPhraseCaptions,
   } = useProjectStore(
     useShallow((s) => ({
       captionConfig: s.captionConfig,
@@ -123,6 +126,7 @@ export default function CaptionPanel() {
       currentTime: s.currentTime,
       videoDuration: s.videoDuration,
       addPhraseCaption: s.addPhraseCaption,
+      setPhraseCaptions: s.setPhraseCaptions,
     }))
   );
 
@@ -275,6 +279,23 @@ export default function CaptionPanel() {
     });
   };
 
+  const srtInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImportSubtitles = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const captions = await parseSubtitleFile(file);
+      if (captions.length > 0) {
+        setPhraseCaptions(captions);
+      }
+    } catch (err) {
+      console.warn("Failed to parse subtitle file:", err);
+    }
+    // Reset input so the same file can be re-imported
+    if (srtInputRef.current) srtInputRef.current.value = "";
+  }, [setPhraseCaptions]);
+
   const handleAddCaption = useCallback(() => {
     const id = uuidv4();
     const endTime = Math.min(currentTime + 1, videoDuration);
@@ -307,14 +328,31 @@ export default function CaptionPanel() {
 
   return (
     <div className="p-4 space-y-5 overflow-y-auto max-h-full">
-      {/* ═══ Add caption button ═══ */}
-      <button
-        onClick={handleAddCaption}
-        className="w-full py-2 rounded-xl text-sm font-medium flex items-center justify-center gap-2 bg-[var(--accent)]/15 text-[var(--accent-light)] hover:bg-[var(--accent)]/25 transition-colors"
-      >
-        <Plus className="w-4 h-4" />
-        Adicionar legenda na posição atual
-      </button>
+      {/* ═══ Add caption + Import SRT/VTT ═══ */}
+      <div className="flex gap-2">
+        <button
+          onClick={handleAddCaption}
+          className="flex-1 py-2 rounded-xl text-sm font-medium flex items-center justify-center gap-2 bg-[var(--accent)]/15 text-[var(--accent-light)] hover:bg-[var(--accent)]/25 transition-colors"
+        >
+          <Plus className="w-4 h-4" />
+          Adicionar legenda
+        </button>
+        <button
+          onClick={() => srtInputRef.current?.click()}
+          className="px-3 py-2 rounded-xl text-sm font-medium flex items-center justify-center gap-1.5 bg-[var(--surface)] border border-[var(--border)] hover:bg-[var(--surface-hover)] transition-colors"
+          title="Importar SRT/VTT"
+        >
+          <Upload className="w-4 h-4" />
+          SRT
+        </button>
+        <input
+          ref={srtInputRef}
+          type="file"
+          accept=".srt,.vtt"
+          onChange={handleImportSubtitles}
+          className="hidden"
+        />
+      </div>
 
       {/* ═══ Word Editor (when phrase selected) ═══ */}
       {selectedPhrase && (
@@ -635,6 +673,84 @@ export default function CaptionPanel() {
           onChange={(e) => handleConfigChange({ shadowBlur: parseInt(e.target.value) })}
           className="w-full"
         />
+      </Section>
+
+      {/* Background Box */}
+      <Section title="Fundo da Legenda">
+        <div className="space-y-2">
+          <button
+            onClick={() => handleConfigChange({ backgroundEnabled: !effectiveConfig.backgroundEnabled })}
+            className={`px-3 py-1 rounded-lg text-xs transition-all ${
+              effectiveConfig.backgroundEnabled
+                ? "bg-[var(--accent)] text-white"
+                : "bg-[var(--surface)] border border-[var(--border)]"
+            }`}
+          >
+            {effectiveConfig.backgroundEnabled ? "ON" : "OFF"}
+          </button>
+          {effectiveConfig.backgroundEnabled && (
+            <div className="space-y-2 pl-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-[var(--text-secondary)] w-16">Opacidade</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={Math.round((effectiveConfig.backgroundOpacity ?? 0.6) * 100)}
+                  onChange={(e) => handleConfigChange({ backgroundOpacity: parseInt(e.target.value) / 100 })}
+                  className="flex-1"
+                />
+                <span className="text-[10px] text-[var(--text-secondary)] w-8">
+                  {Math.round((effectiveConfig.backgroundOpacity ?? 0.6) * 100)}%
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-[var(--text-secondary)] w-16">Padding</span>
+                <input
+                  type="range"
+                  min={2}
+                  max={24}
+                  step={2}
+                  value={effectiveConfig.backgroundPadding ?? 8}
+                  onChange={(e) => handleConfigChange({ backgroundPadding: parseInt(e.target.value) })}
+                  className="flex-1"
+                />
+                <span className="text-[10px] text-[var(--text-secondary)] w-8">
+                  {effectiveConfig.backgroundPadding ?? 8}px
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-[var(--text-secondary)] w-16">Borda</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={16}
+                  step={2}
+                  value={effectiveConfig.backgroundBorderRadius ?? 4}
+                  onChange={(e) => handleConfigChange({ backgroundBorderRadius: parseInt(e.target.value) })}
+                  className="flex-1"
+                />
+                <span className="text-[10px] text-[var(--text-secondary)] w-8">
+                  {effectiveConfig.backgroundBorderRadius ?? 4}px
+                </span>
+              </div>
+              <div className="flex gap-2 items-center">
+                <span className="text-[10px] text-[var(--text-secondary)]">Cor</span>
+                {["#000000", "#1a1a2e", "#16213e", "#0f3460", "#533483"].map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => handleConfigChange({ backgroundColor: c })}
+                    className={`w-6 h-6 rounded-full border-2 ${
+                      (effectiveConfig.backgroundColor || "#000000") === c ? "border-[var(--accent)]" : "border-transparent"
+                    }`}
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </Section>
 
       {/* Position */}

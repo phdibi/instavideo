@@ -23,6 +23,22 @@ export default function EditorLayout() {
   const startYRef = useRef(0);
   const startHeightRef = useRef(0);
 
+  // Undo/Redo keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "z") {
+        e.preventDefault();
+        if (e.shiftKey) {
+          useProjectStore.temporal.getState().redo();
+        } else {
+          useProjectStore.temporal.getState().undo();
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
   // Auto-switch toolbar when selecting items (only on selection change, not segment updates)
   useEffect(() => {
     if (selectedItem?.type === "segment") {

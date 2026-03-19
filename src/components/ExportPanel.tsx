@@ -106,7 +106,8 @@ export default function ExportPanel() {
     const preset = RESOLUTION_PRESETS[exportResolution] || RESOLUTION_PRESETS["1080x1920"];
     const WIDTH = preset.width;
     const HEIGHT = preset.height;
-    const FPS = 30;
+    // 60fps for maximum fluidity (WebCodecs handles this well; MediaRecorder captures at display rate)
+    const FPS = 60;
     let audioCtx: AudioContext | null = null;
 
     try {
@@ -298,9 +299,14 @@ export default function ExportPanel() {
       const presenterIndexMap = new Map(presenterSegs.map((s, i) => [s.id, i]));
 
       const pixels = WIDTH * HEIGHT;
-      const videoBps = pixels >= 2_000_000 ? 25_000_000   // 1080p+ → 25 Mbps
-                     : pixels >= 1_000_000 ? 16_000_000   // 720p+  → 16 Mbps
-                     : 10_000_000;                          // smaller → 10 Mbps
+      // WebCodecs VBR is much more efficient than MediaRecorder, so lower bitrate still looks great
+      const webCodecsBps = pixels >= 2_000_000 ? 12_000_000   // 1080p+ → 12 Mbps (VBR quality mode)
+                         : pixels >= 1_000_000 ? 8_000_000    // 720p+  → 8 Mbps
+                         : 6_000_000;                           // smaller → 6 Mbps
+      // MediaRecorder needs higher bitrate due to real-time fast encoding
+      const mediaRecBps = pixels >= 2_000_000 ? 25_000_000
+                        : pixels >= 1_000_000 ? 16_000_000
+                        : 10_000_000;
 
       // ── drawFrameContent: renders one frame at the given time ──
       // Captures all rendering state via closure. Used by both export paths.
@@ -927,7 +933,7 @@ export default function ExportPanel() {
 
       // Probe WebCodecs when HD quality is selected
       const webCodecsConfig: WebCodecsConfig | null = exportQuality === "hd"
-        ? await probeWebCodecs(WIDTH, HEIGHT, FPS, videoBps)
+        ? await probeWebCodecs(WIDTH, HEIGHT, FPS, webCodecsBps)
         : null;
 
       if (webCodecsConfig) {
@@ -940,11 +946,31 @@ export default function ExportPanel() {
         // - Exact frame timestamps (no drift or dropped frames)
         // Trade-off: ~2-4x slower than real-time (seek per frame)
 
-        const bundle = createMuxerBundle(webCodecsConfig, WIDTH, HEIGHT, FPS);
+        let bundle = createMuxerBundle(webCodecsConfig, WIDTH, HEIGHT, FPS);
 
         // 1. Encode all pre-mixed audio
         setStatus("exporting", "Codificando áudio...");
         await encodeAudio(bundle.audioEncoder, mixedAudio);
+
+        // If AAC produced 0 chunks (known issue on some browsers), try Opus fallback
+        if (bundle.audioChunkCount === 0 && webCodecsConfig.muxerAudioCodec === "aac") {
+          console.warn("AAC audio encoding produced 0 chunks, trying Opus fallback...");
+          try { bundle.videoEncoder.close(); bundle.audioEncoder.close(); } catch {}
+
+          // Re-probe with Opus only
+          const opusConfig: WebCodecsConfig = {
+            ...webCodecsConfig,
+            audioCodec: "opus",
+            audioConfig: { codec: "opus", sampleRate: 48000, numberOfChannels: 2, bitrate: 128000 },
+            muxerAudioCodec: "opus",
+          };
+          bundle = createMuxerBundle(opusConfig, WIDTH, HEIGHT, FPS);
+          await encodeAudio(bundle.audioEncoder, mixedAudio);
+
+          if (bundle.audioChunkCount === 0) {
+            console.error("Opus audio encoding also produced 0 chunks");
+          }
+        }
 
         if (signal.aborted) {
           try { bundle.videoEncoder.close(); bundle.audioEncoder.close(); } catch {}
@@ -1026,7 +1052,7 @@ export default function ExportPanel() {
 
         const recorder = new MediaRecorder(canvasStream, {
           mimeType,
-          videoBitsPerSecond: videoBps,
+          videoBitsPerSecond: mediaRecBps,
           audioBitsPerSecond: 128_000,
         });
 
@@ -1052,13 +1078,16 @@ export default function ExportPanel() {
           throw new Error(`Não foi possível reproduzir o vídeo para export: ${e instanceof Error ? e.message : e}`);
         }
 
-        // Draw first frame with full compositing (captions, etc.)
-        drawFrameContent(0);
-        playbackSrc.start(0);
-
         // For captureStream(0), we need to request frames explicitly on non-Chrome browsers
         const captureTrack = canvasStream.getVideoTracks()[0];
         const needsRequestFrame = captureTrack && "requestFrame" in captureTrack;
+
+        // Draw first frame with full compositing (captions, etc.)
+        drawFrameContent(0);
+        if (needsRequestFrame) {
+          (captureTrack as CanvasCaptureMediaStreamTrack).requestFrame();
+        }
+        playbackSrc.start(0);
 
         let activeBrollSegId: string | null = null;
         let renderStopped = false;

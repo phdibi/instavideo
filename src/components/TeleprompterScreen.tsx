@@ -86,18 +86,19 @@ export default function TeleprompterScreen() {
         streamRef.current.getTracks().forEach((t) => t.stop());
       }
 
+      // Prefer 1080p@60fps over 4K@30fps — higher frame rate = smoother recording
       const constraints: MediaStreamConstraints = {
         video: deviceId
           ? {
               deviceId: { exact: deviceId },
-              width: { ideal: 3840, min: 1280 },
-              height: { ideal: 2160, min: 720 },
+              width: { ideal: 1920, min: 1280 },
+              height: { ideal: 1080, min: 720 },
               frameRate: { ideal: 60, min: 30 },
             }
           : {
               facingMode: "user",
-              width: { ideal: 3840, min: 1280 },
-              height: { ideal: 2160, min: 720 },
+              width: { ideal: 1920, min: 1280 },
+              height: { ideal: 1080, min: 720 },
               frameRate: { ideal: 60, min: 30 },
             },
         audio: {
@@ -112,18 +113,22 @@ export default function TeleprompterScreen() {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
 
-      // Try to push video track to maximum capabilities (Safari may negotiate lower)
+      // Try to push video track to best combination: prioritize 60fps, then resolution
       const videoTrack = stream.getVideoTracks()[0];
       if (videoTrack) {
         try {
           const caps = videoTrack.getCapabilities?.();
-          if (caps?.width?.max && caps?.height?.max) {
+          const settings = videoTrack.getSettings?.();
+          const currentFps = settings?.frameRate ?? 30;
+          if (caps?.frameRate?.max && caps.frameRate.max >= 50 && currentFps < 50) {
+            // Camera can do 60fps but negotiated lower — re-constrain at 1080p to get 60fps
             await videoTrack.applyConstraints({
-              width: { ideal: caps.width.max },
-              height: { ideal: caps.height.max },
-              frameRate: { ideal: caps.frameRate?.max ?? 60 },
+              width: { ideal: 1920 },
+              height: { ideal: 1080 },
+              frameRate: { ideal: 60, min: 50 },
             });
           }
+          // If already at 50+ fps, don't re-negotiate — it could destabilize settings
         } catch { /* applyConstraints not supported or failed — keep negotiated settings */ }
       }
 
@@ -238,6 +243,8 @@ export default function TeleprompterScreen() {
 
   const startRecording = useCallback(() => {
     if (!streamRef.current || phase !== "setup") return;
+    // Guard against double-click: immediately transition phase
+    setPhase("countdown");
 
     // Close mobile sheet during recording
     setMobileSheetOpen(false);
@@ -344,8 +351,8 @@ export default function TeleprompterScreen() {
 
       const recorder = new MediaRecorder(streamForRecording, {
         mimeType,
-        videoBitsPerSecond: 25_000_000,
-        audioBitsPerSecond: 320_000,
+        videoBitsPerSecond: 12_000_000, // 12 Mbps — plenty for 1080p talking head
+        audioBitsPerSecond: 128_000,    // 128 kbps — transparent for voice
       });
 
       recorder.ondataavailable = (e) => {
@@ -361,7 +368,7 @@ export default function TeleprompterScreen() {
       };
 
       mediaRecorderRef.current = recorder;
-      recorder.start(100);
+      recorder.start(1000); // 1s chunks — fewer encoder flushes = smoother recording
       setPhase("recording");
 
       resetScroll();
@@ -375,7 +382,6 @@ export default function TeleprompterScreen() {
       return;
     }
 
-    setPhase("countdown");
     setCountdownValue(teleprompterSettings.countdownSeconds);
 
     let count = teleprompterSettings.countdownSeconds;
@@ -394,11 +400,21 @@ export default function TeleprompterScreen() {
   }, [phase, teleprompterSettings.countdownSeconds, resetScroll, startScrolling, startTimer]);
 
   const stopRecording = useCallback(() => {
+    // Cancel countdown if still running (e.g. user pressed Escape during countdown)
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+
     pauseScrolling();
     stopTimer();
 
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       mediaRecorderRef.current.stop();
+    } else {
+      // No recording was started (cancelled during countdown) — go back to setup
+      setPhase("setup");
+      setMobileSheetOpen(true);
     }
 
     // Clean up recording audio processing chain
@@ -495,7 +511,7 @@ export default function TeleprompterScreen() {
           if (phase === "recording") toggleScroll();
           break;
         case "Escape":
-          if (phase === "recording") stopRecording();
+          if (phase === "recording" || phase === "countdown") stopRecording();
           break;
         case "ArrowUp":
           e.preventDefault();

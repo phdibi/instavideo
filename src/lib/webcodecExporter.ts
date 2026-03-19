@@ -34,7 +34,8 @@ export interface WebCodecsConfig {
 
 /**
  * Probe browser for WebCodecs support and find the best codec combination.
- * Returns null if WebCodecs is not supported or no codec combo works.
+ * Tries H.264+AAC first, then H.264+Opus as fallback (Opus is software-encoded, always works).
+ * Returns null if WebCodecs is not supported.
  */
 export async function probeWebCodecs(
   width: number,
@@ -44,54 +45,62 @@ export async function probeWebCodecs(
 ): Promise<WebCodecsConfig | null> {
   if (!isWebCodecsAvailable()) return null;
 
-  // Try H.264 High Profile + AAC-LC → MP4
-  const h264Configs: { codec: string; muxerCodec: "avc" }[] = [
+  const h264Codecs: { codec: string; muxerCodec: "avc" }[] = [
     { codec: "avc1.640028", muxerCodec: "avc" }, // High Profile Level 4.0
     { codec: "avc1.42001f", muxerCodec: "avc" }, // Baseline Profile Level 3.1
   ];
 
-  const aacConfig: AudioEncoderConfig = {
-    codec: "mp4a.40.2", // AAC-LC
-    sampleRate: AUDIO_SAMPLE_RATE,
-    numberOfChannels: AUDIO_CHANNELS,
-    bitrate: AUDIO_BITRATE,
-  };
+  // Audio codecs in preference order: AAC (better player compat) → Opus (always works)
+  const audioConfigs: { codec: string; muxerCodec: "aac" | "opus"; config: AudioEncoderConfig }[] = [
+    {
+      codec: "mp4a.40.2",
+      muxerCodec: "aac",
+      config: { codec: "mp4a.40.2", sampleRate: AUDIO_SAMPLE_RATE, numberOfChannels: AUDIO_CHANNELS, bitrate: AUDIO_BITRATE },
+    },
+    {
+      codec: "opus",
+      muxerCodec: "opus",
+      config: { codec: "opus", sampleRate: AUDIO_SAMPLE_RATE, numberOfChannels: AUDIO_CHANNELS, bitrate: AUDIO_BITRATE },
+    },
+  ];
 
-  for (const { codec, muxerCodec } of h264Configs) {
-    try {
-      const videoConfig: VideoEncoderConfig = {
-        codec,
-        width,
-        height,
-        bitrate,
-        framerate: fps,
-        latencyMode: "quality",
-        bitrateMode: "variable",
-      };
-
-      const [videoSupport, audioSupport] = await Promise.all([
-        VideoEncoder.isConfigSupported(videoConfig),
-        AudioEncoder.isConfigSupported(aacConfig),
-      ]);
-
-      if (
-        videoSupport.supported &&
-        audioSupport.supported &&
-        videoSupport.config &&
-        audioSupport.config
-      ) {
-        return {
-          videoCodec: codec,
-          videoConfig: videoSupport.config,
-          audioCodec: "mp4a.40.2",
-          audioConfig: audioSupport.config,
-          container: "mp4",
-          muxerVideoCodec: muxerCodec,
-          muxerAudioCodec: "aac",
+  for (const { codec: videoCodecStr, muxerCodec: muxerVideoCodec } of h264Codecs) {
+    for (const { muxerCodec: muxerAudioCodec, config: audioBaseConfig } of audioConfigs) {
+      try {
+        const videoConfig: VideoEncoderConfig = {
+          codec: videoCodecStr,
+          width,
+          height,
+          bitrate,
+          framerate: fps,
+          latencyMode: "quality",
+          bitrateMode: "variable",
         };
+
+        const [videoSupport, audioSupport] = await Promise.all([
+          VideoEncoder.isConfigSupported(videoConfig),
+          AudioEncoder.isConfigSupported(audioBaseConfig),
+        ]);
+
+        if (
+          videoSupport.supported &&
+          audioSupport.supported &&
+          videoSupport.config &&
+          audioSupport.config
+        ) {
+          return {
+            videoCodec: videoCodecStr,
+            videoConfig: videoSupport.config,
+            audioCodec: audioBaseConfig.codec,
+            audioConfig: audioSupport.config,
+            container: "mp4",
+            muxerVideoCodec,
+            muxerAudioCodec,
+          };
+        }
+      } catch {
+        // Config not supported, try next combo
       }
-    } catch {
-      // Config not supported, try next
     }
   }
 
@@ -107,7 +116,6 @@ export function seekVideo(
   time: number
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    // Already at the right time (within ~30ms, typical keyframe precision)
     if (Math.abs(video.currentTime - time) < 0.03) {
       resolve();
       return;
@@ -116,8 +124,7 @@ export function seekVideo(
     const timeout = setTimeout(() => {
       video.removeEventListener("seeked", onSeeked);
       video.removeEventListener("error", onError);
-      // Resolve instead of reject — a stale frame is better than crashing the export
-      resolve();
+      resolve(); // stale frame is better than crashing
     }, 5000);
 
     const onSeeked = () => {
@@ -145,13 +152,14 @@ export interface MuxerBundle {
   videoEncoder: VideoEncoder;
   audioEncoder: AudioEncoder;
   target: ArrayBufferTarget;
-  /** Set to an Error if any encoder reports an error asynchronously */
   encoderError: Error | null;
+  audioChunkCount: number;
 }
 
 /**
  * Create the muxer + encoders bundle.
- * Encoder errors are captured in bundle.encoderError for the caller to check.
+ * Encoder errors are captured in bundle.encoderError.
+ * Audio chunk count is tracked in bundle.audioChunkCount.
  */
 export function createMuxerBundle(
   config: WebCodecsConfig,
@@ -166,6 +174,7 @@ export function createMuxerBundle(
     audioEncoder: null!,
     target,
     encoderError: null,
+    audioChunkCount: 0,
   };
 
   bundle.muxer = new Muxer({
@@ -194,7 +203,10 @@ export function createMuxerBundle(
   bundle.videoEncoder.configure(config.videoConfig);
 
   bundle.audioEncoder = new AudioEncoder({
-    output: (chunk, meta) => bundle.muxer.addAudioChunk(chunk, meta),
+    output: (chunk, meta) => {
+      bundle.muxer.addAudioChunk(chunk, meta);
+      bundle.audioChunkCount++;
+    },
     error: (e) => {
       console.error("AudioEncoder error:", e);
       bundle.encoderError = e instanceof Error ? e : new Error(String(e));
@@ -223,8 +235,10 @@ export async function encodeAudio(
       : ch0;
 
   for (let offset = 0; offset < totalFrames; offset += chunkSize) {
+    // Bail if encoder errored asynchronously (transitions to "closed" state)
+    if (audioEncoder.state !== "configured") break;
+
     const numFrames = Math.min(chunkSize, totalFrames - offset);
-    // Create planar float32 data (ch0 followed by ch1)
     const data = new Float32Array(numFrames * 2);
     data.set(ch0.subarray(offset, offset + numFrames), 0);
     data.set(ch1.subarray(offset, offset + numFrames), numFrames);
@@ -234,7 +248,7 @@ export async function encodeAudio(
       sampleRate,
       numberOfFrames: numFrames,
       numberOfChannels: AUDIO_CHANNELS,
-      timestamp: Math.round((offset / sampleRate) * 1_000_000), // microseconds
+      timestamp: Math.round((offset / sampleRate) * 1_000_000),
       data,
     });
 
@@ -245,12 +259,14 @@ export async function encodeAudio(
     }
   }
 
-  await audioEncoder.flush();
+  if (audioEncoder.state === "configured") {
+    await audioEncoder.flush();
+  }
 }
 
 /**
  * Encode a single video frame from a canvas.
- * Checks encoder queue size and waits if backpressure is too high.
+ * Handles backpressure by waiting when encoder queue is deep.
  */
 export async function encodeVideoFrame(
   videoEncoder: VideoEncoder,
@@ -259,7 +275,9 @@ export async function encodeVideoFrame(
   fps: number,
   keyFrameInterval: number = 60
 ): Promise<void> {
-  // Backpressure: wait if encoder queue is too deep (prevents OOM on long videos)
+  // Bail if encoder errored asynchronously
+  if (videoEncoder.state !== "configured") return;
+
   if (videoEncoder.encodeQueueSize > 10) {
     await new Promise<void>((resolve) => {
       const check = () => {
@@ -269,7 +287,7 @@ export async function encodeVideoFrame(
         }
       };
       videoEncoder.addEventListener("dequeue", check);
-      // Safety: resolve after 2s even if queue doesn't drain
+      check(); // check immediately in case queue already drained
       setTimeout(() => {
         videoEncoder.removeEventListener("dequeue", check);
         resolve();
@@ -277,13 +295,13 @@ export async function encodeVideoFrame(
     });
   }
 
-  const timestamp = Math.round((frameIndex / fps) * 1_000_000); // microseconds
+  // Re-check after backpressure wait
+  if (videoEncoder.state !== "configured") return;
+
+  const timestamp = Math.round((frameIndex / fps) * 1_000_000);
   const duration = Math.round((1 / fps) * 1_000_000);
 
-  const frame = new VideoFrame(canvas, {
-    timestamp,
-    duration,
-  });
+  const frame = new VideoFrame(canvas, { timestamp, duration });
 
   try {
     videoEncoder.encode(frame, {
@@ -296,18 +314,19 @@ export async function encodeVideoFrame(
 
 /**
  * Finalize encoding and return the MP4 blob.
- * Flushes both encoders and closes them in a finally block.
  */
 export async function finalizeMuxer(
   bundle: MuxerBundle
 ): Promise<Blob> {
   try {
-    // Flush both encoders before finalizing the muxer
-    await bundle.videoEncoder.flush();
-    // Audio was already flushed in encodeAudio(), but flush again for safety (no-op if already flushed)
-    await bundle.audioEncoder.flush();
+    // Only flush encoders that are still in configured state (not errored/closed)
+    if (bundle.videoEncoder.state === "configured") {
+      await bundle.videoEncoder.flush();
+    }
+    if (bundle.audioEncoder.state === "configured") {
+      await bundle.audioEncoder.flush();
+    }
 
-    // Check for async encoder errors
     if (bundle.encoderError) {
       throw bundle.encoderError;
     }

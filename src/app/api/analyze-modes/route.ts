@@ -9,8 +9,9 @@ const SegmentSchema = z.array(
     startTime: z.number(),
     endTime: z.number(),
     brollQuery: z.string().optional(),
+    brollPromptAI: z.string().optional(),
     typographyText: z.string().optional(),
-    typographyBackground: z.string().optional(),
+    typographyBackground: z.enum(["#F5F0E8", "#0a0a0a"]).optional(),
     transcriptText: z.string().optional(),
   })
 );
@@ -64,25 +65,38 @@ Rules:
 8. Presenter segments vary based on content (shorter = more dynamic feel)
 9. Typography background should alternate between "#F5F0E8" (beige) and "#0a0a0a" (dark)
 
-B-ROLL CINEMATOGRAPHY GUIDELINES (CRITICAL):
-- B-roll queries must be SPECIFIC and CINEMATIC. Use detailed search terms like "close up hands typing on modern keyboard dark background", "aerial drone shot of modern city at sunset", "slow motion brain neural network visualization"
-- Create THEMATIC CONTINUITY between b-rolls: if the topic is about technology, use a connected visual narrative (e.g., "person working on laptop" → later "futuristic digital interface" → later "team celebrating in modern office")
-- B-ROLL SEQUENCES should follow a NARRATIVE ARC within the sequence:
-  * First shot: WIDE/ESTABLISHING (aerial, wide angle, context-setting)
-  * Middle shots: MEDIUM (subject interaction, process, action)
-  * Final shot: CLOSE-UP/DETAIL (texture, hands, eyes, specific detail)
-  * Each shot in the sequence must have THEMATIC CONTINUITY with the others
-- Use VARIED SHOT TYPES: mix close-ups, wide shots, aerial shots, detail shots, and abstract visuals
-- Match the EMOTIONAL TONE: dramatic topic → dramatic visuals (dark backgrounds, slow motion), positive topic → bright and dynamic visuals
-- Include CINEMATIC DETAILS in queries: mention lighting (e.g., "golden hour", "dramatic lighting", "neon lights"), camera movement (e.g., "slow motion", "tracking shot", "dolly zoom"), and atmosphere (e.g., "moody", "professional", "futuristic", "bokeh background")
-- Each b-roll query should be 5-12 words for specificity
+B-ROLL SEARCH & AI GENERATION (CRITICAL):
+
+You must provide TWO fields for each b-roll segment:
+
+1. "brollQuery" — SHORT search query (2-4 words in English) optimized for Pexels stock library.
+   - Pexels has limited content. Use SIMPLE, CONCRETE terms that return real results.
+   - GOOD: "business meeting office", "city skyline sunset", "coding laptop dark"
+   - BAD: "close up hands typing on modern keyboard dark background cinematic" (too specific, no results)
+   - Focus on the MAIN SUBJECT only. No adjectives about lighting/mood/camera.
+   - Always in English regardless of video language.
+
+2. "brollPromptAI" — DETAILED AI image generation prompt (30-80 words in English).
+   - This is used when stock footage isn't good enough and AI generates the image.
+   - Be EXTREMELY SPECIFIC about what should appear in the image.
+   - Include: main subject, setting, lighting, mood, color palette, camera angle, depth of field.
+   - Match the EXACT context of what the speaker is discussing at that moment.
+   - ALWAYS include "portrait orientation, 9:16 aspect ratio" at the end.
+   - Example: "A focused entrepreneur working on a sleek laptop in a modern minimalist office, warm ambient lighting from large windows, shallow depth of field with bokeh city lights in background, professional and aspirational mood, muted earth tones with warm highlights, eye-level camera angle, portrait orientation, 9:16 aspect ratio"
+
+VISUAL STORYTELLING GUIDELINES:
+- Create THEMATIC CONTINUITY between b-rolls: if the topic is about technology, use a connected visual narrative (e.g., "laptop coding" → "digital interface" → "team celebrating")
+- B-ROLL SEQUENCES should follow a NARRATIVE ARC: WIDE/ESTABLISHING → MEDIUM/ACTION → CLOSE-UP/DETAIL
+- Match the EMOTIONAL TONE of the transcript: dramatic → dark moody visuals, positive → bright dynamic visuals
+- Think about what the viewer would EXPECT to see when hearing these specific words
 
 Respond with a JSON array only, no other text. Each element must have:
 {
   "mode": "presenter" | "broll" | "typography",
   "startTime": number (seconds),
   "endTime": number (seconds),
-  "brollQuery": string (only for broll mode, detailed English search query with cinematic specificity),
+  "brollQuery": string (only for broll, 2-4 word English Pexels search query),
+  "brollPromptAI": string (only for broll, detailed 30-80 word AI generation prompt),
   "typographyText": string (only for typography mode, original language),
   "typographyBackground": "#F5F0E8" | "#0a0a0a" (only for typography mode),
   "transcriptText": string (what is being said during this segment)
@@ -140,6 +154,7 @@ Respond with a JSON array only, no other text. Each element must have:
       startTime: seg.startTime,
       endTime: seg.endTime,
       brollQuery: seg.brollQuery || undefined,
+      brollPromptAI: seg.brollPromptAI || undefined,
       typographyText: seg.typographyText || undefined,
       typographyBackground: seg.typographyBackground || undefined,
       transcriptText: seg.transcriptText || undefined,

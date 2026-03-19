@@ -26,8 +26,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create prediction with Flux Schnell (fast, cheap)
+    // Build enhanced prompt for maximum image quality and relevance
     const trimmedPrompt = prompt.slice(0, 500);
+    // Only add quality modifiers if the prompt doesn't already contain them
+    const hasQuality = /\b(high quality|professional|8k|cinematic|photorealistic)\b/i.test(trimmedPrompt);
+    const hasOrientation = /\b(portrait|9:16|vertical)\b/i.test(trimmedPrompt);
+    const enhancedPrompt = [
+      trimmedPrompt,
+      !hasQuality ? "ultra high quality, photorealistic, professional photography, cinematic lighting, sharp focus" : "",
+      !hasOrientation ? "portrait orientation, vertical composition" : "",
+    ].filter(Boolean).join(", ");
+
+    // Create prediction with Flux Schnell (fast, cheap)
     const createRes = await fetch(
       "https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions",
       {
@@ -39,7 +49,7 @@ export async function POST(request: NextRequest) {
         },
         body: JSON.stringify({
           input: {
-            prompt: `${trimmedPrompt}, high quality, professional photography, portrait orientation`,
+            prompt: enhancedPrompt,
             aspect_ratio: "9:16",
             num_outputs: 1,
           },

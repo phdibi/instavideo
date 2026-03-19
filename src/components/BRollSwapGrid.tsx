@@ -60,10 +60,14 @@ export default function BRollSwapGrid({ segment }: Props) {
     setGenerating(true);
     setGenerateError(null);
     try {
+      // Use the detailed AI prompt if available, otherwise fall back to custom query
+      const aiPrompt = segment.brollPromptAI && customQuery.trim() === (segment.brollQuery || "").trim()
+        ? segment.brollPromptAI
+        : customQuery.trim();
       const res = await fetch("/api/generate-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: customQuery.trim() }),
+        body: JSON.stringify({ prompt: aiPrompt }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -80,7 +84,7 @@ export default function BRollSwapGrid({ segment }: Props) {
     } finally {
       setGenerating(false);
     }
-  }, [customQuery]);
+  }, [customQuery, segment.brollPromptAI, segment.brollQuery]);
 
   const handleFileSelect = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {

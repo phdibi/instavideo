@@ -112,8 +112,10 @@ export default function ExportPanel() {
       /** Seek with timeout to prevent infinite hang */
       const seekVideo = (vid: HTMLVideoElement, t: number) =>
         new Promise<void>((resolve) => {
-          vid.currentTime = t;
-          const timer = setTimeout(resolve, 3000);
+          const clamped = Math.min(Math.max(0, t), vid.duration || t);
+          if (Math.abs(vid.currentTime - clamped) < 0.01) { resolve(); return; }
+          vid.currentTime = clamped;
+          const timer = setTimeout(resolve, 500);
           vid.addEventListener("seeked", () => { clearTimeout(timer); resolve(); }, { once: true });
         });
 
@@ -122,6 +124,7 @@ export default function ExportPanel() {
       video.src = videoUrl;
       video.muted = true;
       video.playsInline = true;
+      if (!videoUrl.startsWith("blob:")) video.crossOrigin = "anonymous";
       await new Promise<void>((resolve, reject) => {
         const timer = setTimeout(() => reject(new Error("Timeout carregando vídeo")), 15000);
         video.onloadeddata = () => { clearTimeout(timer); resolve(); };
@@ -176,66 +179,120 @@ export default function ExportPanel() {
         ),
       ]);
 
-      // Set up audio — 48kHz is the standard sample rate for video
-      audioCtx = new AudioContext({ sampleRate: 48000 });
-      const dest = audioCtx.createMediaStreamDestination();
+      // ── Offline Audio Pre-Rendering ──
+      // Pre-mix ALL audio offline for perfect sync, no real-time dependency.
+      // This prevents the mobile truncation issue where video.play() can't keep up.
+      setStatus("exporting", "Preparando áudio...");
 
-      // Voice audio from video (with optional voice enhancer)
-      // Only connect to dest (MediaStreamDestination for recording) — NOT audioCtx.destination
-      // which would play audio through speakers during export
-      const voiceSource = audioCtx.createMediaElementSource(video);
-      if (voiceEnhanceConfig.preset !== "off") {
-        const chain = createVoiceEnhancerChain(audioCtx, voiceEnhanceConfig);
-        voiceSource.connect(chain.input);
-        chain.output.connect(dest);
-      } else {
-        voiceSource.connect(dest);
+      audioCtx = new AudioContext({ sampleRate: 48000 });
+      // Resume context (mobile browsers may start suspended)
+      if (audioCtx.state === "suspended") await audioCtx.resume();
+
+      // 1. Decode voice audio from video file
+      let voiceBuffer: AudioBuffer | null = null;
+      try {
+        const videoArrayBuffer = await fetch(videoUrl).then((r) => r.arrayBuffer());
+        voiceBuffer = await audioCtx.decodeAudioData(videoArrayBuffer);
+      } catch (e) {
+        console.warn("Could not decode voice audio (video may have no audio track):", e);
       }
 
-      // Music audio — prepare but DON'T start yet (must sync with video.play())
-      let musicGain: GainNode | null = null;
-      let musicSource: AudioBufferSourceNode | null = null;
+      // 2. Decode music audio
+      let musicBuffer: AudioBuffer | null = null;
       if (selectedMusicTrack) {
         const track = getTrackById(selectedMusicTrack, customMusicTracks);
         if (track) {
           try {
-            const musicResponse = await fetch(track.file);
-            const musicBuffer = await audioCtx.decodeAudioData(
-              await musicResponse.arrayBuffer()
-            );
-            musicSource = audioCtx.createBufferSource();
-            musicSource.buffer = musicBuffer;
-            musicSource.loop = true;
-            musicGain = audioCtx.createGain();
-            musicGain.gain.value = musicConfig.baseVolume;
-            musicSource.connect(musicGain);
-            musicGain.connect(dest);
+            const musicArrayBuffer = await fetch(track.file).then((r) => r.arrayBuffer());
+            musicBuffer = await audioCtx.decodeAudioData(musicArrayBuffer);
           } catch (e) {
             console.warn("Failed to load music for export:", e);
           }
         }
       }
 
-      // SFX — render transition sounds, prepare but DON'T start yet
-      let sfxSource: AudioBufferSourceNode | null = null;
+      if (signal.aborted) { setStatus("ready", "Export cancelado"); return; }
+
+      // 3. Pre-mix all audio in OfflineAudioContext (voice + music + SFX)
+      setStatus("exporting", "Mixando áudio...");
+      const sampleRate = 48000;
+      const totalSamples = Math.ceil(videoDuration * sampleRate);
+      const offlineCtx = new OfflineAudioContext(2, totalSamples, sampleRate);
+
+      // Voice source with optional voice enhancement
+      if (voiceBuffer) {
+        const voiceSrc = offlineCtx.createBufferSource();
+        voiceSrc.buffer = voiceBuffer;
+        if (voiceEnhanceConfig.preset !== "off") {
+          const chain = createVoiceEnhancerChain(offlineCtx, voiceEnhanceConfig);
+          voiceSrc.connect(chain.input);
+          chain.output.connect(offlineCtx.destination);
+        } else {
+          voiceSrc.connect(offlineCtx.destination);
+        }
+        voiceSrc.start(0);
+      }
+
+      // Music source with pre-scheduled ducking (sample-accurate, no per-frame calls)
+      if (musicBuffer) {
+        const musicSrc = offlineCtx.createBufferSource();
+        musicSrc.buffer = musicBuffer;
+        musicSrc.loop = true;
+        const mGain = offlineCtx.createGain();
+
+        // Fade in from silence
+        const fadeInDur = musicConfig.fadeInDuration;
+        if (fadeInDur > 0) {
+          mGain.gain.setValueAtTime(0, 0);
+          mGain.gain.linearRampToValueAtTime(musicConfig.baseVolume, fadeInDur);
+        } else {
+          mGain.gain.value = musicConfig.baseVolume;
+        }
+
+        // Schedule ducking for each mode segment (skip segments within fade-in window)
+        for (const seg of modeSegments) {
+          let vol = musicConfig.baseVolume;
+          if (seg.mode === "presenter") vol = musicConfig.duckVolume;
+          else if (seg.mode === "broll") vol = musicConfig.baseVolume * 0.6;
+          else if (seg.mode === "typography") vol = musicConfig.baseVolume * 0.3;
+          // Small epsilon avoids conflicting with linearRamp ending at fadeInDur
+          const duckStart = Math.max(fadeInDur + 0.005, seg.startTime);
+          if (duckStart < seg.endTime) {
+            mGain.gain.setTargetAtTime(vol, duckStart, 0.08);
+          }
+        }
+
+        // Fade out at end
+        const fadeDur = musicConfig.fadeOutDuration;
+        if (fadeDur > 0) {
+          const fadeStart = Math.max(0, videoDuration - fadeDur);
+          mGain.gain.setTargetAtTime(0, fadeStart, fadeDur / 4);
+          mGain.gain.setValueAtTime(0, videoDuration); // guarantee silence at end
+        }
+
+        musicSrc.connect(mGain);
+        mGain.connect(offlineCtx.destination);
+        musicSrc.start(0);
+      }
+
+      // SFX
       if (sfxConfig.profile !== "none") {
         try {
-          const sfxDuration = Math.max(2, videoDuration + 1);
-          const offlineCtx = new OfflineAudioContext(
-            2,
-            Math.ceil(sfxDuration * audioCtx.sampleRate),
-            audioCtx.sampleRate
-          );
           await renderSFXToBuffer(offlineCtx, modeSegments, sfxConfig.masterVolume, sfxMarkers);
-          const sfxBuffer = await offlineCtx.startRendering();
-
-          sfxSource = audioCtx.createBufferSource();
-          sfxSource.buffer = sfxBuffer;
-          sfxSource.connect(dest);
         } catch (e) {
           console.warn("SFX render failed:", e);
         }
       }
+
+      const mixedAudio = await offlineCtx.startRendering();
+
+      if (signal.aborted) { setStatus("ready", "Export cancelado"); return; }
+
+      // 4. Set up playback of pre-mixed audio for MediaRecorder
+      const dest = audioCtx.createMediaStreamDestination();
+      const playbackSrc = audioCtx.createBufferSource();
+      playbackSrc.buffer = mixedAudio;
+      playbackSrc.connect(dest);
 
       // Combine canvas + audio into MediaRecorder
       const canvasStream = canvas.captureStream(FPS);
@@ -279,23 +336,21 @@ export default function ExportPanel() {
         console.error("MediaRecorder error:", e);
       });
 
-      recorder.start(1000);  // 1s chunks — balances memory vs overhead
+      // ── Frame-by-Frame Render Loop ──
+      // Seek video for each frame instead of playing in real-time.
+      // This ensures ALL frames are rendered even on slow devices (mobile).
+      // Audio is pre-mixed so it plays perfectly regardless of render speed.
 
-      // Render loop
-      // Pre-compute presenter segments and index map (avoid per-frame filter/findIndex)
+      setStatus("exporting", "Renderizando...");
+
       const presenterSegs = modeSegments.filter((s) => s.mode === "presenter");
       const presenterIndexMap = new Map(presenterSegs.map((s, i) => [s.id, i]));
       const totalFrames = Math.ceil(videoDuration * FPS);
-      await seekVideo(video, 0);
-      video.muted = false; // ensure browser decodes audio track (Safari skips when muted)
-      await video.play();
-      // Start music & SFX in sync with video playback
-      if (musicSource) musicSource.start(0);
-      if (sfxSource) sfxSource.start(0);
-      const exportStartWall = performance.now();
 
-      // Track which b-roll segment is currently playing to detect transitions
-      let activeBrollSegId: string | null = null;
+      // Start pre-mixed audio playback (for MediaRecorder capture)
+      recorder.start(1000);
+      playbackSrc.start(0);
+      const audioStartTime = audioCtx.currentTime;
 
       for (let frame = 0; frame < totalFrames; frame++) {
         if (signal.aborted) break;
@@ -306,49 +361,19 @@ export default function ExportPanel() {
         const mode = segment?.mode || "presenter";
         const layout = segment?.brollLayout || "fullscreen";
 
+        // Seek main video and b-roll video in parallel
+        const seekPromises: Promise<void>[] = [seekVideo(video, time)];
+        if (mode === "broll" && segment) {
+          const bv = brollVideos[segment.id];
+          if (bv && bv.readyState >= 2 && bv.duration > 0) {
+            const brollTime = (time - segment.startTime) % bv.duration;
+            seekPromises.push(seekVideo(bv, brollTime));
+          }
+        }
+        await Promise.all(seekPromises);
+
         // Clear canvas
         ctx.clearRect(0, 0, WIDTH, HEIGHT);
-
-        // Music ducking (use setTargetAtTime for smooth transitions, avoid clicks/pops)
-        if (musicGain && audioCtx) {
-          let vol = musicConfig.baseVolume;
-          switch (mode) {
-            case "presenter":
-              vol = musicConfig.duckVolume;
-              break;
-            case "broll":
-              vol = 0.6;
-              break;
-            case "typography":
-              vol = 0.3;
-              break;
-          }
-          const effectiveFadeDur = Math.min(musicConfig.fadeOutDuration, videoDuration);
-          if (effectiveFadeDur > 0 && time > videoDuration - effectiveFadeDur) {
-            const fadeProgress =
-              (videoDuration - time) / effectiveFadeDur;
-            vol *= Math.max(0, fadeProgress);
-          }
-          musicGain.gain.setTargetAtTime(vol, audioCtx.currentTime, 0.05);
-        }
-
-        // B-roll video playback: play in real-time instead of seeking frame-by-frame.
-        // Seeking each frame causes flicker because async seeks can't keep up at 30fps.
-        const currentBrollSegId = (mode === "broll" && segment) ? segment.id : null;
-        if (currentBrollSegId !== activeBrollSegId) {
-          // Segment transition — pause old b-roll, start new one
-          if (activeBrollSegId && brollVideos[activeBrollSegId]) {
-            brollVideos[activeBrollSegId].pause();
-          }
-          if (currentBrollSegId && segment) {
-            const bv = brollVideos[currentBrollSegId];
-            if (bv && bv.readyState >= 2) {
-              bv.currentTime = 0;
-              bv.play().catch(() => {});
-            }
-          }
-          activeBrollSegId = currentBrollSegId;
-        }
 
         if (mode === "presenter") {
           // Presenter fills entire 9:16 frame with dynamic Ken Burns
@@ -425,16 +450,16 @@ export default function ExportPanel() {
           } else if (layout === "overlay") {
             // ── Overlay: presenter background + b-roll card ──
             drawVideoCover(ctx, video, 0, 0, WIDTH, HEIGHT);
-            ctx.fillStyle = "rgba(0,0,0,0.15)";
+            ctx.fillStyle = "rgba(0,0,0,0.10)";
             ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
             if (hasBroll && brollMedia) {
-              const entryProg = Math.min((time - (segment?.startTime || 0)) / 0.3, 1);
+              const entryProg = Math.min((time - (segment?.startTime || 0)) / 0.15, 1);
               const cardScale = 0.85 + entryProg * 0.15;
               const cardW = WIDTH * 0.84;
-              const cardH = HEIGHT * 0.42;
+              const cardH = HEIGHT * 0.45;
               const cardX = (WIDTH - cardW) / 2;
-              const cardY = HEIGHT * 0.38;
+              const cardY = HEIGHT * 0.40;
               const cornerR = 24;
 
               // Card with shadow
@@ -753,7 +778,7 @@ export default function ExportPanel() {
             ? effStanza.emphasisFontSize * CASCADE_EMPH_SCALE
             : effStanza.emphasisFontSize;
           const effBaseY = effIsCascading
-            ? HEIGHT * 0.80
+            ? HEIGHT * 0.90
             : effLayout === "inline"
               ? HEIGHT * 0.88
               : effLayout === "diagonal"
@@ -763,7 +788,7 @@ export default function ExportPanel() {
                   : captionConfig.position === "top"
                     ? HEIGHT * 0.15
                     : captionConfig.position === "center"
-                      ? HEIGHT * 0.5
+                      ? HEIGHT * 0.45
                       : HEIGHT * 0.85;
           const effBaseX = effIsCascading ? WIDTH * 0.06 : WIDTH / 2;
 
@@ -881,11 +906,15 @@ export default function ExportPanel() {
           ctx.font = `${eff.fontWeight} ${cSize}px ${cFont}, Inter, system-ui, sans-serif`;
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
+          // Apply letterSpacing if supported by the canvas context
+          if (eff.letterSpacing && "letterSpacing" in ctx) {
+            (ctx as unknown as Record<string, string>).letterSpacing = `${eff.letterSpacing}em`;
+          }
 
-          // Position
+          // Position (must match CaptionOverlay: top=15%, center=45%, bottom=85%)
           let captionY = HEIGHT * 0.85; // bottom
           if (eff.position === "top") captionY = HEIGHT * 0.15;
-          else if (eff.position === "center") captionY = HEIGHT * 0.5;
+          else if (eff.position === "center") captionY = HEIGHT * 0.45;
 
           const displayText = eff.uppercase
             ? activeCaption.text.toUpperCase()
@@ -944,46 +973,33 @@ export default function ExportPanel() {
             ctx.fillText(lines[li], WIDTH / 2, lineY);
           }
 
-          // Reset shadow
+          // Reset shadow and letterSpacing
           ctx.shadowColor = "transparent";
           ctx.shadowBlur = 0;
           ctx.shadowOffsetX = 0;
           ctx.shadowOffsetY = 0;
+          if ("letterSpacing" in ctx) {
+            (ctx as unknown as Record<string, string>).letterSpacing = "0px";
+          }
         }
 
         setProgress(Math.round(((frame + 1) / totalFrames) * 100));
 
-        // Wall-clock pacing: align render loop to real-time so audio stays in sync
-        const nextFrameWall = exportStartWall + ((frame + 1) / FPS) * 1000;
-        const drift = nextFrameWall - performance.now();
-
-        if (drift > 1) {
-          // Render is ahead of real-time — wait to sync
-          await new Promise((r) => setTimeout(r, drift));
-        } else if (drift < -200) {
-          // Render fell >200ms behind — skip frames to catch up with audio
-          const skipTo = Math.floor((performance.now() - exportStartWall) / 1000 * FPS);
-          if (skipTo > frame + 1 && skipTo < totalFrames) {
-            frame = skipTo - 1; // loop will increment to skipTo
-          } else {
-            await new Promise((r) => setTimeout(r, 1));
-          }
-        } else {
-          // Small lag (<200ms) — yield and continue
-          await new Promise((r) => setTimeout(r, 1));
+        // Pace to pre-mixed audio — wait until audio playback reaches this point.
+        // If canvas render is faster than real-time, we wait.
+        // If canvas render is slower (mobile), audio plays ahead — MediaRecorder
+        // duplicates the last canvas frame for the gap, keeping perfect audio.
+        const targetAudioTime = audioStartTime + (frame + 1) / FPS;
+        while (audioCtx!.currentTime < targetAudioTime && !signal.aborted) {
+          await new Promise((r) => setTimeout(r, 4));
         }
       }
 
       // ── Finalization phase ──
       setStatus("exporting", "Finalizando...");
 
-      video.pause();
-      // Pause all b-roll videos that were playing
-      for (const bv of Object.values(brollVideos)) {
-        try { bv.pause(); } catch { /* ignore */ }
-      }
-      if (musicSource) try { musicSource.stop(); } catch { /* already stopped */ }
-      if (sfxSource) try { sfxSource.stop(); } catch { /* already stopped */ }
+      // Stop audio playback
+      try { playbackSrc.stop(); } catch { /* already stopped */ }
 
       // Flush any buffered data, then stop recorder
       if (recorder.state === "recording") {

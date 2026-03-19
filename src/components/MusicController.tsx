@@ -132,10 +132,10 @@ export default function MusicController() {
         targetVolume = musicConfig.duckVolume;
         break;
       case "broll":
-        targetVolume = 0.60;
+        targetVolume = musicConfig.baseVolume * 0.6;
         break;
       case "typography":
-        targetVolume = 0.30;
+        targetVolume = musicConfig.baseVolume * 0.3;
         break;
     }
 

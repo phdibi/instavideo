@@ -228,6 +228,7 @@ export interface ModeSegment {
   endTime: number;
   brollVideoUrl?: string;
   brollQuery?: string;
+  brollPromptAI?: string;  // Detailed prompt for AI image generation (richer than brollQuery)
   pexelsAlternatives?: PexelsVideoResult[];
   typographyText?: string;
   typographyBackground?: "#F5F0E8" | "#0a0a0a";

@@ -632,7 +632,7 @@ export const useProjectStore = create<ProjectStore>()(
       partialize: (state) => {
         // Exclude transient fields from undo history
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { currentTime, isPlaying, selectedItem, selectedItems, waveformPeaks, customMusicTracks, ...rest } = state;
+        const { videoFile, status, statusMessage, currentTime, isPlaying, selectedItem, selectedItems, waveformPeaks, customMusicTracks, ...rest } = state;
         return rest;
       },
     }

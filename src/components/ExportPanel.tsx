@@ -104,20 +104,10 @@ export default function ExportPanel() {
       const canvas = document.createElement("canvas");
       canvas.width = WIDTH;
       canvas.height = HEIGHT;
-      const ctx = canvas.getContext("2d", { alpha: false });
+      const ctx = canvas.getContext("2d", { alpha: false })!;
       if (!ctx) throw new Error("Canvas 2D context não disponível");
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "high";
-
-      /** Seek with timeout to prevent infinite hang */
-      const seekVideo = (vid: HTMLVideoElement, t: number) =>
-        new Promise<void>((resolve) => {
-          const clamped = Math.min(Math.max(0, t), vid.duration || t);
-          if (Math.abs(vid.currentTime - clamped) < 0.01) { resolve(); return; }
-          vid.currentTime = clamped;
-          const timer = setTimeout(resolve, 500);
-          vid.addEventListener("seeked", () => { clearTimeout(timer); resolve(); }, { once: true });
-        });
 
       // Load presenter video
       const video = document.createElement("video");
@@ -336,41 +326,88 @@ export default function ExportPanel() {
         console.error("MediaRecorder error:", e);
       });
 
-      // ── Frame-by-Frame Render Loop ──
-      // Seek video for each frame instead of playing in real-time.
-      // This ensures ALL frames are rendered even on slow devices (mobile).
-      // Audio is pre-mixed so it plays perfectly regardless of render speed.
+      // ── Play-based Render Loop ──
+      // Play the video natively (hardware-accelerated decoder) instead of seeking
+      // per-frame. Audio is pre-mixed offline, so both play at 1x and stay in sync
+      // naturally. This eliminates seek-per-frame overhead that caused stuttering.
 
       setStatus("exporting", "Renderizando...");
 
       const presenterSegs = modeSegments.filter((s) => s.mode === "presenter");
       const presenterIndexMap = new Map(presenterSegs.map((s, i) => [s.id, i]));
-      const totalFrames = Math.ceil(videoDuration * FPS);
 
-      // Start pre-mixed audio playback (for MediaRecorder capture)
+      // CRITICAL ORDER: recorder → video.play() → audio.start()
+      // Audio must start AFTER video to avoid permanent desync on mobile
+      // (video.play() can take 50-200ms to actually begin decoding)
       recorder.start(1000);
+
+      try {
+        await video.play();
+      } catch (e) {
+        throw new Error(`Não foi possível reproduzir o vídeo para export: ${e instanceof Error ? e.message : e}`);
+      }
+
+      // Draw first frame immediately so recorder doesn't capture a blank canvas
+      ctx.drawImage(video, 0, 0, WIDTH, HEIGHT);
+
+      // NOW start audio — in sync with video since video is already playing
       playbackSrc.start(0);
-      const audioStartTime = audioCtx.currentTime;
 
-      for (let frame = 0; frame < totalFrames; frame++) {
-        if (signal.aborted) break;
-        const time = frame / FPS;
+      // B-roll video lifecycle: play/pause as segments change
+      let activeBrollSegId: string | null = null;
+      let renderStopped = false;
 
-        // Get current mode
+      // Promise-based RAF render loop
+      let renderDone: (() => void) | null = null;
+      const renderPromise = new Promise<void>((resolve) => { renderDone = resolve; });
+
+      // Also listen for video ended event as a safety net
+      video.addEventListener("ended", () => { if (!renderStopped) stopRender(); }, { once: true });
+
+      function stopRender() {
+        if (renderStopped) return;
+        renderStopped = true;
+        video.pause();
+        if (activeBrollSegId && brollVideos[activeBrollSegId]) {
+          brollVideos[activeBrollSegId].pause();
+        }
+        renderDone?.();
+      }
+
+      const safetyTimer = setTimeout(stopRender, (videoDuration + 2) * 1000);
+
+      function renderFrame() {
+        if (renderStopped) return;
+
+        if (signal.aborted) {
+          clearTimeout(safetyTimer);
+          stopRender();
+          return;
+        }
+
+        const time = video.currentTime;
+        if (time >= videoDuration - 0.01 || video.ended) {
+          clearTimeout(safetyTimer);
+          stopRender();
+          return;
+        }
+
         const segment = getCurrentMode(modeSegments, time);
         const mode = segment?.mode || "presenter";
         const layout = segment?.brollLayout || "fullscreen";
 
-        // Seek main video and b-roll video in parallel
-        const seekPromises: Promise<void>[] = [seekVideo(video, time)];
-        if (mode === "broll" && segment) {
-          const bv = brollVideos[segment.id];
-          if (bv && bv.readyState >= 2 && bv.duration > 0) {
-            const brollTime = (time - segment.startTime) % bv.duration;
-            seekPromises.push(seekVideo(bv, brollTime));
+        // Manage b-roll video playback (start/stop as segments change)
+        const wantBrollId = (mode === "broll" && segment && segment.brollMediaType !== "photo" && brollVideos[segment.id])
+          ? segment.id : null;
+        if (wantBrollId !== activeBrollSegId) {
+          if (activeBrollSegId && brollVideos[activeBrollSegId]) brollVideos[activeBrollSegId].pause();
+          if (wantBrollId) {
+            const bv = brollVideos[wantBrollId];
+            bv.currentTime = 0;
+            bv.play().catch(() => {});
           }
+          activeBrollSegId = wantBrollId;
         }
-        await Promise.all(seekPromises);
 
         // Clear canvas
         ctx.clearRect(0, 0, WIDTH, HEIGHT);
@@ -983,17 +1020,16 @@ export default function ExportPanel() {
           }
         }
 
-        setProgress(Math.round(((frame + 1) / totalFrames) * 100));
+        setProgress(Math.round((time / videoDuration) * 100));
 
-        // Pace to pre-mixed audio — wait until audio playback reaches this point.
-        // If canvas render is faster than real-time, we wait.
-        // If canvas render is slower (mobile), audio plays ahead — MediaRecorder
-        // duplicates the last canvas frame for the gap, keeping perfect audio.
-        const targetAudioTime = audioStartTime + (frame + 1) / FPS;
-        while (audioCtx!.currentTime < targetAudioTime && !signal.aborted) {
-          await new Promise((r) => setTimeout(r, 4));
+        if (!renderStopped) {
+          requestAnimationFrame(renderFrame);
         }
       }
+
+      requestAnimationFrame(renderFrame);
+      await renderPromise;
+      clearTimeout(safetyTimer);
 
       // ── Finalization phase ──
       setStatus("exporting", "Finalizando...");

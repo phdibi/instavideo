@@ -294,11 +294,14 @@ export const useProjectStore = create<ProjectStore>()(
         .sort((a, b) => a.startTime - b.startTime),
     })),
   updatePhraseCaption: (id, updates) =>
-    set((state) => ({
-      phraseCaptions: state.phraseCaptions
-        .map((c) => (c.id === id ? { ...c, ...updates } : c))
-        .sort((a, b) => a.startTime - b.startTime),
-    })),
+    set((state) => {
+      const updated = state.phraseCaptions.map((c) => (c.id === id ? { ...c, ...updates } : c));
+      // Only re-sort when timing fields change (avoid sorting on text/style-only updates)
+      if ('startTime' in updates || 'endTime' in updates) {
+        updated.sort((a, b) => a.startTime - b.startTime);
+      }
+      return { phraseCaptions: updated };
+    }),
   deletePhraseCaption: (id) =>
     set((state) => {
       const caption = state.phraseCaptions.find((c) => c.id === id);
@@ -581,7 +584,17 @@ export const useProjectStore = create<ProjectStore>()(
         segments: updatedSegments,
       };
     }),
-  reset: () => set(initialState),
+  reset: () => set({
+    ...initialState,
+    teleprompterSettings: { ...defaultTeleprompterSettings },
+    brandingConfig: { ...defaultBrandingConfig },
+    sfxConfig: { ...defaultSFXConfig },
+    musicConfig: { ...defaultMusicConfig },
+    captionConfig: { ...defaultCaptionConfig },
+    stanzaConfig: { ...defaultStanzaConfig },
+    stanzaStyleOverrides: {},
+    voiceEnhanceConfig: { preset: "off" as const, intensity: 1.0 },
+  }),
     }),
     {
       name: "instavideo-project",

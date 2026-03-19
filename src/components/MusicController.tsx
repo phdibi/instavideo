@@ -31,13 +31,22 @@ export default function MusicController() {
   const bufferRef = useRef<AudioBuffer | null>(null);
   const isLoadedRef = useRef<string | null>(null);
   const startedRef = useRef(false);
+  const fadeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const currentTimeRef = useRef(currentTime);
+  const lastDuckVolumeRef = useRef(-1);
 
-  // Load audio buffer when track changes
+  // Keep currentTimeRef in sync (avoids currentTime in effect deps)
+  currentTimeRef.current = currentTime;
+
+  // Load audio buffer when track changes (with cancellation for race safety)
   useEffect(() => {
     if (!selectedMusicTrack) return;
     const track = getTrackById(selectedMusicTrack);
     if (!track) return;
     if (isLoadedRef.current === track.id) return;
+
+    let cancelled = false;
+    const controller = new AbortController();
 
     const loadAudio = async () => {
       try {
@@ -47,19 +56,22 @@ export default function MusicController() {
           gainNodeRef.current.connect(audioCtxRef.current.destination);
         }
 
-        const response = await fetch(track.file);
+        const response = await fetch(track.file, { signal: controller.signal });
         const arrayBuffer = await response.arrayBuffer();
+        if (cancelled) return;
         bufferRef.current = await audioCtxRef.current.decodeAudioData(arrayBuffer);
+        if (cancelled) return;
         isLoadedRef.current = track.id;
       } catch (e) {
-        console.warn("Failed to load music track:", e);
+        if (!cancelled) console.warn("Failed to load music track:", e);
       }
     };
 
     loadAudio();
+    return () => { cancelled = true; controller.abort(); };
   }, [selectedMusicTrack]);
 
-  // Start/stop playback
+  // Start/stop playback (no currentTime in deps — use ref instead)
   useEffect(() => {
     const ctx = audioCtxRef.current;
     const gain = gainNodeRef.current;
@@ -68,14 +80,19 @@ export default function MusicController() {
     if (!ctx || !gain || !buffer || !selectedMusicTrack) return;
 
     if (isPlaying && !startedRef.current) {
-      // Start playback
+      // Clear any pending fade-out timeout from previous stop
+      if (fadeTimeoutRef.current) {
+        clearTimeout(fadeTimeoutRef.current);
+        fadeTimeoutRef.current = null;
+      }
+
       if (ctx.state === "suspended") ctx.resume();
 
       const source = ctx.createBufferSource();
       source.buffer = buffer;
       source.loop = true;
       source.connect(gain);
-      source.start(0, currentTime % buffer.duration);
+      source.start(0, currentTimeRef.current % buffer.duration);
       sourceRef.current = source;
       startedRef.current = true;
 
@@ -87,18 +104,20 @@ export default function MusicController() {
       );
     } else if (!isPlaying && startedRef.current) {
       // Stop playback
+      if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current);
       const source = sourceRef.current;
       if (source) {
         gain.gain.linearRampToValueAtTime(0, ctx.currentTime + musicConfig.fadeOutDuration);
-        setTimeout(() => {
-          try { source.stop(); } catch {}
+        fadeTimeoutRef.current = setTimeout(() => {
+          try { source.stop(); source.disconnect(); } catch {}
           startedRef.current = false;
+          fadeTimeoutRef.current = null;
         }, musicConfig.fadeOutDuration * 1000);
       }
     }
-  }, [isPlaying, selectedMusicTrack, musicConfig, currentTime]);
+  }, [isPlaying, selectedMusicTrack, musicConfig]);
 
-  // Ducking based on current mode
+  // Ducking based on current mode — throttled to only update when volume changes
   useEffect(() => {
     const ctx = audioCtxRef.current;
     const gain = gainNodeRef.current;
@@ -109,23 +128,28 @@ export default function MusicController() {
 
     switch (mode) {
       case "presenter":
-        targetVolume = musicConfig.duckVolume; // 15% — voice takes priority
+        targetVolume = musicConfig.duckVolume;
         break;
       case "broll":
-        targetVolume = 0.60; // 60% — no voice, music can be louder
+        targetVolume = 0.60;
         break;
       case "typography":
-        targetVolume = 0.30; // 30% — medium
+        targetVolume = 0.30;
         break;
     }
 
     // Fade out at end of video
-    if (videoDuration > 0 && currentTime > videoDuration - musicConfig.fadeOutDuration) {
+    if (musicConfig.fadeOutDuration > 0 && videoDuration > 0 && currentTime > videoDuration - musicConfig.fadeOutDuration) {
       const fadeProgress = (videoDuration - currentTime) / musicConfig.fadeOutDuration;
       targetVolume *= Math.max(0, fadeProgress);
     }
 
-    gain.gain.linearRampToValueAtTime(targetVolume, ctx.currentTime + 0.3);
+    // Round to avoid scheduling redundant Web Audio automation events
+    const rounded = Math.round(targetVolume * 1000) / 1000;
+    if (rounded !== lastDuckVolumeRef.current) {
+      lastDuckVolumeRef.current = rounded;
+      gain.gain.setTargetAtTime(targetVolume, ctx.currentTime, 0.08);
+    }
   }, [currentTime, modeSegments, isPlaying, musicConfig, videoDuration]);
 
   // Resume AudioContext when returning from background
@@ -144,12 +168,14 @@ export default function MusicController() {
   // Cleanup
   useEffect(() => {
     return () => {
+      if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current);
       try {
         sourceRef.current?.stop();
+        sourceRef.current?.disconnect();
         audioCtxRef.current?.close();
       } catch {}
     };
   }, []);
 
-  return null; // No visual output
+  return null;
 }

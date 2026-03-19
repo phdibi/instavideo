@@ -120,6 +120,8 @@ export function getModeColor(mode: VideoMode): string {
       return "#F97316"; // orange
     case "typography":
       return "#A855F7"; // purple
+    default:
+      return "#888888";
   }
 }
 
@@ -132,5 +134,7 @@ export function getModeLabel(mode: VideoMode): string {
       return "B-Roll";
     case "typography":
       return "Typography";
+    default:
+      return mode;
   }
 }

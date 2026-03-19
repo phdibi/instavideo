@@ -107,16 +107,17 @@ export default function StanzaPanel() {
   }, [phraseCaptions, selectedStanzaId]);
 
   const handleRemoveWord = useCallback((wordId: string) => {
-    const remaining = stanzaWords.filter((w) => w.id !== wordId);
+    // Read fresh data from store to avoid stale closure issues on rapid clicks
+    const current = useProjectStore.getState().phraseCaptions;
+    const remaining = current.filter((w) => w.stanzaId === selectedStanzaId && w.id !== wordId);
     if (remaining.length <= 1 && remaining.length > 0) {
-      // Last word loses its stanzaId → becomes a normal caption
       updatePhraseCaption(remaining[0].id, { stanzaId: undefined });
     }
     deletePhraseCaption(wordId);
     if (selectedItem?.id === wordId) {
       setSelectedItem(remaining.length > 0 ? { type: "phrase", id: remaining[0].id } : null);
     }
-  }, [stanzaWords, deletePhraseCaption, updatePhraseCaption, selectedItem, setSelectedItem]);
+  }, [selectedStanzaId, deletePhraseCaption, updatePhraseCaption, selectedItem, setSelectedItem]);
 
   const handleAddWord = useCallback(() => {
     if (!selectedStanzaId || stanzaWords.length === 0) return;
@@ -214,13 +215,13 @@ export default function StanzaPanel() {
   }, [nextNonStanzaPhrase, selectedStanzaId, updatePhraseCaption, addPhraseCaption]);
 
   const handleEjectWord = useCallback((wordId: string) => {
-    const remaining = stanzaWords.filter((w) => w.id !== wordId);
+    const current = useProjectStore.getState().phraseCaptions;
+    const remaining = current.filter((w) => w.stanzaId === selectedStanzaId && w.id !== wordId);
     if (remaining.length <= 1 && remaining.length > 0) {
-      // Last remaining word loses stanzaId too
       updatePhraseCaption(remaining[0].id, { stanzaId: undefined });
     }
     updatePhraseCaption(wordId, { stanzaId: undefined });
-  }, [stanzaWords, updatePhraseCaption]);
+  }, [selectedStanzaId, updatePhraseCaption]);
 
   // Handle config change: per-stanza or global depending on checkbox
   const handleConfigChange = useCallback((update: Partial<StanzaConfig>) => {

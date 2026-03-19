@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Download, Loader2, Film } from "lucide-react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { useShallow } from "zustand/react/shallow";
@@ -44,9 +44,11 @@ export default function ExportPanel() {
 
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState(0);
+  const exportingRef = useRef(false);
 
   const handleExport = useCallback(async () => {
-    if (!videoUrl || exporting) return;
+    if (!videoUrl || exportingRef.current) return;
+    exportingRef.current = true;
 
     setExporting(true);
     setProgress(0);
@@ -61,19 +63,21 @@ export default function ExportPanel() {
       // Wait for fonts to be ready
       await document.fonts.ready;
 
-      // Create offscreen canvas
+      // Create offscreen canvas with high-quality rendering
       const canvas = document.createElement("canvas");
       canvas.width = WIDTH;
       canvas.height = HEIGHT;
-      const ctx = canvas.getContext("2d");
+      const ctx = canvas.getContext("2d", { alpha: false });
       if (!ctx) throw new Error("Canvas 2D context não disponível");
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
 
       /** Seek with timeout to prevent infinite hang */
       const seekVideo = (vid: HTMLVideoElement, t: number) =>
         new Promise<void>((resolve) => {
           vid.currentTime = t;
           const timer = setTimeout(resolve, 3000);
-          vid.onseeked = () => { clearTimeout(timer); resolve(); };
+          vid.addEventListener("seeked", () => { clearTimeout(timer); resolve(); }, { once: true });
         });
 
       // Load presenter video
@@ -105,6 +109,8 @@ export default function ExportPanel() {
               bv.src = seg.brollVideoUrl!;
               bv.muted = true;
               bv.playsInline = true;
+              bv.loop = true;
+              bv.preload = "auto";
               if (!seg.brollVideoUrl!.startsWith("blob:")) bv.crossOrigin = "anonymous";
               const timer = setTimeout(resolve, 10000);
               bv.onloadeddata = () => {
@@ -138,15 +144,15 @@ export default function ExportPanel() {
       const dest = audioCtx.createMediaStreamDestination();
 
       // Voice audio from video (with optional voice enhancer)
+      // Only connect to dest (MediaStreamDestination for recording) — NOT audioCtx.destination
+      // which would play audio through speakers during export
       const voiceSource = audioCtx.createMediaElementSource(video);
       if (voiceEnhanceConfig.preset !== "off") {
         const chain = createVoiceEnhancerChain(audioCtx, voiceEnhanceConfig);
         voiceSource.connect(chain.input);
         chain.output.connect(dest);
-        chain.output.connect(audioCtx.destination);
       } else {
         voiceSource.connect(dest);
-        voiceSource.connect(audioCtx.destination);
       }
 
       // Music audio — prepare but DON'T start yet (must sync with video.play())
@@ -249,8 +255,9 @@ export default function ExportPanel() {
         : stanzaConfig.emphasisFontSize;
       // Deterministic rand for scattered layout (same as CaptionOverlay)
       const scatteredRand = (seed: number) => ((Math.sin(seed * 9371) * 43758.5453) % 1 + 1) % 1;
-      // Pre-compute presenter segments (constant during export — avoid per-frame filter)
+      // Pre-compute presenter segments and index map (avoid per-frame filter/findIndex)
       const presenterSegs = modeSegments.filter((s) => s.mode === "presenter");
+      const presenterIndexMap = new Map(presenterSegs.map((s, i) => [s.id, i]));
       const totalFrames = Math.ceil(videoDuration * FPS);
       await seekVideo(video, 0);
       video.muted = false; // ensure browser decodes audio track (Safari skips when muted)
@@ -259,6 +266,9 @@ export default function ExportPanel() {
       if (musicSource) musicSource.start(0);
       if (sfxSource) sfxSource.start(0);
       const exportStartWall = performance.now();
+
+      // Track which b-roll segment is currently playing to detect transitions
+      let activeBrollSegId: string | null = null;
 
       for (let frame = 0; frame < totalFrames; frame++) {
         if (video.ended) break;
@@ -272,8 +282,8 @@ export default function ExportPanel() {
         // Clear canvas
         ctx.clearRect(0, 0, WIDTH, HEIGHT);
 
-        // Music ducking
-        if (musicGain) {
+        // Music ducking (use setTargetAtTime for smooth transitions, avoid clicks/pops)
+        if (musicGain && audioCtx) {
           let vol = musicConfig.baseVolume;
           switch (mode) {
             case "presenter":
@@ -286,30 +296,35 @@ export default function ExportPanel() {
               vol = 0.3;
               break;
           }
-          if (time > videoDuration - musicConfig.fadeOutDuration) {
+          if (musicConfig.fadeOutDuration > 0 && time > videoDuration - musicConfig.fadeOutDuration) {
             const fadeProgress =
               (videoDuration - time) / musicConfig.fadeOutDuration;
             vol *= Math.max(0, fadeProgress);
           }
-          musicGain.gain.value = vol;
+          musicGain.gain.setTargetAtTime(vol, audioCtx.currentTime, 0.05);
         }
 
-        // Seek b-roll video to correct time within this frame
-        if (mode === "broll" && segment) {
-          const bv = brollVideos[segment.id];
-          if (bv && bv.readyState >= 2) {
-            const brollElapsed = time - segment.startTime;
-            const safeDuration = Number.isFinite(bv.duration) && bv.duration > 0 ? bv.duration : 1;
-            const brollTime = brollElapsed % safeDuration;
-            if (Math.abs(bv.currentTime - brollTime) > 0.05) {
-              await seekVideo(bv, brollTime);
+        // B-roll video playback: play in real-time instead of seeking frame-by-frame.
+        // Seeking each frame causes flicker because async seeks can't keep up at 30fps.
+        const currentBrollSegId = (mode === "broll" && segment) ? segment.id : null;
+        if (currentBrollSegId !== activeBrollSegId) {
+          // Segment transition — pause old b-roll, start new one
+          if (activeBrollSegId && brollVideos[activeBrollSegId]) {
+            brollVideos[activeBrollSegId].pause();
+          }
+          if (currentBrollSegId && segment) {
+            const bv = brollVideos[currentBrollSegId];
+            if (bv && bv.readyState >= 2) {
+              bv.currentTime = 0;
+              bv.play().catch(() => {});
             }
           }
+          activeBrollSegId = currentBrollSegId;
         }
 
         if (mode === "presenter") {
           // Presenter fills entire 9:16 frame with dynamic Ken Burns
-          const presenterIndex = segment ? presenterSegs.findIndex((s) => s.id === segment.id) : 0;
+          const presenterIndex = segment ? (presenterIndexMap.get(segment.id) ?? 0) : 0;
           const segDur = segment ? segment.endTime - segment.startTime : 1;
           const rawProgress = segment ? Math.min((time - segment.startTime) / segDur, 1) : 0;
           // Remap progress using zoomStart/zoomEnd window (must match VideoPreview)
@@ -663,12 +678,16 @@ export default function ExportPanel() {
 
         // Captions on top (all modes) — using captionConfig
         // Separate stanza from regular captions (must match CaptionOverlay logic)
-        const activeCaptions = phraseCaptions.filter(
-          (c) => time >= c.startTime && time < c.endTime
-        );
-        const stanzaActiveCaptions = activeCaptions.filter(c => c.stanzaId);
-        const regularActiveCaptions = activeCaptions.filter(c => !c.stanzaId);
-        const isStanza = stanzaActiveCaptions.length > 1;
+        // Single-pass caption partitioning (avoids 3 separate filter calls per frame)
+        const stanzaActiveCaptions: typeof phraseCaptions = [];
+        const regularActiveCaptions: typeof phraseCaptions = [];
+        for (const c of phraseCaptions) {
+          if (time >= c.startTime && time < c.endTime) {
+            if (c.stanzaId) stanzaActiveCaptions.push(c);
+            else regularActiveCaptions.push(c);
+          }
+        }
+        const isStanza = stanzaActiveCaptions.length >= 1;
 
         if (isStanza) {
           const normalSize = stanzaConfig.normalFontSize;
@@ -770,12 +789,6 @@ export default function ExportPanel() {
             for (const line of lines) {
               const { caption: cap } = line;
               const drawY = currentY + line.lineHeight / 2;
-
-              if (isCascading && cap.isEmphasis) {
-                ctx.shadowColor = "rgba(0,0,0,0.8)";
-                ctx.shadowBlur = 14;
-              }
-
               const alpha = isCascading && !cap.isEmphasis ? 0.55 : 1;
               drawStanzaWord(cap, stanzaBaseX + line.indent, drawY, alpha);
               currentY += line.lineHeight;
@@ -846,6 +859,12 @@ export default function ExportPanel() {
       }
 
       video.pause();
+      // Pause all b-roll videos that were playing
+      for (const bv of Object.values(brollVideos)) {
+        try { bv.pause(); } catch { /* ignore */ }
+      }
+      if (musicSource) try { musicSource.stop(); } catch { /* already stopped */ }
+      if (sfxSource) try { sfxSource.stop(); } catch { /* already stopped */ }
       recorder.stop();
       await exportPromise;
 
@@ -868,6 +887,7 @@ export default function ExportPanel() {
       setStatus("ready", "Erro no export");
     } finally {
       try { audioCtx?.close(); } catch { /* already closed */ }
+      exportingRef.current = false;
       setExporting(false);
       setProgress(0);
     }
@@ -883,7 +903,6 @@ export default function ExportPanel() {
     sfxConfig,
     sfxMarkers,
     voiceEnhanceConfig,
-    exporting,
     setStatus,
   ]);
 

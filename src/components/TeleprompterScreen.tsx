@@ -24,6 +24,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { useProjectStore } from "@/store/useProjectStore";
 import { useShallow } from "zustand/react/shallow";
+import type { VoiceEnhancerChain } from "@/lib/voiceEnhancer";
 
 type TeleprompterPhase = "setup" | "countdown" | "recording" | "preview";
 
@@ -73,6 +74,10 @@ export default function TeleprompterScreen() {
   const scrollPositionRef = useRef(0);
   const previewVideoRef = useRef<HTMLVideoElement>(null);
   const sheetDragRef = useRef<{ startY: number; startHeight: number } | null>(null);
+  const recordAudioCtxRef = useRef<AudioContext | null>(null);
+  const recordVoiceChainRef = useRef<VoiceEnhancerChain | null>(null);
+  const countdownIntervalRef = useRef<number | null>(null);
+  const scrollSpeedRef = useRef(teleprompterSettings.scrollSpeed);
 
   // Initialize camera
   const startCamera = useCallback(async (deviceId?: string) => {
@@ -97,15 +102,30 @@ export default function TeleprompterScreen() {
             },
         audio: {
           sampleRate: { ideal: 48000 },
-          channelCount: { ideal: 2 },
+          channelCount: { ideal: 1 },
           echoCancellation: false,
           noiseSuppression: false,
-          autoGainControl: true,
+          autoGainControl: false,
         },
       };
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
+
+      // Try to push video track to maximum capabilities (Safari may negotiate lower)
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) {
+        try {
+          const caps = videoTrack.getCapabilities?.();
+          if (caps?.width?.max && caps?.height?.max) {
+            await videoTrack.applyConstraints({
+              width: { ideal: caps.width.max },
+              height: { ideal: caps.height.max },
+              frameRate: { ideal: caps.frameRate?.max ?? 60 },
+            });
+          }
+        } catch { /* applyConstraints not supported or failed — keep negotiated settings */ }
+      }
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -144,23 +164,39 @@ export default function TeleprompterScreen() {
       }
       if (scrollAnimRef.current) cancelAnimationFrame(scrollAnimRef.current);
       if (timerRef.current) clearInterval(timerRef.current);
+      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+      }
+      if (recordVoiceChainRef.current) {
+        recordVoiceChainRef.current.disconnect();
+        recordVoiceChainRef.current = null;
+      }
+      if (recordAudioCtxRef.current) {
+        recordAudioCtxRef.current.close().catch(() => {});
+        recordAudioCtxRef.current = null;
+      }
     };
   }, [startCamera]);
 
-  // Scroll animation loop
+  // Keep scrollSpeedRef in sync so animation loop always uses current speed
+  scrollSpeedRef.current = teleprompterSettings.scrollSpeed;
+
+  // Scroll animation loop — reads speed from ref to avoid stale closures
   const startScrolling = useCallback(() => {
     if (!scrollContainerRef.current) return;
     setIsScrolling(true);
 
     const container = scrollContainerRef.current;
-    const pixelsPerFrame = teleprompterSettings.scrollSpeed * 0.5;
 
     const animate = () => {
+      const pixelsPerFrame = scrollSpeedRef.current * 0.5;
       scrollPositionRef.current += pixelsPerFrame;
       container.scrollTop = scrollPositionRef.current;
 
       if (scrollPositionRef.current >= container.scrollHeight - container.clientHeight) {
         setIsScrolling(false);
+        scrollAnimRef.current = null;
         return;
       }
 
@@ -168,7 +204,7 @@ export default function TeleprompterScreen() {
     };
 
     scrollAnimRef.current = requestAnimationFrame(animate);
-  }, [teleprompterSettings.scrollSpeed]);
+  }, []);
 
   const pauseScrolling = useCallback(() => {
     setIsScrolling(false);
@@ -201,64 +237,161 @@ export default function TeleprompterScreen() {
   }, []);
 
   const startRecording = useCallback(() => {
-    if (!streamRef.current) return;
+    if (!streamRef.current || phase !== "setup") return;
 
     // Close mobile sheet during recording
     setMobileSheetOpen(false);
+
+    // CRITICAL: Create AudioContext NOW during the active user gesture.
+    // Safari iOS suspends AudioContexts created outside a gesture — if we wait
+    // until after the countdown, the audio chain would produce silence.
+    let recordStream = streamRef.current;
+    try {
+      const audioCtx = new AudioContext({ sampleRate: 48000 });
+      if (audioCtx.state === "suspended") audioCtx.resume();
+
+      const source = audioCtx.createMediaStreamSource(streamRef.current);
+
+      // Recording-optimized audio chain (gentler than export "podcast" preset):
+      // Tuned for raw microphone → broadcast-quality voice in real-time
+
+      // 1. Highpass — cut rumble, AC hum, handling noise
+      const highpass = audioCtx.createBiquadFilter();
+      highpass.type = "highpass";
+      highpass.frequency.value = 75;
+      highpass.Q.value = 0.7;
+
+      // 2. Low-shelf — add body/warmth to voice
+      const lowShelf = audioCtx.createBiquadFilter();
+      lowShelf.type = "lowshelf";
+      lowShelf.frequency.value = 220;
+      lowShelf.gain.value = 2.5;
+
+      // 3. Presence peak — vocal clarity & intelligibility
+      const presence = audioCtx.createBiquadFilter();
+      presence.type = "peaking";
+      presence.frequency.value = 2800;
+      presence.Q.value = 1.2;
+      presence.gain.value = 3.5;
+
+      // 4. De-ess — tame harsh sibilants (gentler than export)
+      const deEss = audioCtx.createBiquadFilter();
+      deEss.type = "highshelf";
+      deEss.frequency.value = 7500;
+      deEss.gain.value = -2;
+
+      // 5. Compressor — consistent levels (softer knee for natural sound)
+      const compressor = audioCtx.createDynamicsCompressor();
+      compressor.threshold.value = -20;
+      compressor.ratio.value = 3;
+      compressor.knee.value = 8;
+      compressor.attack.value = 0.005;
+      compressor.release.value = 0.12;
+
+      // 6. Makeup gain — compensate for compression volume loss
+      const makeupGain = audioCtx.createGain();
+      makeupGain.gain.value = 1.4;
+
+      // Chain: source → highpass → lowShelf → presence → deEss → compressor → gain → dest
+      const dest = audioCtx.createMediaStreamDestination();
+      source.connect(highpass);
+      highpass.connect(lowShelf);
+      lowShelf.connect(presence);
+      presence.connect(deEss);
+      deEss.connect(compressor);
+      compressor.connect(makeupGain);
+      makeupGain.connect(dest);
+
+      // Merge: video tracks from camera + processed audio from AudioContext
+      const processedStream = new MediaStream();
+      for (const vt of streamRef.current.getVideoTracks()) {
+        processedStream.addTrack(vt);
+      }
+      for (const at of dest.stream.getAudioTracks()) {
+        processedStream.addTrack(at);
+      }
+      recordStream = processedStream;
+      recordAudioCtxRef.current = audioCtx;
+      recordVoiceChainRef.current = {
+        input: highpass,
+        output: makeupGain,
+        update: () => {},
+        disconnect: () => {
+          source.disconnect(); highpass.disconnect(); lowShelf.disconnect();
+          presence.disconnect(); deEss.disconnect(); compressor.disconnect();
+          makeupGain.disconnect();
+        },
+      };
+    } catch (e) {
+      console.warn("Voice processing unavailable, recording raw audio:", e);
+    }
+
+    // Store processed stream for use after countdown
+    const streamForRecording = recordStream;
+
+    // Helper to begin actual recording (shared by immediate start and countdown end)
+    const beginRecording = () => {
+      chunksRef.current = [];
+      const mimeType = [
+        "video/mp4;codecs=avc1.640034,mp4a.40.2",
+        "video/mp4;codecs=avc1.4D0034,mp4a.40.2",
+        "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+        "video/mp4",
+        "video/webm;codecs=vp9,opus",
+        "video/webm;codecs=vp8,opus",
+        "video/webm",
+      ].find((m) => MediaRecorder.isTypeSupported(m)) || "video/webm";
+
+      const recorder = new MediaRecorder(streamForRecording, {
+        mimeType,
+        videoBitsPerSecond: 25_000_000,
+        audioBitsPerSecond: 320_000,
+      });
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        setRecordedBlob(blob);
+        setRecordedUrl(url);
+        setPhase("preview");
+      };
+
+      mediaRecorderRef.current = recorder;
+      recorder.start(100);
+      setPhase("recording");
+
+      resetScroll();
+      setTimeout(() => { startScrolling(); }, 300);
+      startTimer();
+    };
+
+    // Skip countdown if set to 0
+    if (teleprompterSettings.countdownSeconds <= 0) {
+      beginRecording();
+      return;
+    }
 
     setPhase("countdown");
     setCountdownValue(teleprompterSettings.countdownSeconds);
 
     let count = teleprompterSettings.countdownSeconds;
-    const countdownInterval = setInterval(() => {
+    countdownIntervalRef.current = window.setInterval(() => {
       count--;
       setCountdownValue(count);
 
       if (count <= 0) {
-        clearInterval(countdownInterval);
-        setPhase("recording");
-
-        chunksRef.current = [];
-        // Prefer H.264 High Profile (B-frames + CABAC) → Main → Baseline → WebM
-        const mimeType = [
-          "video/mp4;codecs=avc1.640034,mp4a.40.2", // High Profile L5.2
-          "video/mp4;codecs=avc1.4D0034,mp4a.40.2", // Main Profile L5.2
-          "video/mp4;codecs=avc1.42E01E,mp4a.40.2", // Baseline
-          "video/mp4",
-          "video/webm;codecs=vp9,opus",
-          "video/webm;codecs=vp8,opus",
-          "video/webm",
-        ].find((m) => MediaRecorder.isTypeSupported(m)) || "video/webm";
-
-        const recorder = new MediaRecorder(streamRef.current!, {
-          mimeType,
-          videoBitsPerSecond: 25_000_000,
-          audioBitsPerSecond: 320_000,
-        });
-
-        recorder.ondataavailable = (e) => {
-          if (e.data.size > 0) chunksRef.current.push(e.data);
-        };
-
-        recorder.onstop = () => {
-          const blob = new Blob(chunksRef.current, { type: mimeType });
-          const url = URL.createObjectURL(blob);
-          setRecordedBlob(blob);
-          setRecordedUrl(url);
-          setPhase("preview");
-        };
-
-        mediaRecorderRef.current = recorder;
-        recorder.start(100);
-
-        resetScroll();
-        setTimeout(() => {
-          startScrolling();
-        }, 300);
-        startTimer();
+        if (countdownIntervalRef.current) {
+          clearInterval(countdownIntervalRef.current);
+          countdownIntervalRef.current = null;
+        }
+        beginRecording();
       }
     }, 1000);
-  }, [teleprompterSettings.countdownSeconds, resetScroll, startScrolling, startTimer]);
+  }, [phase, teleprompterSettings.countdownSeconds, resetScroll, startScrolling, startTimer]);
 
   const stopRecording = useCallback(() => {
     pauseScrolling();
@@ -266,6 +399,16 @@ export default function TeleprompterScreen() {
 
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       mediaRecorderRef.current.stop();
+    }
+
+    // Clean up recording audio processing chain
+    if (recordVoiceChainRef.current) {
+      recordVoiceChainRef.current.disconnect();
+      recordVoiceChainRef.current = null;
+    }
+    if (recordAudioCtxRef.current) {
+      recordAudioCtxRef.current.close().catch(() => {});
+      recordAudioCtxRef.current = null;
     }
   }, [pauseScrolling, stopTimer]);
 
@@ -403,6 +546,13 @@ export default function TeleprompterScreen() {
     }
     sheetDragRef.current = null;
   }, [mobileSheetHeight]);
+
+  // Clean up recordedUrl blob on unmount to prevent memory leak
+  useEffect(() => {
+    return () => {
+      if (recordedUrl) URL.revokeObjectURL(recordedUrl);
+    };
+  }, [recordedUrl]);
 
   const scriptLines = useMemo(() => {
     return teleprompterSettings.script.split("\n").map((line) => line.trim());

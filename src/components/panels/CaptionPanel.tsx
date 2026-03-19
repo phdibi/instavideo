@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useCallback, useState, useRef } from "react";
+import { useMemo, useCallback, useState, useRef, useEffect } from "react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { useShallow } from "zustand/react/shallow";
 import { AVAILABLE_FONTS } from "@/lib/fonts";
@@ -147,21 +147,23 @@ export default function CaptionPanel() {
   // Toggle: apply to all or only selected (resets when selection changes)
   const [applyToAll, setApplyToAll] = useState(false);
 
-  // Reset applyToAll when selection changes
+  // Reset applyToAll when selection changes (useEffect instead of setState during render)
   const selectionKey = selectedPhrases.map((p) => p.id).join(",");
-  const prevSelectionKeyRef = useRef(selectionKey);
-  if (prevSelectionKeyRef.current !== selectionKey) {
-    prevSelectionKeyRef.current = selectionKey;
-    if (applyToAll) setApplyToAll(false);
-  }
+  useEffect(() => {
+    setApplyToAll(false);
+  }, [selectionKey]);
 
-  // Handle config change: respects applyToAll toggle
+  // Handle config change: reads fresh data from store to avoid stale closures
   const handleConfigChange = useCallback((update: Partial<CaptionConfig>) => {
     if (hasSelection && !applyToAll) {
-      for (const phrase of selectedPhrases) {
-        updatePhraseCaption(phrase.id, {
-          styleOverride: { ...phrase.styleOverride, ...update },
-        });
+      const currentPhrases = useProjectStore.getState().phraseCaptions;
+      for (const sel of selectedPhrases) {
+        const phrase = currentPhrases.find(p => p.id === sel.id);
+        if (phrase) {
+          updatePhraseCaption(phrase.id, {
+            styleOverride: { ...phrase.styleOverride, ...update },
+          });
+        }
       }
     } else {
       setCaptionConfig(update);

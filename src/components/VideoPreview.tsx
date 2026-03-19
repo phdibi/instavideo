@@ -177,7 +177,7 @@ export default function VideoPreview() {
       const marker = sfxMarkers[i];
       if (!firedMarkersRef.current.has(marker.id)) {
         firedMarkersRef.current.add(marker.id);
-        SFX_PLAY_MAP[marker.soundType]((marker.volume ?? 1) * sfxConfig.masterVolume);
+        SFX_PLAY_MAP[marker.soundType]?.((marker.volume ?? 1) * sfxConfig.masterVolume);
       }
     }
   }, [currentTime, sfxMarkers, sfxConfig.profile, sfxConfig.masterVolume]);

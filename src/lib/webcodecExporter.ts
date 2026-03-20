@@ -116,8 +116,9 @@ export function seekVideo(
   time: number
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    // Threshold must be less than half a frame at 60fps (8.3ms) to avoid duplicates
-    if (Math.abs(video.currentTime - time) < 0.005) {
+    // Skip seek if already within ~2 frames (browsers decode at keyframe granularity,
+    // so sub-frame seeks produce identical decoded frames and just waste time)
+    if (Math.abs(video.currentTime - time) < 0.03) {
       resolve();
       return;
     }
@@ -291,11 +292,17 @@ export async function encodeVideoFrame(
       };
       videoEncoder.addEventListener("dequeue", check);
       check(); // check immediately in case queue already drained
+      // Adaptive timeout: longer for deep queues (encoder may be software-only)
+      const timeoutMs = Math.min(5000, 1000 + videoEncoder.encodeQueueSize * 200);
       setTimeout(() => {
         videoEncoder.removeEventListener("dequeue", check);
-        console.warn(`[encodeVideoFrame] Backpressure timeout at frame ${frameIndex}, queue: ${videoEncoder.encodeQueueSize}`);
+        if (videoEncoder.encodeQueueSize > 20) {
+          console.error(`[encodeVideoFrame] Encoder critically slow at frame ${frameIndex}, queue: ${videoEncoder.encodeQueueSize}`);
+        } else {
+          console.warn(`[encodeVideoFrame] Backpressure timeout at frame ${frameIndex}, queue: ${videoEncoder.encodeQueueSize}`);
+        }
         resolve();
-      }, 2000);
+      }, timeoutMs);
     });
   }
 
@@ -316,6 +323,16 @@ export async function encodeVideoFrame(
   }
 }
 
+/** Race a promise against a timeout. */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timeout after ${ms}ms`)), ms)
+    ),
+  ]);
+}
+
 /**
  * Finalize encoding and return the MP4 blob.
  */
@@ -324,11 +341,12 @@ export async function finalizeMuxer(
 ): Promise<Blob> {
   try {
     // Only flush encoders that are still in configured state (not errored/closed)
+    // 30s timeout prevents hanging forever if encoder stalls
     if (bundle.videoEncoder.state === "configured") {
-      await bundle.videoEncoder.flush();
+      await withTimeout(bundle.videoEncoder.flush(), 30_000, "VideoEncoder.flush");
     }
     if (bundle.audioEncoder.state === "configured") {
-      await bundle.audioEncoder.flush();
+      await withTimeout(bundle.audioEncoder.flush(), 30_000, "AudioEncoder.flush");
     }
 
     if (bundle.encoderError) {

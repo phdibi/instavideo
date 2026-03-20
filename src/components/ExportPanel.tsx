@@ -121,6 +121,9 @@ export default function ExportPanel() {
     // 60fps for maximum fluidity (WebCodecs handles this well; MediaRecorder captures at display rate)
     const FPS = 60;
     let audioCtx: AudioContext | null = null;
+    let videoEl: HTMLVideoElement | null = null;
+    let brollVideoEls: Record<string, HTMLVideoElement> = {};
+    let canvasStreamTracks: MediaStreamTrack[] = [];
 
     try {
       // Wait for fonts to be ready
@@ -137,6 +140,7 @@ export default function ExportPanel() {
 
       // Load presenter video
       const video = document.createElement("video");
+      videoEl = video;
       video.src = videoUrl;
       video.muted = true;
       video.playsInline = true;
@@ -150,6 +154,7 @@ export default function ExportPanel() {
 
       // Pre-load b-roll videos
       const brollVideos: Record<string, HTMLVideoElement> = {};
+      brollVideoEls = brollVideos;
       const brollImages: Record<string, HTMLImageElement> = {};
       const brollVideoSegments = modeSegments.filter(
         (s) => s.mode === "broll" && s.brollVideoUrl && s.brollMediaType !== "photo"
@@ -245,7 +250,7 @@ export default function ExportPanel() {
             // Retry with a fresh AudioContext (some browsers have stale context issues)
             let tempCtx: AudioContext | null = null;
             try {
-              tempCtx = new AudioContext();
+              tempCtx = new AudioContext({ sampleRate: 48000 });
               voiceBuffer = await tempCtx.decodeAudioData(bufferCopy);
               console.log("[export audio] decodeAudioData OK (retry):", voiceBuffer.duration.toFixed(2) + "s");
             } catch (e2) {
@@ -269,6 +274,8 @@ export default function ExportPanel() {
           console.error("[export audio] FAILED to extract voice audio from video. Export will have no voice.");
         }
       }
+
+      if (signal.aborted) { setStatus("ready", "Export cancelado"); return; }
 
       // 2. Decode music audio
       let musicBuffer: AudioBuffer | null = null;
@@ -326,8 +333,9 @@ export default function ExportPanel() {
           mGain.gain.value = musicConfig.baseVolume;
         }
 
-        // Schedule ducking for each mode segment (skip segments within fade-in window)
-        for (const seg of modeSegments) {
+        // Schedule ducking for each mode segment (must be chronological for Web Audio API)
+        const sortedSegs = [...modeSegments].sort((a, b) => a.startTime - b.startTime);
+        for (const seg of sortedSegs) {
           let vol = musicConfig.baseVolume;
           if (seg.mode === "presenter") vol = musicConfig.duckVolume;
           else if (seg.mode === "broll") vol = musicConfig.baseVolume * 0.6;
@@ -1173,8 +1181,10 @@ export default function ExportPanel() {
         // else: voice is already in mixedAudio from OfflineAudioContext
 
         const canvasStream = canvas.captureStream(0);
+        canvasStreamTracks = canvasStream.getTracks();
         for (const track of dest.stream.getAudioTracks()) {
           canvasStream.addTrack(track);
+          canvasStreamTracks.push(track);
         }
 
         // Codec priority: MP4 H.264+AAC → WebM VP9+Opus → VP8+Opus
@@ -1306,6 +1316,9 @@ export default function ExportPanel() {
           recorder.resume();
           try { recorder.requestData(); } catch {}
           recorder.stop();
+        } else {
+          // Recorder already inactive — stop event won't fire
+          console.warn("[export MediaRecorder] Recorder already inactive, skipping stop");
         }
 
         const timedOut = await Promise.race([
@@ -1369,9 +1382,20 @@ export default function ExportPanel() {
       setStatus("ready", "Export concluído!");
     } catch (error) {
       console.error("Export error:", error);
-      setStatus("ready", "Erro no export");
+      const msg = error instanceof Error ? error.message : "Erro desconhecido";
+      setStatus("ready", `Erro no export: ${msg}`);
     } finally {
       try { audioCtx?.close(); } catch { /* already closed */ }
+      // Release media resources to prevent memory leaks
+      for (const track of canvasStreamTracks) {
+        try { track.stop(); } catch {}
+      }
+      if (videoEl) {
+        try { videoEl.pause(); videoEl.src = ""; videoEl.load(); } catch {}
+      }
+      for (const bv of Object.values(brollVideoEls)) {
+        try { bv.pause(); bv.src = ""; bv.load(); } catch {}
+      }
       abortRef.current = null;
       exportingRef.current = false;
       setExporting(false);

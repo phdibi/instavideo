@@ -490,12 +490,15 @@ export const useProjectStore = create<ProjectStore>()(
         (m) => m.time < seg.startTime || m.time >= seg.endTime
       );
 
-      // Only clear selectedItem if it was the deleted segment
+      // Clear selection references to the deleted segment
       const selectedItem = (state.selectedItem?.type === "segment" && state.selectedItem.id === id)
         ? null
         : state.selectedItem;
+      const selectedItems = state.selectedItems.filter(
+        (i) => !(i.type === "segment" && i.id === id)
+      );
 
-      return { modeSegments: segments, selectedItem, sfxMarkers: cleanedMarkers };
+      return { modeSegments: segments, selectedItem, selectedItems, sfxMarkers: cleanedMarkers };
     }),
 
   applyStyleOverrideToAll: (override) =>
@@ -637,7 +640,7 @@ export const useProjectStore = create<ProjectStore>()(
       partialize: (state) => {
         // Exclude transient fields from undo history
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { videoFile, status, statusMessage, currentTime, isPlaying, selectedItem, selectedItems, waveformPeaks, customMusicTracks, exportQuality, ...rest } = state;
+        const { videoFile, status, statusMessage, currentTime, isPlaying, selectedItem, selectedItems, waveformPeaks, customMusicTracks, exportQuality, exportResolution, ...rest } = state;
         return rest;
       },
     }

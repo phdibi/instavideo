@@ -8,10 +8,17 @@ import { getFontValue } from "@/lib/fonts";
 import {
   CASCADE_EMPH_SCALE, CASCADE_INDENT_STEP, CASCADE_EMPH_NUDGE, CASCADE_MAX_INDENT,
   DIAGONAL_BASE_X, DIAGONAL_STEP_X, DIAGONAL_STEP_Y,
-  SCATTERED_X_OFFSET, SCATTERED_Y_BASE, SCATTERED_Y_RANGE,
+  SCATTERED_X_OFFSET, SCATTERED_Y_RANGE,
   scatteredRand,
 } from "@/lib/renderConstants";
 import type { PhraseCaption, CaptionConfig, StanzaConfig } from "@/types";
+
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 interface Props {
   currentTime: number;
@@ -85,11 +92,20 @@ function CaptionOverlay({ currentTime }: Props) {
     }))
   );
 
-  // Single-pass: find active captions and partition into stanza vs regular
+  // Binary search + short scan: find active captions (phraseCaptions sorted by startTime)
   const { stanzaCaptions, regularCaptions, isStanza } = useMemo(() => {
     const stanza: PhraseCaption[] = [];
     const regular: PhraseCaption[] = [];
-    for (const c of phraseCaptions) {
+    // Binary search for first caption whose endTime > currentTime
+    let lo = 0, hi = phraseCaptions.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >>> 1;
+      if (phraseCaptions[mid].endTime <= currentTime) lo = mid + 1;
+      else hi = mid - 1;
+    }
+    for (let i = lo; i < phraseCaptions.length; i++) {
+      const c = phraseCaptions[i];
+      if (c.startTime > currentTime) break;
       if (currentTime >= c.startTime && currentTime < c.endTime) {
         if (c.stanzaId) stanza.push(c);
         else regular.push(c);
@@ -337,14 +353,6 @@ const PhraseDisplay = memo(function PhraseDisplay({ caption, config }: { caption
   const bgOpacity = eff.backgroundOpacity ?? 0.6;
   const bgPadding = eff.backgroundPadding ?? 8;
   const bgRadius = eff.backgroundBorderRadius ?? 4;
-
-  // Convert hex to rgba
-  const hexToRgba = (hex: string, alpha: number) => {
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    return `rgba(${r},${g},${b},${alpha})`;
-  };
 
   const bgStyle: React.CSSProperties = bgEnabled
     ? {

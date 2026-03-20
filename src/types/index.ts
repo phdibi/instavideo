@@ -15,10 +15,6 @@ export interface Caption {
 
 // ===== Caption Visual Theme =====
 // Determines the color palette used for emphasis, highlights, and decorative elements.
-// "volt" = neon yellow-green (#CCFF00), energetic/tech
-// "ember" = warm salmon/terracotta (#D4835C), editorial/cinematic
-export type CaptionTheme = "volt" | "ember" | "velocity" | "authority";
-
 export interface CaptionStyle {
   fontFamily: string;
   fontSize: number;
@@ -136,21 +132,6 @@ export interface BRollSuggestion {
   duration: number;
   prompt: string;
   reason: string;
-}
-
-export interface ProjectState {
-  id: string;
-  videoFile: File | null;
-  videoUrl: string;
-  videoDuration: number;
-  status: ProjectStatus;
-  captions: Caption[];
-  effects: EditEffect[];
-  bRollImages: BRollImage[];
-  editPlan: EditPlan | null;
-  currentTime: number;
-  isPlaying: boolean;
-  audioExtracted: boolean;
 }
 
 export type ProjectStatus =

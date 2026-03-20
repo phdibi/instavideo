@@ -35,6 +35,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Guard against oversized payloads before parsing
+    const contentLength = parseInt(request.headers.get("content-length") || "0");
+    if (contentLength > 200_000) {
+      return NextResponse.json({ error: "Payload muito grande" }, { status: 413 });
+    }
+
     const { transcription, duration } = await request.json();
 
     if (!transcription || typeof transcription !== "string") {

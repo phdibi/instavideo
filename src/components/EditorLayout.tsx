@@ -26,6 +26,11 @@ export default function EditorLayout() {
   // Undo/Redo keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Don't steal undo/redo from text inputs
+      const el = document.activeElement;
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ||
+          (el instanceof HTMLElement && el.isContentEditable)) return;
+
       if ((e.metaKey || e.ctrlKey) && e.key === "z") {
         e.preventDefault();
         if (e.shiftKey) {

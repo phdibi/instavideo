@@ -287,9 +287,13 @@ export default function ExportPanel() {
       if (signal.aborted) { setStatus("ready", "Export cancelado"); return; }
 
       // 3. Pre-mix all audio in OfflineAudioContext (voice + music + SFX)
+      if (!videoDuration || videoDuration <= 0 || !isFinite(videoDuration)) {
+        throw new Error("Duração do vídeo inválida");
+      }
       setStatus("exporting", "Mixando áudio...");
       const sampleRate = 48000;
-      const totalSamples = Math.ceil(videoDuration * sampleRate);
+      // Add 100ms buffer to avoid truncating last audio samples
+      const totalSamples = Math.ceil((videoDuration + 0.1) * sampleRate);
       const offlineCtx = new OfflineAudioContext(2, totalSamples, sampleRate);
 
       // Voice source with optional voice enhancement
@@ -394,7 +398,7 @@ export default function ExportPanel() {
         const mode = segment?.mode || "presenter";
         const layout = segment?.brollLayout || "fullscreen";
 
-        ctx.clearRect(0, 0, WIDTH, HEIGHT);
+        // No clearRect needed — canvas has alpha:false and every mode fills all pixels
 
         if (mode === "presenter") {
           // Presenter fills entire 9:16 frame with dynamic Ken Burns
@@ -771,11 +775,18 @@ export default function ExportPanel() {
         }
 
         // Captions on top (all modes) — using captionConfig
-        // Separate stanza from regular captions (must match CaptionOverlay logic)
-        // Single-pass caption partitioning (avoids 3 separate filter calls per frame)
+        // Binary search + short scan (phraseCaptions sorted by startTime)
         const stanzaActiveCaptions: typeof phraseCaptions = [];
         const regularActiveCaptions: typeof phraseCaptions = [];
-        for (const c of phraseCaptions) {
+        let lo = 0, hi = phraseCaptions.length - 1;
+        while (lo <= hi) {
+          const mid = (lo + hi) >>> 1;
+          if (phraseCaptions[mid].endTime <= time) lo = mid + 1;
+          else hi = mid - 1;
+        }
+        for (let ci = lo; ci < phraseCaptions.length; ci++) {
+          const c = phraseCaptions[ci];
+          if (c.startTime > time) break;
           if (time >= c.startTime && time < c.endTime) {
             if (c.stanzaId) stanzaActiveCaptions.push(c);
             else regularActiveCaptions.push(c);
@@ -818,26 +829,33 @@ export default function ExportPanel() {
             return captionConfig.uppercase;
           };
 
-          const drawStanzaWord = (cap: typeof stanzaActiveCaptions[0], x: number, y: number, alpha: number) => {
-            const fSize = cap.isEmphasis ? effEmphSize : normalSize;
-            const fontName = cap.isEmphasis ? effEmphFont : effNormFont;
-            const weight = cap.isEmphasis ? "italic 700" : "400";
-            ctx.font = `${weight} ${fSize}px ${fontName}, system-ui, sans-serif`;
-            const displayText = getStanzaUppercase(cap) ? cap.text.toUpperCase() : cap.text;
+          // Set shadow once for all stanza words, reset after the block
+          const beginStanzaShadow = () => {
             ctx.shadowColor = "rgba(0,0,0,0.7)";
             ctx.shadowBlur = 8;
             ctx.shadowOffsetX = 0;
             ctx.shadowOffsetY = 2;
-            ctx.globalAlpha = alpha;
-            ctx.fillStyle = cap.styleOverride?.color || "#FFFFFF";
-            ctx.fillText(displayText, x, y);
-            ctx.globalAlpha = 1;
+          };
+          const endStanzaShadow = () => {
             ctx.shadowColor = "transparent";
             ctx.shadowBlur = 0;
             ctx.shadowOffsetX = 0;
             ctx.shadowOffsetY = 0;
           };
 
+          const drawStanzaWord = (cap: typeof stanzaActiveCaptions[0], x: number, y: number, alpha: number) => {
+            const fSize = cap.isEmphasis ? effEmphSize : normalSize;
+            const fontName = cap.isEmphasis ? effEmphFont : effNormFont;
+            const weight = cap.isEmphasis ? "italic 700" : "400";
+            ctx.font = `${weight} ${fSize}px ${fontName}, system-ui, sans-serif`;
+            const displayText = getStanzaUppercase(cap) ? cap.text.toUpperCase() : cap.text;
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = cap.styleOverride?.color || "#FFFFFF";
+            ctx.fillText(displayText, x, y);
+            ctx.globalAlpha = 1;
+          };
+
+          beginStanzaShadow();
           if (effLayout === "inline") {
             // Inline/Fluido: words side by side with word-wrap
             ctx.textAlign = "center";
@@ -918,6 +936,7 @@ export default function ExportPanel() {
               currentY += line.lineHeight;
             }
           }
+          endStanzaShadow();
         } else if (regularActiveCaptions.length > 0) {
           const activeCaption = regularActiveCaptions[0];
           // Merge styleOverride for per-caption styling

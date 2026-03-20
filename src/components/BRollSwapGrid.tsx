@@ -17,7 +17,7 @@ interface Props {
 }
 
 export default function BRollSwapGrid({ segment }: Props) {
-  const { updateModeSegment } = useProjectStore();
+  const updateModeSegment = useProjectStore((s) => s.updateModeSegment);
   const [customQuery, setCustomQuery] = useState(segment.brollQuery || "");
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);

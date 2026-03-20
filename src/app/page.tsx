@@ -29,7 +29,7 @@ function LoadingFallback() {
 }
 
 export default function Home() {
-  const { status } = useProjectStore();
+  const status = useProjectStore((s) => s.status);
 
   return (
     <ErrorBoundary>

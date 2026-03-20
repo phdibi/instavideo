@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { useShallow } from "zustand/react/shallow";
 import type { VideoMode } from "@/types";
@@ -32,7 +33,10 @@ export default function CutsPanel() {
     }))
   );
 
-  const sorted = [...modeSegments].sort((a, b) => a.startTime - b.startTime);
+  const sorted = useMemo(
+    () => [...modeSegments].sort((a, b) => a.startTime - b.startTime),
+    [modeSegments]
+  );
 
   const handleSeek = (startTime: number, segId: string) => {
     setCurrentTime(startTime);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { useShallow } from "zustand/react/shallow";
 import { getTrackById } from "@/lib/musicLibrary";
@@ -13,18 +13,24 @@ import { getModeAt } from "@/lib/modes";
  * Mode C (typography): 30% volume
  */
 export default function MusicController() {
-  const { musicConfig, selectedMusicTrack, isPlaying, currentTime, modeSegments, videoDuration, customMusicTracks } =
+  const { musicConfig, selectedMusicTrack, isPlaying, modeSegments, videoDuration } =
     useProjectStore(
       useShallow((s) => ({
         musicConfig: s.musicConfig,
         selectedMusicTrack: s.selectedMusicTrack,
         isPlaying: s.isPlaying,
-        currentTime: s.currentTime,
         modeSegments: s.modeSegments,
         videoDuration: s.videoDuration,
-        customMusicTracks: s.customMusicTracks,
       }))
     );
+
+  // currentTime read via ref only — avoids 60fps re-renders
+  const currentTimeRef = useRef(0);
+  useEffect(() => {
+    return useProjectStore.subscribe(
+      (s) => { currentTimeRef.current = s.currentTime; }
+    );
+  }, []);
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
@@ -33,21 +39,23 @@ export default function MusicController() {
   const isLoadedRef = useRef<string | null>(null);
   const startedRef = useRef(false);
   const fadeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const currentTimeRef = useRef(currentTime);
   const lastDuckVolumeRef = useRef(-1);
+  const duckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Keep currentTimeRef in sync (avoids currentTime in effect deps)
-  currentTimeRef.current = currentTime;
+  // Signal to playback effect that buffer is ready
+  const [bufferReady, setBufferReady] = useState(false);
 
   // Load audio buffer when track changes (with cancellation for race safety)
   useEffect(() => {
     if (!selectedMusicTrack) return;
+    const customMusicTracks = useProjectStore.getState().customMusicTracks;
     const track = getTrackById(selectedMusicTrack, customMusicTracks);
     if (!track) return;
     if (isLoadedRef.current === track.id) return;
 
     let cancelled = false;
     const controller = new AbortController();
+    setBufferReady(false);
 
     const loadAudio = async () => {
       try {
@@ -63,6 +71,7 @@ export default function MusicController() {
         bufferRef.current = await audioCtxRef.current.decodeAudioData(arrayBuffer);
         if (cancelled) return;
         isLoadedRef.current = track.id;
+        setBufferReady(true);
       } catch (e) {
         if (!cancelled) console.warn("Failed to load music track:", e);
       }
@@ -72,7 +81,7 @@ export default function MusicController() {
     return () => { cancelled = true; controller.abort(); };
   }, [selectedMusicTrack]);
 
-  // Start/stop playback (no currentTime in deps — use ref instead)
+  // Start/stop playback — re-runs when bufferReady flips to true
   useEffect(() => {
     const ctx = audioCtxRef.current;
     const gain = gainNodeRef.current;
@@ -103,6 +112,17 @@ export default function MusicController() {
         musicConfig.baseVolume,
         ctx.currentTime + musicConfig.fadeInDuration
       );
+    } else if (isPlaying && startedRef.current) {
+      // Rapid toggle: was fading out, user pressed play again — cancel fade and restore volume
+      if (fadeTimeoutRef.current) {
+        clearTimeout(fadeTimeoutRef.current);
+        fadeTimeoutRef.current = null;
+        gain.gain.cancelScheduledValues(ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(
+          musicConfig.baseVolume,
+          ctx.currentTime + musicConfig.fadeInDuration
+        );
+      }
     } else if (!isPlaying && startedRef.current) {
       // Stop playback
       if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current);
@@ -116,43 +136,64 @@ export default function MusicController() {
         }, musicConfig.fadeOutDuration * 1000);
       }
     }
-  }, [isPlaying, selectedMusicTrack, musicConfig]);
+  }, [isPlaying, selectedMusicTrack, musicConfig, bufferReady]);
 
-  // Ducking based on current mode — throttled to only update when volume changes
+  // Ducking based on current mode — interval-based (10Hz), not per-frame
   useEffect(() => {
-    const ctx = audioCtxRef.current;
-    const gain = gainNodeRef.current;
-    if (!ctx || !gain || !startedRef.current || !isPlaying) return;
-
-    const mode = getModeAt(modeSegments, currentTime);
-    let targetVolume = musicConfig.baseVolume;
-
-    switch (mode) {
-      case "presenter":
-        targetVolume = musicConfig.duckVolume;
-        break;
-      case "broll":
-        targetVolume = musicConfig.baseVolume * 0.6;
-        break;
-      case "typography":
-        targetVolume = musicConfig.baseVolume * 0.3;
-        break;
+    if (!isPlaying || !startedRef.current) {
+      if (duckIntervalRef.current) {
+        clearInterval(duckIntervalRef.current);
+        duckIntervalRef.current = null;
+      }
+      return;
     }
 
-    // Fade out at end of video (clamp fade duration to video length)
-    const effectiveFadeDur = Math.min(musicConfig.fadeOutDuration, videoDuration);
-    if (effectiveFadeDur > 0 && videoDuration > 0 && currentTime > videoDuration - effectiveFadeDur) {
-      const fadeProgress = (videoDuration - currentTime) / effectiveFadeDur;
-      targetVolume *= Math.max(0, fadeProgress);
-    }
+    const tick = () => {
+      const ctx = audioCtxRef.current;
+      const gain = gainNodeRef.current;
+      if (!ctx || !gain || !startedRef.current) return;
 
-    // Round to avoid scheduling redundant Web Audio automation events
-    const rounded = Math.round(targetVolume * 1000) / 1000;
-    if (rounded !== lastDuckVolumeRef.current) {
-      lastDuckVolumeRef.current = rounded;
-      gain.gain.setTargetAtTime(targetVolume, ctx.currentTime, 0.08);
-    }
-  }, [currentTime, modeSegments, isPlaying, musicConfig, videoDuration]);
+      const ct = currentTimeRef.current;
+      const mode = getModeAt(modeSegments, ct);
+      let targetVolume = musicConfig.baseVolume;
+
+      switch (mode) {
+        case "presenter":
+          targetVolume = musicConfig.duckVolume;
+          break;
+        case "broll":
+          targetVolume = musicConfig.baseVolume * 0.6;
+          break;
+        case "typography":
+          targetVolume = musicConfig.baseVolume * 0.3;
+          break;
+      }
+
+      // Fade out at end of video (clamp fade duration to video length)
+      const effectiveFadeDur = Math.min(musicConfig.fadeOutDuration, videoDuration);
+      if (effectiveFadeDur > 0 && videoDuration > 0 && ct > videoDuration - effectiveFadeDur) {
+        const fadeProgress = (videoDuration - ct) / effectiveFadeDur;
+        targetVolume *= Math.max(0, fadeProgress);
+      }
+
+      // Round to avoid scheduling redundant Web Audio automation events
+      const rounded = Math.round(targetVolume * 1000) / 1000;
+      if (rounded !== lastDuckVolumeRef.current) {
+        lastDuckVolumeRef.current = rounded;
+        gain.gain.setTargetAtTime(targetVolume, ctx.currentTime, 0.08);
+      }
+    };
+
+    // Run immediately then at 10Hz
+    tick();
+    duckIntervalRef.current = setInterval(tick, 100);
+    return () => {
+      if (duckIntervalRef.current) {
+        clearInterval(duckIntervalRef.current);
+        duckIntervalRef.current = null;
+      }
+    };
+  }, [isPlaying, modeSegments, musicConfig, videoDuration, bufferReady]);
 
   // Resume AudioContext when returning from background
   useEffect(() => {
@@ -171,6 +212,7 @@ export default function MusicController() {
   useEffect(() => {
     return () => {
       if (fadeTimeoutRef.current) clearTimeout(fadeTimeoutRef.current);
+      if (duckIntervalRef.current) clearInterval(duckIntervalRef.current);
       try {
         sourceRef.current?.stop();
         sourceRef.current?.disconnect();

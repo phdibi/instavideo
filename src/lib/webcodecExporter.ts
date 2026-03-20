@@ -116,7 +116,8 @@ export function seekVideo(
   time: number
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    if (Math.abs(video.currentTime - time) < 0.03) {
+    // Threshold must be less than half a frame at 60fps (8.3ms) to avoid duplicates
+    if (Math.abs(video.currentTime - time) < 0.005) {
       resolve();
       return;
     }
@@ -236,12 +237,15 @@ export async function encodeAudio(
       ? mixedAudio.getChannelData(1)
       : ch0;
 
+  // Pre-allocate buffer for full chunks; only create smaller one for final partial chunk
+  const fullChunkBuffer = new Float32Array(chunkSize * 2);
+
   for (let offset = 0; offset < totalFrames; offset += chunkSize) {
     // Bail if encoder errored asynchronously (transitions to "closed" state)
     if (audioEncoder.state !== "configured") break;
 
     const numFrames = Math.min(chunkSize, totalFrames - offset);
-    const data = new Float32Array(numFrames * 2);
+    const data = numFrames === chunkSize ? fullChunkBuffer : new Float32Array(numFrames * 2);
     data.set(ch0.subarray(offset, offset + numFrames), 0);
     data.set(ch1.subarray(offset, offset + numFrames), numFrames);
 

@@ -200,6 +200,8 @@ export default function VideoPreview() {
   const seekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const seekingRef = useRef(false);
 
+  const seekListenerRef = useRef<{ handler: () => void; el: HTMLVideoElement } | null>(null);
+
   useEffect(() => {
     const vid = videoRef.current;
     if (!vid) return;
@@ -214,12 +216,19 @@ export default function VideoPreview() {
         const v = videoRef.current;
         if (v && !seekingRef.current && !isPlayingRef.current && v.paused && v.readyState >= 2) {
           seekingRef.current = true;
+          // Clean up previous listener if still attached
+          if (seekListenerRef.current) {
+            seekListenerRef.current.el.removeEventListener("seeked", seekListenerRef.current.handler);
+            seekListenerRef.current = null;
+          }
           v.currentTime = currentTime;
           const onSeeked = () => {
             seekingRef.current = false;
             v.removeEventListener("seeked", onSeeked);
+            seekListenerRef.current = null;
           };
           v.addEventListener("seeked", onSeeked);
+          seekListenerRef.current = { handler: onSeeked, el: v };
           setTimeout(() => { seekingRef.current = false; }, 500);
         }
       }, 60);
@@ -227,6 +236,10 @@ export default function VideoPreview() {
 
     return () => {
       if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
+      if (seekListenerRef.current) {
+        seekListenerRef.current.el.removeEventListener("seeked", seekListenerRef.current.handler);
+        seekListenerRef.current = null;
+      }
     };
   }, [currentTime]);
 

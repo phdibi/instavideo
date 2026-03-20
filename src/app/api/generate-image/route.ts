@@ -12,6 +12,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Guard against oversized payloads
+    const contentLength = parseInt(request.headers.get("content-length") || "0");
+    if (contentLength > 50_000) {
+      return NextResponse.json({ error: "Payload muito grande" }, { status: 413 });
+    }
+
     const { prompt } = await request.json();
 
     if (!prompt || typeof prompt !== "string") {
@@ -73,10 +79,11 @@ export async function POST(request: NextRequest) {
     const prediction = await createRes.json();
     let result = prediction;
 
-    // Poll until complete with exponential backoff (max ~30s)
+    // Poll until complete with exponential backoff (max 25s to stay within serverless limits)
     const pollUrl = prediction.urls?.get || `https://api.replicate.com/v1/predictions/${prediction.id}`;
+    const pollDeadline = Date.now() + 25_000;
     let delay = 500;
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 20 && Date.now() < pollDeadline; i++) {
       if (result.status === "succeeded") break;
       if (result.status === "failed" || result.status === "canceled") {
         throw new Error(`Image generation ${result.status}: ${result.error || "unknown"}`);
@@ -87,6 +94,7 @@ export async function POST(request: NextRequest) {
 
       const pollRes = await fetch(pollUrl, {
         headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(5000),
       });
       if (!pollRes.ok) throw new Error(`Poll failed: ${pollRes.status}`);
       result = await pollRes.json();

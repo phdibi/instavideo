@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { useProjectStore } from "@/store/useProjectStore";
 import { useShallow } from "zustand/react/shallow";
 import { SFX_PLAY_MAP, SFX_LABELS, generateSFXMarkers } from "@/lib/sfx";
@@ -61,6 +62,11 @@ export default function SFXPanel() {
     }))
   );
 
+  const sortedMarkers = useMemo(
+    () => [...sfxMarkers].sort((a, b) => a.time - b.time),
+    [sfxMarkers]
+  );
+
   const selectedMarker = selectedItem?.type === "sfx"
     ? sfxMarkers.find((m) => m.id === selectedItem.id)
     : null;
@@ -105,7 +111,7 @@ export default function SFXPanel() {
 
           {/* SFX navigation */}
           <SegmentNavigator
-            items={[...sfxMarkers].sort((a, b) => a.time - b.time).map((m) => ({ id: m.id, time: m.time }))}
+            items={sortedMarkers.map((m) => ({ id: m.id, time: m.time }))}
             currentId={selectedMarker.id}
             label="Marcador"
             colorClass="text-yellow-300"
@@ -226,7 +232,7 @@ export default function SFXPanel() {
           </div>
         ) : (
           <div className="space-y-1 max-h-48 overflow-y-auto">
-            {sfxMarkers.map((marker) => {
+            {sortedMarkers.map((marker) => {
               const isSelected = selectedItem?.type === "sfx" && selectedItem.id === marker.id;
               return (
                 <div

@@ -128,7 +128,10 @@ export async function GET(request: NextRequest) {
 }
 
 function getOwnOrigin(request: NextRequest): string {
+  // Use configured origin to prevent CORS reflection attacks
+  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
+  // Fallback: construct from request headers (safe in dev, behind trusted proxy in prod)
   const proto = (request.headers.get("x-forwarded-proto") || "https").split(",")[0].trim();
-  const host = request.headers.get("host") || "localhost";
+  const host = request.headers.get("host") || "localhost:3000";
   return `${proto}://${host}`;
 }

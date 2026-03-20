@@ -4,20 +4,26 @@ import type { PhraseCaption } from "@/types";
 function parseTimeSRT(timeStr: string): number {
   // Format: HH:MM:SS,mmm
   const parts = timeStr.trim().split(":");
-  const [sec, ms] = parts[2].split(",");
-  return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(sec) + parseInt(ms) / 1000;
+  const [sec, ms = "000"] = parts[2].split(",");
+  const result = parseInt(parts[0], 10) * 3600 + parseInt(parts[1], 10) * 60 + parseInt(sec, 10) + parseInt(ms, 10) / 1000;
+  if (Number.isNaN(result)) throw new Error(`Timestamp SRT inválido: ${timeStr}`);
+  return result;
 }
 
 function parseTimeVTT(timeStr: string): number {
   // Format: HH:MM:SS.mmm or MM:SS.mmm
   const parts = timeStr.trim().split(":");
+  let result: number;
   if (parts.length === 3) {
-    const [sec, ms] = parts[2].split(".");
-    return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(sec) + parseInt(ms) / 1000;
+    const [sec, ms = "000"] = parts[2].split(".");
+    result = parseInt(parts[0], 10) * 3600 + parseInt(parts[1], 10) * 60 + parseInt(sec, 10) + parseInt(ms, 10) / 1000;
+  } else {
+    // MM:SS.mmm
+    const [sec, ms = "000"] = parts[1].split(".");
+    result = parseInt(parts[0], 10) * 60 + parseInt(sec, 10) + parseInt(ms, 10) / 1000;
   }
-  // MM:SS.mmm
-  const [sec, ms] = parts[1].split(".");
-  return parseInt(parts[0]) * 60 + parseInt(sec) + parseInt(ms) / 1000;
+  if (Number.isNaN(result)) throw new Error(`Timestamp VTT inválido: ${timeStr}`);
+  return result;
 }
 
 export function parseSRT(content: string): PhraseCaption[] {

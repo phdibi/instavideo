@@ -124,6 +124,7 @@ export function seekVideo(
     const timeout = setTimeout(() => {
       video.removeEventListener("seeked", onSeeked);
       video.removeEventListener("error", onError);
+      console.warn(`[seekVideo] Timeout seeking to ${time.toFixed(3)}s — using stale frame`);
       resolve(); // stale frame is better than crashing
     }, 5000);
 
@@ -220,6 +221,7 @@ export function createMuxerBundle(
 /**
  * Encode pre-mixed audio buffer into the muxer via AudioEncoder.
  * Feeds audio in chunks of 1024 samples.
+ * NOTE: Does NOT flush the encoder — caller must use finalizeMuxer() for that.
  */
 export async function encodeAudio(
   audioEncoder: AudioEncoder,
@@ -259,9 +261,6 @@ export async function encodeAudio(
     }
   }
 
-  if (audioEncoder.state === "configured") {
-    await audioEncoder.flush();
-  }
 }
 
 /**
@@ -290,6 +289,7 @@ export async function encodeVideoFrame(
       check(); // check immediately in case queue already drained
       setTimeout(() => {
         videoEncoder.removeEventListener("dequeue", check);
+        console.warn(`[encodeVideoFrame] Backpressure timeout at frame ${frameIndex}, queue: ${videoEncoder.encodeQueueSize}`);
         resolve();
       }, 2000);
     });

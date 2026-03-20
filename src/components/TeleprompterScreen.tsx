@@ -17,7 +17,6 @@ import {
   ChevronDown,
   Camera,
   CameraOff,
-  GripHorizontal,
   X,
   Download,
 } from "lucide-react";
@@ -27,6 +26,12 @@ import { useShallow } from "zustand/react/shallow";
 import type { VoiceEnhancerChain } from "@/lib/voiceEnhancer";
 
 type TeleprompterPhase = "setup" | "countdown" | "recording" | "preview";
+
+function formatTimer(seconds: number) {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+}
 
 export default function TeleprompterScreen() {
   const {
@@ -68,6 +73,7 @@ export default function TeleprompterScreen() {
   const streamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const recordedUrlRef = useRef(""); // tracks recordedUrl for cleanup on unmount
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollAnimRef = useRef<number | null>(null);
   const timerRef = useRef<number | null>(null);
@@ -77,6 +83,7 @@ export default function TeleprompterScreen() {
   const recordAudioCtxRef = useRef<AudioContext | null>(null);
   const recordVoiceChainRef = useRef<VoiceEnhancerChain | null>(null);
   const countdownIntervalRef = useRef<number | null>(null);
+  const isStartingRecordRef = useRef(false);
   const scrollSpeedRef = useRef(teleprompterSettings.scrollSpeed);
 
   // Initialize camera
@@ -181,6 +188,11 @@ export default function TeleprompterScreen() {
         recordAudioCtxRef.current.close().catch(() => {});
         recordAudioCtxRef.current = null;
       }
+      // Revoke blob URL to prevent memory leak
+      if (recordedUrlRef.current) {
+        URL.revokeObjectURL(recordedUrlRef.current);
+        recordedUrlRef.current = "";
+      }
     };
   }, [startCamera]);
 
@@ -243,7 +255,9 @@ export default function TeleprompterScreen() {
 
   const startRecording = useCallback(() => {
     if (!streamRef.current || phase !== "setup") return;
-    // Guard against double-click: immediately transition phase
+    // Synchronous ref guard against double-click (immune to React batching)
+    if (isStartingRecordRef.current) return;
+    isStartingRecordRef.current = true;
     setPhase("countdown");
 
     // Close mobile sheet during recording
@@ -364,6 +378,7 @@ export default function TeleprompterScreen() {
         const url = URL.createObjectURL(blob);
         setRecordedBlob(blob);
         setRecordedUrl(url);
+        recordedUrlRef.current = url;
         setPhase("preview");
       };
 
@@ -415,6 +430,7 @@ export default function TeleprompterScreen() {
       // No recording was started (cancelled during countdown) — go back to setup
       setPhase("setup");
       setMobileSheetOpen(true);
+      isStartingRecordRef.current = false;
     }
 
     // Clean up recording audio processing chain
@@ -480,6 +496,7 @@ export default function TeleprompterScreen() {
     setRecordedBlob(null);
     setRecordedUrl("");
     setElapsedTime(0);
+    isStartingRecordRef.current = false;
     resetScroll();
     setPhase("setup");
     setMobileSheetOpen(true);
@@ -493,12 +510,6 @@ export default function TeleprompterScreen() {
     if (recordedUrl) URL.revokeObjectURL(recordedUrl);
     setStatus("idle");
   }, [recordedUrl, setStatus]);
-
-  const formatTimer = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
-  };
 
   // Keyboard shortcuts
   useEffect(() => {

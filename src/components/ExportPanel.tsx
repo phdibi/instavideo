@@ -91,6 +91,18 @@ export default function ExportPanel() {
     abortRef.current?.abort();
   }, []);
 
+  // Helper: sample ~10k points to find peak amplitude
+  const getBufferPeak = (buf: AudioBuffer): number => {
+    const ch0 = buf.getChannelData(0);
+    let peak = 0;
+    const step = Math.max(1, Math.floor(ch0.length / 10000));
+    for (let i = 0; i < ch0.length; i += step) {
+      const abs = Math.abs(ch0[i]);
+      if (abs > peak) peak = abs;
+    }
+    return peak;
+  };
+
   const handleExport = useCallback(async () => {
     if (!videoUrl || exportingRef.current) return;
     exportingRef.current = true;
@@ -118,7 +130,7 @@ export default function ExportPanel() {
       const canvas = document.createElement("canvas");
       canvas.width = WIDTH;
       canvas.height = HEIGHT;
-      const ctx = canvas.getContext("2d", { alpha: false })!;
+      const ctx = canvas.getContext("2d", { alpha: false })!; // asserted: guarded below, needed for closure narrowing
       if (!ctx) throw new Error("Canvas 2D context não disponível");
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "high";
@@ -194,11 +206,68 @@ export default function ExportPanel() {
 
       // 1. Decode voice audio from video file
       let voiceBuffer: AudioBuffer | null = null;
-      try {
-        const videoArrayBuffer = await fetch(videoUrl).then((r) => r.arrayBuffer());
-        voiceBuffer = await audioCtx.decodeAudioData(videoArrayBuffer);
-      } catch (e) {
-        console.warn("Could not decode voice audio (video may have no audio track):", e);
+      {
+        // Try multiple approaches — decodeAudioData can fail on MediaRecorder-produced files
+        let videoArrayBuffer: ArrayBuffer | null = null;
+
+        // Approach A: Read from File object directly (most reliable, avoids blob URL issues)
+        const videoFile = useProjectStore.getState().videoFile;
+        if (videoFile) {
+          try {
+            videoArrayBuffer = await videoFile.arrayBuffer();
+            console.log("[export audio] Read from File:", videoArrayBuffer.byteLength, "bytes");
+          } catch (e) {
+            console.warn("[export audio] File.arrayBuffer() failed:", e);
+          }
+        }
+
+        // Approach B: Fetch from blob URL
+        if (!videoArrayBuffer) {
+          try {
+            const fetched = await fetch(videoUrl).then((r) => r.arrayBuffer());
+            videoArrayBuffer = fetched;
+            console.log("[export audio] Fetched from URL:", fetched.byteLength, "bytes");
+          } catch (e) {
+            console.warn("[export audio] fetch(videoUrl) failed:", e);
+          }
+        }
+
+        // Decode audio from the video container
+        if (videoArrayBuffer && videoArrayBuffer.byteLength > 0) {
+          // decodeAudioData detaches the ArrayBuffer, so we may need a copy for retry
+          const bufferCopy = videoArrayBuffer.slice(0);
+          try {
+            voiceBuffer = await audioCtx.decodeAudioData(videoArrayBuffer);
+            console.log("[export audio] decodeAudioData OK:", voiceBuffer.duration.toFixed(2) + "s",
+              voiceBuffer.numberOfChannels + "ch", voiceBuffer.sampleRate + "Hz");
+          } catch (e) {
+            console.warn("[export audio] decodeAudioData failed on AudioContext, trying fresh context:", e);
+            // Retry with a fresh AudioContext (some browsers have stale context issues)
+            let tempCtx: AudioContext | null = null;
+            try {
+              tempCtx = new AudioContext();
+              voiceBuffer = await tempCtx.decodeAudioData(bufferCopy);
+              console.log("[export audio] decodeAudioData OK (retry):", voiceBuffer.duration.toFixed(2) + "s");
+            } catch (e2) {
+              console.error("[export audio] decodeAudioData failed on retry too:", e2);
+            } finally {
+              tempCtx?.close().catch(() => {});
+            }
+          }
+
+          // Validate: check buffer has actual audio content (not silence)
+          if (voiceBuffer) {
+            const peak = getBufferPeak(voiceBuffer);
+            console.log("[export audio] Voice peak amplitude:", peak.toFixed(6));
+            if (peak < 0.0001) {
+              console.warn("[export audio] Voice buffer appears to be silence!");
+            }
+          }
+        }
+
+        if (!voiceBuffer) {
+          console.error("[export audio] FAILED to extract voice audio from video. Export will have no voice.");
+        }
       }
 
       // 2. Decode music audio
@@ -289,6 +358,16 @@ export default function ExportPanel() {
       }
 
       const mixedAudio = await offlineCtx.startRendering();
+
+      // Validate mixed audio has content
+      {
+        const peak = getBufferPeak(mixedAudio);
+        console.log("[export audio] Mixed audio:", mixedAudio.duration.toFixed(2) + "s",
+          "peak:", peak.toFixed(6), "samples:", mixedAudio.length);
+        if (peak < 0.0001) {
+          console.error("[export audio] Mixed audio is SILENT — export will have no audio");
+        }
+      }
 
       if (signal.aborted) { setStatus("ready", "Export cancelado"); return; }
 
@@ -931,10 +1010,17 @@ export default function ExportPanel() {
       let finalExt: string;
       let finalMimeType: string;
 
-      // Probe WebCodecs when HD quality is selected
-      const webCodecsConfig: WebCodecsConfig | null = exportQuality === "hd"
-        ? await probeWebCodecs(WIDTH, HEIGHT, FPS, webCodecsBps)
-        : null;
+      // Probe WebCodecs when HD quality is selected AND voice was successfully extracted
+      // (WebCodecs path needs all audio pre-mixed upfront; if voice extraction failed,
+      // fall back to MediaRecorder which captures voice from the video element in real-time)
+      const webCodecsConfig: WebCodecsConfig | null =
+        exportQuality === "hd" && voiceBuffer
+          ? await probeWebCodecs(WIDTH, HEIGHT, FPS, webCodecsBps)
+          : null;
+
+      if (!voiceBuffer && exportQuality === "hd") {
+        console.warn("[export] Voice extraction failed — falling back to MediaRecorder path for audio reliability");
+      }
 
       if (webCodecsConfig) {
         // ═════════════════════════════════════════════════════════════
@@ -950,14 +1036,17 @@ export default function ExportPanel() {
 
         // 1. Encode all pre-mixed audio
         setStatus("exporting", "Codificando áudio...");
+        console.log("[export WebCodecs] Encoding audio:", webCodecsConfig.muxerAudioCodec,
+          "mixedAudio:", mixedAudio.duration.toFixed(2) + "s", mixedAudio.length, "samples");
         await encodeAudio(bundle.audioEncoder, mixedAudio);
+        console.log("[export WebCodecs] Audio encode done, chunks:", bundle.audioChunkCount,
+          "encoder state:", bundle.audioEncoder.state, "error:", bundle.encoderError);
 
         // If AAC produced 0 chunks (known issue on some browsers), try Opus fallback
         if (bundle.audioChunkCount === 0 && webCodecsConfig.muxerAudioCodec === "aac") {
-          console.warn("AAC audio encoding produced 0 chunks, trying Opus fallback...");
+          console.warn("[export WebCodecs] AAC produced 0 chunks, trying Opus fallback...");
           try { bundle.videoEncoder.close(); bundle.audioEncoder.close(); } catch {}
 
-          // Re-probe with Opus only
           const opusConfig: WebCodecsConfig = {
             ...webCodecsConfig,
             audioCodec: "opus",
@@ -966,9 +1055,10 @@ export default function ExportPanel() {
           };
           bundle = createMuxerBundle(opusConfig, WIDTH, HEIGHT, FPS);
           await encodeAudio(bundle.audioEncoder, mixedAudio);
+          console.log("[export WebCodecs] Opus fallback done, chunks:", bundle.audioChunkCount);
 
           if (bundle.audioChunkCount === 0) {
-            console.error("Opus audio encoding also produced 0 chunks");
+            console.error("[export WebCodecs] Opus also produced 0 chunks — export will have no audio");
           }
         }
 
@@ -986,13 +1076,17 @@ export default function ExportPanel() {
           if (signal.aborted) break;
 
           const time = frame / FPS;
+          const seg = getCurrentMode(modeSegments, time);
+          const mode = seg?.mode || "presenter";
 
-          // Seek presenter video to exact time
-          await seekVideoToTime(video, time);
+          // Only seek presenter video when it's actually visible
+          // (skipping seek during fullscreen b-roll/typography saves thousands of async operations)
+          if (mode === "presenter" || (mode === "broll" && seg?.brollLayout && seg.brollLayout !== "fullscreen")) {
+            await seekVideoToTime(video, time);
+          }
 
           // Seek active b-roll video if needed
-          const seg = getCurrentMode(modeSegments, time);
-          if (seg?.mode === "broll" && seg.brollMediaType !== "photo" && brollVideos[seg.id]) {
+          if (mode === "broll" && seg?.brollMediaType !== "photo" && seg && brollVideos[seg.id]) {
             const brollDur = brollVideos[seg.id].duration || 1;
             const brollTime = (time - seg.startTime) % brollDur;
             await seekVideoToTime(brollVideos[seg.id], brollTime);
@@ -1031,9 +1125,28 @@ export default function ExportPanel() {
 
         // Set up audio playback for MediaRecorder
         const dest = audioCtx.createMediaStreamDestination();
+
+        // Music + SFX from pre-mixed buffer (always available)
         const playbackSrc = audioCtx.createBufferSource();
         playbackSrc.buffer = mixedAudio;
         playbackSrc.connect(dest);
+
+        // Voice: if decodeAudioData failed, capture voice directly from the video element.
+        // createMediaElementSource bypasses decodeAudioData entirely — most reliable approach.
+        if (!voiceBuffer) {
+          console.log("[export MediaRecorder] Using createMediaElementSource for voice (decodeAudioData failed)");
+          video.muted = false; // Required: some browsers block audio from muted elements
+          const voiceMediaSource = audioCtx.createMediaElementSource(video);
+          // Apply voice enhancement if configured
+          if (voiceEnhanceConfig.preset !== "off") {
+            const chain = createVoiceEnhancerChain(audioCtx, voiceEnhanceConfig);
+            voiceMediaSource.connect(chain.input);
+            chain.output.connect(dest);
+          } else {
+            voiceMediaSource.connect(dest);
+          }
+        }
+        // else: voice is already in mixedAudio from OfflineAudioContext
 
         const canvasStream = canvas.captureStream(0);
         for (const track of dest.stream.getAudioTracks()) {
@@ -1106,7 +1219,8 @@ export default function ExportPanel() {
           renderDone?.();
         }
 
-        const safetyTimer = setTimeout(stopRender, (videoDuration + 2) * 1000);
+        // Safety timer: generous margin for background tabs (browsers throttle RAF to 1fps)
+        const safetyTimer = setTimeout(stopRender, (videoDuration + 10) * 1000);
 
         function renderFrame() {
           if (renderStopped) return;
@@ -1170,10 +1284,13 @@ export default function ExportPanel() {
           recorder.stop();
         }
 
-        await Promise.race([
-          exportPromise,
-          new Promise<void>((resolve) => setTimeout(resolve, 10_000)),
+        const timedOut = await Promise.race([
+          exportPromise.then(() => false),
+          new Promise<boolean>((resolve) => setTimeout(() => resolve(true), 10_000)),
         ]);
+        if (timedOut) {
+          console.warn("[export MediaRecorder] Stop event did not fire within 10s, using collected chunks");
+        }
 
         if (signal.aborted) {
           setStatus("ready", "Export cancelado");

@@ -188,8 +188,11 @@ export default function TeleprompterScreen() {
         recordAudioCtxRef.current.close().catch(() => {});
         recordAudioCtxRef.current = null;
       }
-      // Revoke blob URL to prevent memory leak
-      if (recordedUrlRef.current) {
+      // Revoke blob URL to prevent memory leak — but ONLY if it wasn't
+      // transferred to the store (i.e. user didn't proceed to editing).
+      // If the URL is now in the store as videoUrl, revoking it would break playback.
+      const storeVideoUrl = useProjectStore.getState().videoUrl;
+      if (recordedUrlRef.current && recordedUrlRef.current !== storeVideoUrl) {
         URL.revokeObjectURL(recordedUrlRef.current);
         recordedUrlRef.current = "";
       }

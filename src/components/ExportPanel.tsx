@@ -1123,6 +1123,9 @@ export default function ExportPanel() {
         // ══ MediaRecorder Path (Fast, real-time encoding) ═══════════
         // ═════════════════════════════════════════════════════════════
 
+        // Ensure AudioContext is running (may be suspended after long async operations)
+        if (audioCtx.state === "suspended") await audioCtx.resume();
+
         // Set up audio playback for MediaRecorder
         const dest = audioCtx.createMediaStreamDestination();
 
@@ -1133,9 +1136,11 @@ export default function ExportPanel() {
 
         // Voice: if decodeAudioData failed, capture voice directly from the video element.
         // createMediaElementSource bypasses decodeAudioData entirely — most reliable approach.
+        // NOTE: video stays muted — createMediaElementSource captures audio regardless of
+        // muted state (muted only affects default output, not Web Audio routing per MDN).
+        // Keeping muted is critical: unmuted video.play() fails without a fresh user gesture.
         if (!voiceBuffer) {
           console.log("[export MediaRecorder] Using createMediaElementSource for voice (decodeAudioData failed)");
-          video.muted = false; // Required: some browsers block audio from muted elements
           const voiceMediaSource = audioCtx.createMediaElementSource(video);
           // Apply voice enhancement if configured
           if (voiceEnhanceConfig.preset !== "off") {
